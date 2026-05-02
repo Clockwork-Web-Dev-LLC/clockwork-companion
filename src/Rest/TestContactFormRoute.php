@@ -3,17 +3,22 @@
 namespace ClockworkCompanion\Rest;
 
 use ClockworkCompanion\Auth\HmacVerifier;
+use ClockworkCompanion\ContactForm\Tester;
 use WP_REST_Request;
 use WP_REST_Response;
 
 /**
- * Stub — full implementation lands in v1.0.x.
+ * POST /wp-json/clockwork/v1/test-contact-form
  *
- * Accepts { plugin, form_id, marker, mode } and returns
- * { accepted, mail_invoked, mail_outcome, error?, log_excerpt }.
+ * Body:
+ *   { "plugin": "contact-form-7"|"wpforms"|"gravityforms",
+ *     "form_id": "<plugin-specific id>",
+ *     "marker":  "<unique token; appears in subject + body>",
+ *     "mode":    "lab" (default) | "live" }
  *
- * mode=lab (default) suppresses real wp_mail send + form-storage CPT writes.
- * mode=live lets the form plugin act normally.
+ * Returns Tester::run() output. HTTP 200 even on rejection — caller
+ * inspects ok/accepted/mail_outcome to interpret. HTTP 400 only for
+ * payload validation failures.
  */
 class TestContactFormRoute
 {
@@ -23,14 +28,37 @@ class TestContactFormRoute
             'methods' => 'POST',
             'callback' => [$this, 'handle'],
             'permission_callback' => [HmacVerifier::class, 'verify'],
+            'args' => [
+                'plugin' => ['required' => true, 'type' => 'string'],
+                'form_id' => ['required' => true, 'type' => 'string'],
+                'marker' => ['required' => true, 'type' => 'string'],
+                'mode' => ['required' => false, 'type' => 'string', 'default' => 'lab'],
+            ],
         ]);
     }
 
     public function handle(WP_REST_Request $request): WP_REST_Response
     {
-        return new WP_REST_Response([
-            'ok' => false,
-            'error' => 'not_implemented',
-        ], 501);
+        $plugin = (string) $request->get_param('plugin');
+        $formId = (string) $request->get_param('form_id');
+        $marker = (string) $request->get_param('marker');
+        $mode = (string) ($request->get_param('mode') ?: 'lab');
+
+        if ($plugin === '' || $formId === '' || $marker === '') {
+            return new WP_REST_Response([
+                'ok' => false,
+                'error' => 'plugin, form_id, and marker are required.',
+            ], 400);
+        }
+        if (! in_array($mode, ['lab', 'live'], true)) {
+            return new WP_REST_Response([
+                'ok' => false,
+                'error' => "mode must be 'lab' or 'live' (got '{$mode}').",
+            ], 400);
+        }
+
+        $result = (new Tester())->run($plugin, $formId, $marker, $mode);
+
+        return new WP_REST_Response($result);
     }
 }
