@@ -101,4 +101,74 @@ class Repository
         $val = $wpdb->get_var("SELECT care_plan_enabled FROM {$table} ORDER BY ran_at DESC LIMIT 1");
         return (bool) $val;
     }
+
+    /**
+     * Recent rows of a specific action_type, newest first. Used by the Security
+     * sub-page to render scan history without scanning the whole month.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function findByActionType(string $actionType, int $limit = 50): array
+    {
+        global $wpdb;
+        $table = Schema::tableName();
+
+        $rows = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT * FROM {$table} WHERE action_type = %s ORDER BY ran_at DESC LIMIT %d",
+                $actionType,
+                $limit
+            ),
+            ARRAY_A
+        );
+
+        return is_array($rows) ? $rows : [];
+    }
+
+    /**
+     * Most recent row of a given action_type, or null if none exist. Cheap
+     * one-liner so the Security page hero card doesn't need to materialize
+     * a full result set just to read the latest entry.
+     *
+     * @return array<string, mixed>|null
+     */
+    public static function latestByActionType(string $actionType): ?array
+    {
+        global $wpdb;
+        $table = Schema::tableName();
+
+        $row = $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT * FROM {$table} WHERE action_type = %s ORDER BY ran_at DESC LIMIT 1",
+                $actionType
+            ),
+            ARRAY_A
+        );
+
+        return is_array($row) ? $row : null;
+    }
+
+    /**
+     * Most recent security_scan row of a specific scan target — 'sitecheck' or
+     * 'core_checksums'. The Security admin page renders one card per type and
+     * shows that type's last result independently.
+     *
+     * @return array<string, mixed>|null
+     */
+    public static function latestByActionLog(string $scanTarget): ?array
+    {
+        global $wpdb;
+        $table = Schema::tableName();
+
+        $row = $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT * FROM {$table} WHERE action_type = %s AND target = %s ORDER BY ran_at DESC LIMIT 1",
+                'security_scan',
+                $scanTarget
+            ),
+            ARRAY_A
+        );
+
+        return is_array($row) ? $row : null;
+    }
 }

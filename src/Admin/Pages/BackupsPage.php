@@ -22,6 +22,12 @@ class BackupsPage
 
     public const OPTION = 'clockwork_companion_backups_report';
 
+    /**
+     * Page size for the history table when on a care plan. Off-plan sites get
+     * 30 days of data total — fits on one page, so pagination is hidden there.
+     */
+    public const PAGE_SIZE = 30;
+
     public static function render(): void
     {
         Layout::render('backups', [self::class, 'renderBody']);
@@ -158,22 +164,60 @@ class BackupsPage
     private static function renderHistoryCard(array $report): void
     {
         $history = is_array($report['history'] ?? null) ? $report['history'] : [];
+        $totalRuns = count($history);
+
+        // Care plan determines the retention window the report was filtered to
+        // before it was pushed (see Clockwork's PushCompanionBackupsReport).
+        // Off-plan sites get 30 days, on-plan sites get 90 days. Default to
+        // 30 if the field is missing, matching the off-plan baseline.
+        $onCarePlan = ! empty($report['care_plan_enabled']);
+        $retentionDays = (int) ($report['retention_days'] ?? 30);
+
+        // Pagination: only relevant when there are more rows than fit on one
+        // page. Off-plan sites are bounded at 30 days, so this only kicks in
+        // for care-plan sites with >30 history entries.
+        $page = isset($_GET['hp']) ? max(1, (int) $_GET['hp']) : 1;
+        $totalPages = max(1, (int) ceil($totalRuns / self::PAGE_SIZE));
+        $page = min($page, $totalPages);
+        $offset = ($page - 1) * self::PAGE_SIZE;
+        $pageRows = array_slice($history, $offset, self::PAGE_SIZE);
+
+        $retentionPillVariant = $onCarePlan ? 'ok' : 'warn';
+        $retentionPillLabel = "Last {$retentionDays} days";
         ?>
         <div class="clockwork-card">
             <div class="clockwork-card__head">
                 <h2>Backup History</h2>
-                <?php if ($history !== []) : ?>
-                    <span class="clockwork-pill clockwork-pill--info"><?php echo (int) count($history); ?> runs</span>
-                <?php endif; ?>
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    <span class="clockwork-pill clockwork-pill--<?php echo esc_attr($retentionPillVariant); ?>">
+                        <?php echo esc_html($retentionPillLabel); ?>
+                    </span>
+                    <?php if ($totalRuns > 0) : ?>
+                        <span class="clockwork-pill clockwork-pill--info">
+                            <?php echo (int) $totalRuns; ?> run<?php echo $totalRuns === 1 ? '' : 's'; ?>
+                        </span>
+                    <?php endif; ?>
+                </div>
             </div>
             <div class="clockwork-card__body clockwork-card__body--tight">
-                <?php if ($history === []) : ?>
+                <?php if ($totalRuns === 0) : ?>
                     <div style="padding: 20px;">
                         <div class="clockwork-notice clockwork-notice--muted">
-                            No backup runs reported yet. If you've just enabled backups, the first run will appear here once it completes.
+                            <?php if ($onCarePlan) : ?>
+                                No backup runs reported yet. If you've just enabled backups, the first run will appear here once it completes.
+                            <?php else : ?>
+                                No backup runs in the last 30 days. <strong>Care plan members get 90 days of history</strong> — talk to your agency to upgrade.
+                            <?php endif; ?>
                         </div>
                     </div>
                 <?php else : ?>
+                    <?php if (! $onCarePlan) : ?>
+                        <div style="padding: 12px 20px 0;">
+                            <div class="clockwork-notice clockwork-notice--muted" style="margin: 0;">
+                                Showing the last 30 days of backups. <strong>Care plan members get 90 days of history</strong> with full pagination.
+                            </div>
+                        </div>
+                    <?php endif; ?>
                     <table class="clockwork-table">
                         <thead>
                             <tr>
@@ -185,7 +229,7 @@ class BackupsPage
                             </tr>
                         </thead>
                         <tbody>
-                            <?php foreach ($history as $row) : ?>
+                            <?php foreach ($pageRows as $row) : ?>
                                 <?php if (! is_array($row)) continue; ?>
                                 <tr>
                                     <td class="mono"><?php echo esc_html(self::formatTimestamp($row['date'] ?? null) ?: '—'); ?></td>
@@ -201,6 +245,7 @@ class BackupsPage
                             <?php endforeach; ?>
                         </tbody>
                     </table>
+                    <?php self::renderPager($page, $totalPages, $totalRuns); ?>
                 <?php endif; ?>
             </div>
         </div>
@@ -210,6 +255,34 @@ class BackupsPage
             <?php echo esc_html(self::formatTimestamp($report['fetched_at'] ?? null) ?: 'unknown'); ?>
             &middot; source: <?php echo esc_html((string) ($report['source'] ?? 'agency')); ?>
         </p>
+        <?php
+    }
+
+    private static function renderPager(int $page, int $totalPages, int $totalRuns): void
+    {
+        if ($totalPages <= 1) {
+            return;
+        }
+        $base = admin_url('admin.php?page='.self::SLUG);
+        $first = max(1, ($page - 1) * self::PAGE_SIZE + 1);
+        $last = min($totalRuns, $page * self::PAGE_SIZE);
+        ?>
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; border-top: 1px solid var(--cwk-border, #e5e7eb); font-size: 12px; color: #6b7280;">
+            <span>Showing <?php echo (int) $first; ?>–<?php echo (int) $last; ?> of <?php echo (int) $totalRuns; ?></span>
+            <span style="display: flex; gap: 6px;">
+                <?php if ($page > 1) : ?>
+                    <a class="button button-small" href="<?php echo esc_url($base.'&hp='.($page - 1)); ?>">‹ Prev</a>
+                <?php else : ?>
+                    <span class="button button-small" style="opacity: 0.5; pointer-events: none;">‹ Prev</span>
+                <?php endif; ?>
+                <span style="padding: 4px 10px;">Page <?php echo (int) $page; ?> of <?php echo (int) $totalPages; ?></span>
+                <?php if ($page < $totalPages) : ?>
+                    <a class="button button-small" href="<?php echo esc_url($base.'&hp='.($page + 1)); ?>">Next ›</a>
+                <?php else : ?>
+                    <span class="button button-small" style="opacity: 0.5; pointer-events: none;">Next ›</span>
+                <?php endif; ?>
+            </span>
+        </div>
         <?php
     }
 

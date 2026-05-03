@@ -214,6 +214,7 @@ class ActivityPage
             'review_approve' => 'Review approve',
             'review_dismiss' => 'Review dismiss',
             'care_plan_toggled' => 'Care plan toggled',
+            'security_scan' => 'Security scan',
         ];
     }
 }

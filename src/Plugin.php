@@ -3,6 +3,7 @@
 namespace ClockworkCompanion;
 
 use ClockworkCompanion\ActionLog\Schema as ActionLogSchema;
+use ClockworkCompanion\Admin\Actions\RunSecurityScanAction;
 use ClockworkCompanion\Admin\Menu;
 use ClockworkCompanion\Auth\Secret;
 use ClockworkCompanion\Rest\ActionLogAppendRoute;
@@ -37,6 +38,12 @@ class Plugin
         'sso',
         'updates',
         'action-log',
+        // Companion can run security scans locally (Sucuri SiteCheck via the
+        // public API; core checksums via wp-cli or pure-PHP file hashing).
+        // Clockwork's scheduled scans still drive the recurring deliverable;
+        // this advertises that the wp-admin Security page also has functional
+        // Run buttons.
+        'security-scans',
     ];
 
     public function boot(): void
@@ -64,6 +71,10 @@ class Plugin
         // Admin UI — only registers its hooks if we're in wp-admin context.
         // Cheap to call on every request because Menu::register() just adds hooks.
         (new Menu())->register();
+
+        // admin-post.php handler for the Security page's "Run scan now" buttons.
+        // Nonce + manage_options gated; unrelated to the HMAC REST routes above.
+        (new RunSecurityScanAction())->register();
 
         // SSO interceptor — runs on every front-end request to check for the
         // ?clockwork_sso=<nonce> query param. Bound to `init` priority 1

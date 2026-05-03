@@ -4,6 +4,7 @@ namespace ClockworkCompanion\Admin;
 
 use ClockworkCompanion\Admin\Pages\ActivityPage;
 use ClockworkCompanion\Admin\Pages\BackupsPage;
+use ClockworkCompanion\Admin\Pages\SecurityPage;
 
 /**
  * Registers the top-level "Clockwork" admin menu and its sub-pages.
@@ -58,6 +59,15 @@ class Menu
             self::CAPABILITY,
             self::SLUG,
             [ActivityPage::class, 'render']
+        );
+
+        add_submenu_page(
+            self::SLUG,
+            'Security',
+            'Security',
+            self::CAPABILITY,
+            SecurityPage::SLUG,
+            [SecurityPage::class, 'render']
         );
 
         add_submenu_page(

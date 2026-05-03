@@ -23,6 +23,7 @@ class Layout
     {
         return [
             ['slug' => 'activity', 'label' => 'Activity', 'page' => Menu::SLUG],
+            ['slug' => 'security', 'label' => 'Security', 'page' => \ClockworkCompanion\Admin\Pages\SecurityPage::SLUG],
             ['slug' => 'backups', 'label' => 'Backups', 'page' => \ClockworkCompanion\Admin\Pages\BackupsPage::SLUG],
         ];
     }
