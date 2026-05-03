@@ -22,8 +22,8 @@ class Layout
     public static function tabs(): array
     {
         return [
-            ['slug' => 'backups', 'label' => 'Backups', 'page' => Menu::SLUG],
-            ['slug' => 'activity', 'label' => 'Activity', 'page' => \ClockworkCompanion\Admin\Pages\ActivityPage::SLUG],
+            ['slug' => 'activity', 'label' => 'Activity', 'page' => Menu::SLUG],
+            ['slug' => 'backups', 'label' => 'Backups', 'page' => \ClockworkCompanion\Admin\Pages\BackupsPage::SLUG],
         ];
     }
 

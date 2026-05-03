@@ -36,6 +36,11 @@
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     background: var(--cwk-page-bg);
     min-height: calc(100vh - 32px);
+    /* The negative margin above pulls this wrapper 42px wider than the parent
+       so the purple header band runs flush to the WP admin chrome. Without
+       overflow-x:hidden, that 42px overshoot turns into a horizontal scrollbar
+       on the page when the inner content is at-or-near viewport width. */
+    overflow-x: hidden;
 }
 
 /* Pull above any WP padding on #wpbody-content (default 10px) so the purple

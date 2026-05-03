@@ -41,30 +41,32 @@ class Menu
             'Clockwork',
             self::CAPABILITY,
             self::SLUG,
-            [BackupsPage::class, 'render'],
+            [ActivityPage::class, 'render'],
             $menuIcon,
             80
         );
 
         // The default sub-page WP creates from add_menu_page is named "Clockwork"
-        // (dupes the parent). Replace it with a labelled "Backups" entry so the
-        // sub-menu reads as a proper navigation tree from day one.
+        // (dupes the parent). Replace it with a labelled "Activity" entry so the
+        // sub-menu reads as a proper navigation tree. Activity sits first because
+        // it's the most-used surface for clients (what we did this month) — Backups
+        // is reference info they look at less often.
         add_submenu_page(
             self::SLUG,
-            'Backups',
-            'Backups',
+            'Activity',
+            'Activity',
             self::CAPABILITY,
             self::SLUG,
-            [BackupsPage::class, 'render']
+            [ActivityPage::class, 'render']
         );
 
         add_submenu_page(
             self::SLUG,
-            'Activity',
-            'Activity',
+            'Backups',
+            'Backups',
             self::CAPABILITY,
-            ActivityPage::SLUG,
-            [ActivityPage::class, 'render']
+            BackupsPage::SLUG,
+            [BackupsPage::class, 'render']
         );
     }
 

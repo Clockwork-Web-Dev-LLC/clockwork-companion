@@ -19,7 +19,12 @@ use ClockworkCompanion\Admin\Layout;
  */
 class ActivityPage
 {
-    public const SLUG = 'clockwork-activity';
+    /**
+     * Activity is the default landing for the parent "Clockwork" menu, so its
+     * effective slug is the parent's. The constant is retained for any callers
+     * that want a stable reference; both resolve to the same admin page URL.
+     */
+    public const SLUG = 'clockwork';
 
     public static function render(): void
     {

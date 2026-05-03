@@ -18,6 +18,8 @@ use ClockworkCompanion\Admin\Layout;
  */
 class BackupsPage
 {
+    public const SLUG = 'clockwork-backups';
+
     public const OPTION = 'clockwork_companion_backups_report';
 
     public static function render(): void
