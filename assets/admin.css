@@ -31,24 +31,33 @@
    flush against the top admin bar (no light strip). #wpbody-content also has
    its own default padding-top that we kill below. */
 .clockwork-admin {
+    /* Bleed the wrapper out past WP's #wpcontent padding (20px) and .wrap
+       left margin (2px) on the left, and the .wrap right margin (20px) on
+       the right, so the purple header band runs flush to the admin chrome.
+       The 42px overshoot would normally cause horizontal page scroll —
+       we clip it on body below. */
+    margin: 0 -20px 0 -22px;
     color: var(--cwk-text);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     background: var(--cwk-page-bg);
     min-height: calc(100vh - 32px);
 }
 
-/* Earlier versions used negative margins on this wrapper to bleed the
-   purple header band flush to the WP admin chrome. The negative margin
-   pushed the wrapper wider than its parent (#wpbody-content), causing
-   horizontal page scroll. Patching with overflow-x:hidden on #wpbody-content
-   then clipped the WP sidebar submenu fly-outs. The fix: just don't bleed.
-   We accept a small gray gutter on either side of the band in exchange for
-   not breaking core wp-admin layout. */
 #wpbody-content {
     padding-top: 0 !important;
 }
 #wpbody-content > .wrap.clockwork-admin {
     margin-top: 0 !important;
+}
+
+/* Clip the wrapper's right-side bleed on the body so it doesn't turn into
+   a horizontal page scrollbar. Body level (not #wpbody-content) so the WP
+   sidebar — which lives in a separate DOM tree but inside body — is not
+   inside the clip's containing block flow. This stylesheet is only loaded
+   on Clockwork admin pages (see Menu::enqueueAssets) so the rule doesn't
+   leak into the rest of wp-admin. */
+body.wp-admin {
+    overflow-x: hidden;
 }
 
 .clockwork-admin * { box-sizing: border-box; }
