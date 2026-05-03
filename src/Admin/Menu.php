@@ -2,6 +2,7 @@
 
 namespace ClockworkCompanion\Admin;
 
+use ClockworkCompanion\Admin\Pages\ActivityPage;
 use ClockworkCompanion\Admin\Pages\BackupsPage;
 
 /**
@@ -55,6 +56,15 @@ class Menu
             self::CAPABILITY,
             self::SLUG,
             [BackupsPage::class, 'render']
+        );
+
+        add_submenu_page(
+            self::SLUG,
+            'Activity',
+            'Activity',
+            self::CAPABILITY,
+            ActivityPage::SLUG,
+            [ActivityPage::class, 'render']
         );
     }
 

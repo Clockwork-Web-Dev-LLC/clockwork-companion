@@ -2,8 +2,10 @@
 
 namespace ClockworkCompanion;
 
+use ClockworkCompanion\ActionLog\Schema as ActionLogSchema;
 use ClockworkCompanion\Admin\Menu;
 use ClockworkCompanion\Auth\Secret;
+use ClockworkCompanion\Rest\ActionLogAppendRoute;
 use ClockworkCompanion\Rest\AdminsRoute;
 use ClockworkCompanion\Rest\BackupsReportRoute;
 use ClockworkCompanion\Rest\CommentsSummaryRoute;
@@ -34,11 +36,13 @@ class Plugin
         'admin-ui',
         'sso',
         'updates',
+        'action-log',
     ];
 
     public function boot(): void
     {
         Secret::ensure();
+        ActionLogSchema::ensureInstalled();
 
         add_action('rest_api_init', function (): void {
             (new HealthRoute())->register();
@@ -54,6 +58,7 @@ class Plugin
             (new BackupsReportRoute())->register();
             (new SsoRoute())->register();
             (new PluginUpdateRoute())->register();
+            (new ActionLogAppendRoute())->register();
         });
 
         // Admin UI — only registers its hooks if we're in wp-admin context.
