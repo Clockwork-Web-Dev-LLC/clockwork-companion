@@ -23,22 +23,42 @@ use WP_REST_Request;
  *   - 'stale_timestamp'   (401)
  *   - 'no_secret'         (500) — plugin loaded without a secret; should not happen
  *   - 'invalid_signature' (401)
+ *   - 'rate_limited'      (429) — too many failed verifications from this IP
+ *
+ * Rate limit: 256-bit HMAC is uncrackable, so the threat we're defending
+ * against isn't brute force — it's noise. A flood of bad-signature requests
+ * is otherwise free DB writes (transient counters) and free CPU. Cap each
+ * IP at RATE_MAX failures per RATE_WINDOW seconds, return 429 above that.
  */
 class HmacVerifier
 {
     private const REPLAY_WINDOW_SECONDS = 300;
 
+    private const RATE_MAX = 30;
+
+    private const RATE_WINDOW = 60;
+
     public static function verify(WP_REST_Request $request): true|\WP_Error
     {
+        $ip = self::clientIp();
+
+        if (self::isRateLimited($ip)) {
+            return new \WP_Error('rate_limited', 'Too many failed verifications', ['status' => 429]);
+        }
+
         $signature = $request->get_header('x_clockwork_signature');
         $timestamp = $request->get_header('x_clockwork_timestamp');
 
         if (! $signature || ! $timestamp) {
+            self::noteFailure($ip);
+
             return new \WP_Error('missing_headers', 'Missing X-Clockwork-Signature or X-Clockwork-Timestamp', ['status' => 401]);
         }
 
         $tsInt = (int) $timestamp;
         if (abs(time() - $tsInt) > self::REPLAY_WINDOW_SECONDS) {
+            self::noteFailure($ip);
+
             return new \WP_Error('stale_timestamp', 'Timestamp outside replay window', ['status' => 401]);
         }
 
@@ -48,16 +68,46 @@ class HmacVerifier
         }
 
         $payload = strtoupper($request->get_method())
-            . "\n" . '/wp-json' . $request->get_route()
-            . "\n" . $tsInt
-            . "\n" . $request->get_body();
+            ."\n".'/wp-json'.$request->get_route()
+            ."\n".$tsInt
+            ."\n".$request->get_body();
 
         $expected = hash_hmac('sha256', $payload, $secret);
 
         if (! hash_equals($expected, $signature)) {
+            self::noteFailure($ip);
+
             return new \WP_Error('invalid_signature', 'Signature mismatch', ['status' => 401]);
         }
 
         return true;
+    }
+
+    private static function clientIp(): string
+    {
+        $ip = isset($_SERVER['REMOTE_ADDR']) ? (string) $_SERVER['REMOTE_ADDR'] : '';
+
+        return $ip !== '' ? $ip : 'unknown';
+    }
+
+    private static function transientKey(string $ip): string
+    {
+        // Hash to keep the key length bounded + avoid leaking IPs into option names.
+        return 'clockwork_hmac_fail_'.substr(hash('sha256', $ip), 0, 16);
+    }
+
+    private static function isRateLimited(string $ip): bool
+    {
+        $count = (int) get_transient(self::transientKey($ip));
+
+        return $count >= self::RATE_MAX;
+    }
+
+    private static function noteFailure(string $ip): void
+    {
+        $key = self::transientKey($ip);
+        $count = (int) get_transient($key);
+        // Refresh the TTL on every failure — a steady stream stays locked out.
+        set_transient($key, $count + 1, self::RATE_WINDOW);
     }
 }

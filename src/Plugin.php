@@ -16,6 +16,7 @@ use ClockworkCompanion\Rest\HealthRoute;
 use ClockworkCompanion\Rest\LockoutsRoute;
 use ClockworkCompanion\Rest\PluginsRoute;
 use ClockworkCompanion\Rest\PluginUpdateRoute;
+use ClockworkCompanion\Rest\SecretRotateRoute;
 use ClockworkCompanion\Rest\SnapshotRoute;
 use ClockworkCompanion\Rest\SsoRoute;
 use ClockworkCompanion\Rest\TestContactFormRoute;
@@ -44,6 +45,8 @@ class Plugin
         // this advertises that the wp-admin Security page also has functional
         // Run buttons.
         'security-scans',
+        // Secret rotation endpoint (1.14.3+).
+        'secret-rotate',
     ];
 
     public function boot(): void
@@ -66,6 +69,7 @@ class Plugin
             (new SsoRoute())->register();
             (new PluginUpdateRoute())->register();
             (new ActionLogAppendRoute())->register();
+            (new SecretRotateRoute())->register();
         });
 
         // Admin UI — only registers its hooks if we're in wp-admin context.

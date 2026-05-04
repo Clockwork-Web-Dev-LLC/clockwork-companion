@@ -50,6 +50,15 @@ class SsoRoute
 
     public const MAX_TTL = 300;
 
+    /**
+     * Hard ceiling on simultaneously-active nonces. Defends against
+     * wp_options bloat under abuse — even with auth, a misbehaving (or
+     * compromised) Clockwork could otherwise mint thousands of nonces.
+     * 100 is far above any legitimate use (you don't have 100 admins
+     * needing SSO at the same time).
+     */
+    private const MAX_ACTIVE_NONCES = 100;
+
     public function register(): void
     {
         register_rest_route(CLOCKWORK_COMPANION_NAMESPACE, '/sso/magic-link', [
@@ -88,6 +97,14 @@ class SsoRoute
             return new WP_Error('user_not_admin', "User '{$login}' is not an administrator", ['status' => 403]);
         }
 
+        if ($this->activeNonceCount() >= self::MAX_ACTIVE_NONCES) {
+            return new WP_Error(
+                'nonce_ceiling',
+                'Too many active SSO nonces — refusing to mint until the queue drains',
+                ['status' => 503]
+            );
+        }
+
         $nonce = bin2hex(random_bytes(24));
         $expiresAt = time() + $ttl;
 
@@ -116,6 +133,27 @@ class SsoRoute
             'url' => home_url('/?clockwork_sso='.$nonce),
             'expires_at' => gmdate('c', $expiresAt),
         ]);
+    }
+
+    /**
+     * Count rows in wp_options whose name starts with the SSO prefix. Direct
+     * SQL because there's no native get_options_by_prefix(). Bounded by the
+     * MAX_ACTIVE_NONCES check above — under normal load this is a single
+     * indexed COUNT() on a tiny set, so latency is fine.
+     */
+    private function activeNonceCount(): int
+    {
+        global $wpdb;
+        $prefix = self::OPTION_PREFIX;
+
+        $count = $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->options} WHERE option_name LIKE %s",
+                $wpdb->esc_like($prefix).'%'
+            )
+        );
+
+        return (int) $count;
     }
 
     /**
