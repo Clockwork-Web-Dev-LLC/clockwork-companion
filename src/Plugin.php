@@ -6,6 +6,7 @@ use ClockworkCompanion\ActionLog\Schema as ActionLogSchema;
 use ClockworkCompanion\Admin\Actions\RunSecurityScanAction;
 use ClockworkCompanion\Admin\Menu;
 use ClockworkCompanion\Auth\Secret;
+use ClockworkCompanion\AuthAudit\Schema as AuthAuditSchema;
 use ClockworkCompanion\Rest\ActionLogAppendRoute;
 use ClockworkCompanion\Rest\AdminsRoute;
 use ClockworkCompanion\Rest\BackupsReportRoute;
@@ -47,12 +48,15 @@ class Plugin
         'security-scans',
         // Secret rotation endpoint (1.14.3+).
         'secret-rotate',
+        // Auth-failure audit log surfaced on Tools → Clockwork → Security (1.14.4+).
+        'auth-audit',
     ];
 
     public function boot(): void
     {
         Secret::ensure();
         ActionLogSchema::ensureInstalled();
+        AuthAuditSchema::ensureInstalled();
 
         add_action('rest_api_init', function (): void {
             (new HealthRoute())->register();

@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Clockwork Companion
  * Description: Companion mu-plugin for the Clockwork monitoring app. Exposes signed REST endpoints under /wp-json/clockwork/v1/ for fleet-wide control of WordPress maintenance tasks (contact-form testing, plugin updates, security scans, etc.).
- * Version: 1.14.3
+ * Version: 1.14.4
  * Author: Clockwork
  * License: Proprietary
  *
@@ -15,7 +15,7 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-define('CLOCKWORK_COMPANION_VERSION', '1.14.3');
+define('CLOCKWORK_COMPANION_VERSION', '1.14.4');
 define('CLOCKWORK_COMPANION_DIR', __DIR__ . '/clockwork-companion');
 define('CLOCKWORK_COMPANION_NAMESPACE', 'clockwork/v1');
 

@@ -2,6 +2,7 @@
 
 namespace ClockworkCompanion\Auth;
 
+use ClockworkCompanion\AuthAudit\Repository as AuditRepository;
 use WP_REST_Request;
 
 /**
@@ -43,6 +44,10 @@ class HmacVerifier
         $ip = self::clientIp();
 
         if (self::isRateLimited($ip)) {
+            // Record the rate-limit hit too — operators want to see HOW MUCH
+            // probing was attempted, not just "the threshold was crossed once".
+            self::noteFailure($ip, 'rate_limited', $request);
+
             return new \WP_Error('rate_limited', 'Too many failed verifications', ['status' => 429]);
         }
 
@@ -50,14 +55,14 @@ class HmacVerifier
         $timestamp = $request->get_header('x_clockwork_timestamp');
 
         if (! $signature || ! $timestamp) {
-            self::noteFailure($ip);
+            self::noteFailure($ip, 'missing_headers', $request);
 
             return new \WP_Error('missing_headers', 'Missing X-Clockwork-Signature or X-Clockwork-Timestamp', ['status' => 401]);
         }
 
         $tsInt = (int) $timestamp;
         if (abs(time() - $tsInt) > self::REPLAY_WINDOW_SECONDS) {
-            self::noteFailure($ip);
+            self::noteFailure($ip, 'stale_timestamp', $request);
 
             return new \WP_Error('stale_timestamp', 'Timestamp outside replay window', ['status' => 401]);
         }
@@ -75,7 +80,7 @@ class HmacVerifier
         $expected = hash_hmac('sha256', $payload, $secret);
 
         if (! hash_equals($expected, $signature)) {
-            self::noteFailure($ip);
+            self::noteFailure($ip, 'invalid_signature', $request);
 
             return new \WP_Error('invalid_signature', 'Signature mismatch', ['status' => 401]);
         }
@@ -103,11 +108,29 @@ class HmacVerifier
         return $count >= self::RATE_MAX;
     }
 
-    private static function noteFailure(string $ip): void
+    private static function noteFailure(string $ip, string $reason, WP_REST_Request $request): void
     {
         $key = self::transientKey($ip);
         $count = (int) get_transient($key);
         // Refresh the TTL on every failure — a steady stream stays locked out.
         set_transient($key, $count + 1, self::RATE_WINDOW);
+
+        // Persist to the audit table for operator visibility. Best-effort:
+        // wrapped so a DB issue inside the failure path can't itself become
+        // a failure path. We never want logging to break auth.
+        try {
+            AuditRepository::insert([
+                'ip' => $ip,
+                'reason' => $reason,
+                'request_path' => '/wp-json'.$request->get_route(),
+                'request_method' => strtoupper($request->get_method()),
+                'failed_at' => gmdate('Y-m-d H:i:s'),
+            ]);
+        } catch (\Throwable $e) {
+            // Swallow — auth path must not break on logging failures.
+            if (defined('WP_DEBUG_LOG') && WP_DEBUG_LOG) {
+                error_log('[clockwork-auth-audit] insert failed: '.$e->getMessage());
+            }
+        }
     }
 }

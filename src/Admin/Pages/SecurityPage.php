@@ -5,6 +5,7 @@ namespace ClockworkCompanion\Admin\Pages;
 use ClockworkCompanion\ActionLog\Repository;
 use ClockworkCompanion\Admin\Actions\RunSecurityScanAction;
 use ClockworkCompanion\Admin\Layout;
+use ClockworkCompanion\AuthAudit\Repository as AuthAuditRepository;
 use ClockworkCompanion\SecurityScans\ChecksumsRunner;
 
 /**
@@ -102,7 +103,101 @@ class SecurityPage
         <?php
 
         self::renderHistorySection();
+        self::renderAuthFailuresCard();
         self::renderInlineStyles();
+    }
+
+    /**
+     * Renders a card on Tools → Clockwork → Security showing recent failed
+     * HMAC verifications. Operator-facing visibility into probing/brute-force
+     * attempts: 30-fail-per-IP-per-min rate limit silently locks attackers out
+     * but historically left no trace. This is that trace.
+     *
+     * Empty state ("No failures recorded") is the GOOD state — render it as a
+     * positive signal, not a "missing data" warning.
+     */
+    private static function renderAuthFailuresCard(): void
+    {
+        $count24h = AuthAuditRepository::countSince(86400);
+        $count7d = AuthAuditRepository::countSince(86400 * 7);
+        $top = AuthAuditRepository::topOffenders(86400 * 7, 5);
+        $recent = AuthAuditRepository::recent(20);
+        $totalSeen = count($recent);
+
+        ?>
+        <div class="clockwork-card" style="margin-top: 16px;">
+            <div class="clockwork-card__head">
+                <h2>Authentication audit</h2>
+                <?php if ($count24h > 0) : ?>
+                    <span class="clockwork-pill clockwork-pill--warn">
+                        <?php echo (int) $count24h; ?> in last 24h
+                    </span>
+                <?php elseif ($count7d > 0) : ?>
+                    <span class="clockwork-pill clockwork-pill--info">
+                        <?php echo (int) $count7d; ?> in last 7d
+                    </span>
+                <?php else : ?>
+                    <span class="clockwork-pill clockwork-pill--ok">
+                        <i class="dashicons dashicons-yes"></i> No failures
+                    </span>
+                <?php endif; ?>
+            </div>
+            <div class="clockwork-card__body">
+                <p style="margin: 0 0 12px; color: #4b5563;">
+                    Failed authentication attempts on the Clockwork REST endpoints.
+                    Cryptographic protocol is uncrackable; this catalogues
+                    probing, misconfiguration, and stale-secret deployments so
+                    your hosting provider can investigate when the count spikes.
+                </p>
+
+                <?php if ($totalSeen === 0) : ?>
+                    <div class="clockwork-notice clockwork-notice--ok">
+                        <i class="dashicons dashicons-shield-alt"></i>
+                        No failed attempts have been recorded. The Clockwork
+                        agency is the only signed caller of these endpoints.
+                    </div>
+                <?php else : ?>
+                    <?php if (! empty($top)) : ?>
+                        <h3 style="margin: 8px 0 4px; font-size: 13px; color: #111827;">Top offenders (last 7 days)</h3>
+                        <ul style="margin: 0 0 16px; padding-left: 20px; color: #4b5563; font-size: 13px;">
+                            <?php foreach ($top as $offender) : ?>
+                                <li>
+                                    <strong><?php echo esc_html($offender['ip']); ?></strong>
+                                    — <?php echo (int) $offender['count']; ?> attempts,
+                                    last seen <?php echo esc_html($offender['last_failed_at']); ?> UTC
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    <?php endif; ?>
+
+                    <h3 style="margin: 8px 0 4px; font-size: 13px; color: #111827;">Recent attempts</h3>
+                    <table class="clockwork-table">
+                        <thead>
+                            <tr>
+                                <th>When</th>
+                                <th>IP</th>
+                                <th>Reason</th>
+                                <th>Endpoint</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($recent as $row) : ?>
+                                <?php if (! is_array($row)) {
+                                    continue;
+                                } ?>
+                                <tr>
+                                    <td><?php echo esc_html((string) ($row['failed_at'] ?? '')); ?></td>
+                                    <td><span class="clockwork-data"><?php echo esc_html((string) ($row['ip'] ?? '')); ?></span></td>
+                                    <td><?php echo esc_html((string) ($row['reason'] ?? '')); ?></td>
+                                    <td><span class="clockwork-data" style="font-size: 12px;"><?php echo esc_html((string) ($row['request_method'] ?? '').' '.($row['request_path'] ?? '')); ?></span></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                <?php endif; ?>
+            </div>
+        </div>
+        <?php
     }
 
     /**
