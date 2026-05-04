@@ -18,16 +18,75 @@ use ClockworkCompanion\Admin\Pages\SecurityPage;
  *
  * Position 80 puts us between "Settings" (80) and "Tools" (75) in WP's menu —
  * out of the way of common day-to-day items but visible.
+ *
+ * Menu visibility is gated on the logged-in user's email domain — only Aaron's
+ * own accounts (any user whose email ends in one of the agency domains) see
+ * the menu in the sidebar. Client admin users see nothing in the sidebar even
+ * though Companion is installed. The pages themselves stay registered with WP
+ * (admin.php?page=clockwork still works) so Aaron can navigate via direct URL
+ * if he ever needs to. The REST endpoints + SSO interceptor are unaffected —
+ * they don't depend on the menu.
  */
 class Menu
 {
     public const SLUG = 'clockwork';
     public const CAPABILITY = 'manage_options';
 
+    /**
+     * Email-address domains whose users see the Clockwork sidebar menu.
+     * Match is case-insensitive on the suffix.
+     *
+     * @var array<int, string>
+     */
+    public const AGENCY_EMAIL_DOMAINS = [
+        '@clockworkwp.com',
+        '@clockworkwd.com',
+    ];
+
     public function register(): void
     {
+        // addMenu registers all pages (parent + children). maybeHideMenu runs
+        // after at priority 999 and removes the visible menu item if the
+        // current user isn't agency-domain. The pages stay reachable by URL
+        // either way — only the sidebar visibility changes.
         add_action('admin_menu', [$this, 'addMenu']);
+        add_action('admin_menu', [$this, 'maybeHideMenu'], 999);
         add_action('admin_enqueue_scripts', [$this, 'enqueueAssets']);
+    }
+
+    /**
+     * Strip the Clockwork menu (and its children) from the sidebar when the
+     * current user isn't on an agency-domain email. The pages stay registered
+     * — admin.php?page=clockwork still loads.
+     */
+    public function maybeHideMenu(): void
+    {
+        if ($this->currentUserIsAgency()) {
+            return;
+        }
+
+        // remove_menu_page hides the parent. WP's admin-menu rendering doesn't
+        // surface orphaned submenus, so the children disappear with the parent.
+        remove_menu_page(self::SLUG);
+    }
+
+    private function currentUserIsAgency(): bool
+    {
+        if (! function_exists('wp_get_current_user')) {
+            return false;
+        }
+        $user = wp_get_current_user();
+        if (! $user || empty($user->user_email)) {
+            return false;
+        }
+        $email = strtolower((string) $user->user_email);
+        foreach (self::AGENCY_EMAIL_DOMAINS as $domain) {
+            if (str_ends_with($email, strtolower($domain))) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function addMenu(): void
