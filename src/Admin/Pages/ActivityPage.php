@@ -63,7 +63,7 @@ class ActivityPage
             <div class="clockwork-card" style="border-left: 4px solid #65a30d;">
                 <div class="clockwork-card__body">
                     <strong>You're on a care plan.</strong>
-                    The maintenance work shown below is included in your monthly plan — there's nothing extra to pay.
+                    The maintenance work shown below is included in your plan — there's nothing extra to pay.
                 </div>
             </div>
             <?php
@@ -71,9 +71,11 @@ class ActivityPage
             ?>
             <div class="clockwork-card" style="border-left: 4px solid #f59e0b;">
                 <div class="clockwork-card__body">
-                    <strong>Not on a care plan.</strong>
-                    The work shown below is billed as ad-hoc maintenance.
-                    Talk to your agency about a monthly care plan if you'd like updates and routine work included.
+                    <strong>You're on hosting only — here's what a care plan would add.</strong>
+                    With a care plan, your hosting provider proactively runs <strong>WordPress core, theme, and plugin updates</strong>,
+                    <strong>weekly malware scans</strong>, <strong>daily core file integrity checks</strong>, and
+                    <strong>backup retention extended to 90 days</strong>. The work appears on this page so you can see it happening.
+                    Anything done as ad-hoc maintenance today is billed separately. Talk to your hosting provider about adding a care plan.
                 </div>
             </div>
             <?php

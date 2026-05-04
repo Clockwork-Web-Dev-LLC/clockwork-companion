@@ -129,9 +129,10 @@ class SecurityPage
             ?>
             <div class="clockwork-card" style="border-left: 4px solid #f59e0b;">
                 <div class="clockwork-card__body">
-                    <strong>Scheduled scans aren't running on this site.</strong>
-                    Daily security scans are included with the care plan. Talk to your agency
-                    if you'd like recurring monitoring switched on.
+                    <strong>You're on hosting only — add a care plan to unlock these.</strong>
+                    With a care plan, your hosting provider runs <strong>weekly malware + blacklist scans</strong> via Sucuri SiteCheck
+                    and <strong>daily WordPress core file integrity verification</strong> over SSH. If anything gets flagged, they're alerted
+                    so it can be fixed before it affects your visitors. Talk to your hosting provider about adding a care plan.
                 </div>
             </div>
             <?php
@@ -198,8 +199,12 @@ class SecurityPage
 
             <?php if ($card['state'] === 'care-plan-off') : ?>
                 <p class="clockwork-scan-card__empty">
-                    <strong>Available with a care plan.</strong>
-                    Scan results stay private to your hosting provider until you're on the plan that includes recurring monitoring.
+                    <strong>Included with a care plan.</strong>
+                    <?php if ($card['scan_type'] === 'sitecheck') : ?>
+                        <?php echo esc_html('Sucuri SiteCheck runs every Monday — scans your homepage for malware, JavaScript injections, defacement, and checks 30+ blacklists. If anything trips, your hosting provider gets alerted within minutes.'); ?>
+                    <?php else : ?>
+                        <?php echo esc_html('Every WordPress core file is verified against WordPress.org\'s published checksums daily. Catches PHP backdoors, modified core files, and shells dropped into wp-includes — the kind of malware Sucuri\'s public scan can\'t see.'); ?>
+                    <?php endif; ?>
                 </p>
             <?php elseif ($latest === null) : ?>
                 <p class="clockwork-scan-card__empty">

@@ -204,9 +204,12 @@ class BackupsPage
                     <div style="padding: 20px;">
                         <div class="clockwork-notice clockwork-notice--muted">
                             <?php if ($onCarePlan) : ?>
-                                No backup runs reported yet. If you've just enabled backups, the first run will appear here once it completes.
+                                Backup history hasn't been indexed yet. Your backups are still running on your hosting provider's schedule —
+                                this view will populate within 24 hours of your provider's next sync. If you don't see runs after that, contact your hosting provider.
                             <?php else : ?>
-                                No backup runs in the last 30 days. <strong>Care plan members get 90 days of history</strong> — talk to your agency to upgrade.
+                                Detailed backup history isn't shown on the hosting-only tier. Your backups <strong>are</strong> running on schedule —
+                                your hosting provider keeps the last 30 days of off-site copies. <strong>Care plan members get 90 days of history with a full searchable log
+                                and monthly retention reports</strong> right on this page. Talk to your hosting provider about adding a care plan.
                             <?php endif; ?>
                         </div>
                     </div>
@@ -214,7 +217,8 @@ class BackupsPage
                     <?php if (! $onCarePlan) : ?>
                         <div style="padding: 12px 20px 0;">
                             <div class="clockwork-notice clockwork-notice--muted" style="margin: 0;">
-                                Showing the last 30 days of backups. <strong>Care plan members get 90 days of history</strong> with full pagination.
+                                Showing the last 30 days of backups (hosting tier). <strong>Care plan members get 90 days of history</strong>,
+                                full pagination, and monthly retention reports. Talk to your hosting provider about upgrading.
                             </div>
                         </div>
                     <?php endif; ?>
