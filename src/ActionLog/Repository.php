@@ -157,14 +157,27 @@ class Repository
      */
     public static function latestByActionLog(string $scanTarget): ?array
     {
+        return self::latestByActionTypeAndTarget('security_scan', $scanTarget);
+    }
+
+    /**
+     * Generalised "latest row" lookup keyed on (action_type, target). Mirrors
+     * latestByActionLog's shape but works for any action_type — used by the
+     * Performance page to fetch the latest mobile + latest desktop scan
+     * independently.
+     *
+     * @return array<string, mixed>|null
+     */
+    public static function latestByActionTypeAndTarget(string $actionType, string $target): ?array
+    {
         global $wpdb;
         $table = Schema::tableName();
 
         $row = $wpdb->get_row(
             $wpdb->prepare(
                 "SELECT * FROM {$table} WHERE action_type = %s AND target = %s ORDER BY ran_at DESC LIMIT 1",
-                'security_scan',
-                $scanTarget
+                $actionType,
+                $target
             ),
             ARRAY_A
         );

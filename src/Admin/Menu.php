@@ -4,7 +4,9 @@ namespace ClockworkCompanion\Admin;
 
 use ClockworkCompanion\Admin\Pages\ActivityPage;
 use ClockworkCompanion\Admin\Pages\BackupsPage;
+use ClockworkCompanion\Admin\Pages\PerformancePage;
 use ClockworkCompanion\Admin\Pages\SecurityPage;
+use ClockworkCompanion\Admin\Pages\UptimePage;
 
 /**
  * Registers the top-level "Clockwork" admin menu and its sub-pages.
@@ -120,6 +122,18 @@ class Menu
             [ActivityPage::class, 'render']
         );
 
+        // Order matches the in-page tab strip in Admin/Layout.php — Activity
+        // → Uptime → Security → Performance → Backups. Uptime sits second
+        // because "is my site up?" is the question clients ask first.
+        add_submenu_page(
+            self::SLUG,
+            'Uptime',
+            'Uptime',
+            self::CAPABILITY,
+            UptimePage::SLUG,
+            [UptimePage::class, 'render']
+        );
+
         add_submenu_page(
             self::SLUG,
             'Security',
@@ -127,6 +141,15 @@ class Menu
             self::CAPABILITY,
             SecurityPage::SLUG,
             [SecurityPage::class, 'render']
+        );
+
+        add_submenu_page(
+            self::SLUG,
+            'Performance',
+            'Performance',
+            self::CAPABILITY,
+            PerformancePage::SLUG,
+            [PerformancePage::class, 'render']
         );
 
         add_submenu_page(

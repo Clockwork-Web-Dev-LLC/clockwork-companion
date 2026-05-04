@@ -79,7 +79,6 @@ class BackupsPage
         $nextRun = $config['next_run_time'] ?? null;
         $storage = $config['storage_provider'] ?? null;
         $excludePaths = $config['paths_to_exclude'] ?? null;
-        $schedules = is_array($report['schedules'] ?? null) ? $report['schedules'] : [];
 
         ?>
         <div class="clockwork-card">
@@ -98,30 +97,6 @@ class BackupsPage
 
                     <dt>Database backup</dt>
                     <dd><?php echo $database ? '<span class="clockwork-pill clockwork-pill--ok">Enabled</span>' : '<span class="clockwork-pill clockwork-pill--off">Disabled</span>'; ?></dd>
-
-                    <dt>Schedules</dt>
-                    <dd>
-                        <?php if ($schedules === []) : ?>
-                            <span class="clockwork-pill clockwork-pill--warn">None observed yet</span>
-                        <?php else : ?>
-                            <?php foreach ($schedules as $s) : ?>
-                                <?php if (! is_array($s)) continue; ?>
-                                <div style="margin-bottom: 6px;">
-                                    <strong style="color: var(--cwk-text); font-family: -apple-system, sans-serif;">
-                                        <?php echo esc_html(self::formatScheduleLabel($s)); ?>
-                                    </strong>
-                                    <?php if (! empty($s['observed_retention_days']) && (int) $s['observed_retention_days'] > 0) : ?>
-                                        <span class="clockwork-pill clockwork-pill--info" style="margin-left: 6px;">
-                                            ~<?php echo (int) $s['observed_retention_days']; ?>d retention observed
-                                        </span>
-                                    <?php endif; ?>
-                                    <?php if (empty($s['confirmed'])) : ?>
-                                        <span class="clockwork-pill clockwork-pill--warn" style="margin-left: 6px;">Provisional</span>
-                                    <?php endif; ?>
-                                </div>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                    </dd>
 
                     <dt>Next scheduled run</dt>
                     <dd>
@@ -307,42 +282,6 @@ class BackupsPage
             $i++;
         }
         return number_format($bytes, $bytes >= 100 || $i === 0 ? 0 : 1) . ' ' . $units[$i];
-    }
-
-    /**
-     * Format an inferred schedule entry as a human label using the WP site's
-     * configured timezone. Examples:
-     *   "Daily — 03:00 AM"
-     *   "Weekly — Sundays 12:00 AM"
-     *   "Monthly — 1st of the month at 12:00 AM"
-     *
-     * @param  array<string, mixed>  $s
-     */
-    private static function formatScheduleLabel(array $s): string
-    {
-        $cadence = (string) ($s['cadence'] ?? 'daily');
-        $sampleAt = $s['sample_at'] ?? null;
-        $ts = is_string($sampleAt) ? strtotime($sampleAt) : false;
-        $time = $ts !== false ? wp_date('g:i A', $ts) : '—';
-
-        if ($cadence === 'weekly') {
-            $dow = (string) ($s['day_of_week'] ?? '');
-            return "Weekly — {$dow}s {$time}";
-        }
-        if ($cadence === 'monthly') {
-            $dom = (int) ($s['day_of_month'] ?? 1);
-            $suffix = self::ordinalSuffix($dom);
-            return "Monthly — {$dom}{$suffix} of the month at {$time}";
-        }
-        return "Daily — {$time}";
-    }
-
-    private static function ordinalSuffix(int $n): string
-    {
-        if ($n % 100 >= 11 && $n % 100 <= 13) {
-            return 'th';
-        }
-        return ['th', 'st', 'nd', 'rd', 'th', 'th', 'th', 'th', 'th', 'th'][$n % 10];
     }
 
     private static function formatTimestamp(mixed $value): ?string

@@ -42,11 +42,12 @@ class SecurityPage
         $onCarePlan = Repository::latestCarePlanFlag();
         $latestSitecheck = Repository::latestByActionLog('sitecheck');
         $latestChecksum = Repository::latestByActionLog('core_checksums');
+        $latestBlacklist = Repository::latestByActionLog('blacklist');
         $checksumsRunnable = ChecksumsRunner::isAvailable();
 
         Layout::pageHeader(
             'Security',
-            "Daily checks Clockwork runs against this site to flag malware, blacklist hits, and tampering with WordPress core files."
+            'Checks Clockwork runs against this site to flag domain blacklist hits, malware, and tampering with WordPress core files.'
         );
 
         self::renderFlash();
@@ -55,14 +56,31 @@ class SecurityPage
         ?>
         <div class="clockwork-security-grid">
             <?php
+            // Hosting-tier card: always active regardless of care-plan state.
+            // No Run button — the scan is driven by Clockwork on a daily
+            // schedule, and Companion has no outbound channel back to it.
+            self::renderCard([
+                'icon' => 'list',
+                'title' => 'Domain blacklists',
+                'subtitle' => 'Checks Spamhaus DBL, URLHaus, and Google Safe Browsing for any sign your domain has been flagged.',
+                'cadence' => 'Daily — 02:15 UTC',
+                'scan_type' => 'blacklist',
+                'tier' => 'hosting',
+                'state' => self::cardState('hosting', $onCarePlan, true),
+                'latest' => $latestBlacklist,
+                'runnable' => false,
+                'host_unavailable_note' => null,
+            ]);
             self::renderCard([
                 'icon' => 'globe',
                 'title' => 'Sucuri SiteCheck',
-                'subtitle' => 'Remote malware + blacklist scan (replaces ManageWP).',
+                'subtitle' => 'Remote malware and page-content scan that flags suspicious changes to your homepage.',
                 'cadence' => 'Weekly — Mondays 02:00 UTC',
                 'scan_type' => 'sitecheck',
-                'state' => self::cardState($onCarePlan, true),
+                'tier' => 'care-plan',
+                'state' => self::cardState('care-plan', $onCarePlan, true),
                 'latest' => $latestSitecheck,
+                'runnable' => true,
                 'host_unavailable_note' => null,
             ]);
             self::renderCard([
@@ -71,8 +89,10 @@ class SecurityPage
                 'subtitle' => "Verifies every WordPress core file against WordPress.org's published checksums. Catches tampering Sucuri can't see.",
                 'cadence' => 'Daily — 02:30 UTC',
                 'scan_type' => 'core_checksums',
-                'state' => self::cardState($onCarePlan, $checksumsRunnable),
+                'tier' => 'care-plan',
+                'state' => self::cardState('care-plan', $onCarePlan, $checksumsRunnable),
                 'latest' => $latestChecksum,
+                'runnable' => true,
                 'host_unavailable_note' => $checksumsRunnable
                     ? null
                     : "This host can't run core checksum verification — wp-cli isn't reachable and the WordPress HTTP API is blocked. Talk to your hosting provider.",
@@ -81,14 +101,151 @@ class SecurityPage
         </div>
         <?php
 
+        self::renderHistorySection();
         self::renderInlineStyles();
     }
 
     /**
+     * Unified history table beneath the three cards. Pulls every action_log
+     * row of `action_type=security_scan` regardless of which scan ran — one
+     * row per scan per day, newest first. Mirrors the Backups page's history
+     * table style so the two pages feel like siblings.
+     */
+    private static function renderHistorySection(): void
+    {
+        $rows = Repository::findByActionType('security_scan', 100);
+        $total = count($rows);
+
+        ?>
+        <div class="clockwork-card" style="margin-top: 16px;">
+            <div class="clockwork-card__head">
+                <h2>Scan History</h2>
+                <?php if ($total > 0) : ?>
+                    <span class="clockwork-pill clockwork-pill--info">
+                        <?php echo (int) $total; ?> scan<?php echo $total === 1 ? '' : 's'; ?>
+                    </span>
+                <?php endif; ?>
+            </div>
+            <div class="clockwork-card__body clockwork-card__body--tight">
+                <?php if ($total === 0) : ?>
+                    <div style="padding: 20px;">
+                        <div class="clockwork-notice clockwork-notice--muted">
+                            No scans recorded yet. Once your hosting provider's daily and weekly checks run,
+                            their history will populate here.
+                        </div>
+                    </div>
+                <?php else : ?>
+                    <table class="clockwork-table">
+                        <thead>
+                            <tr>
+                                <th>When</th>
+                                <th>Check</th>
+                                <th>Status</th>
+                                <th>Result</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($rows as $row) : ?>
+                                <?php
+                                if (! is_array($row)) {
+                                    continue;
+                                }
+                                $details = self::decodeDetails($row['details'] ?? null);
+                                $scanTarget = (string) ($row['target'] ?? '');
+                                $sucuriBlocked = self::isSucuriBlockedByWaf($row, $scanTarget);
+                                $pill = self::historyPill($row, $details, $sucuriBlocked);
+                                $summary = (string) ($row['summary'] ?? '');
+                                if ($summary === '' && $sucuriBlocked) {
+                                    $summary = 'Blocked by site firewall (likely Cloudflare).';
+                                } elseif ($summary === '') {
+                                    $summary = '—';
+                                }
+                                ?>
+                                <tr>
+                                    <td class="mono">
+                                        <?php echo esc_html(self::humanTimeAgo((string) ($row['ran_at'] ?? ''))); ?>
+                                        <div style="font-size: 11px; color: #6b7280;">
+                                            <?php echo esc_html(self::formatTimestampUtc((string) ($row['ran_at'] ?? '')) ?: ''); ?>
+                                        </div>
+                                    </td>
+                                    <td><?php echo esc_html(self::scanTargetLabel($scanTarget)); ?></td>
+                                    <td>
+                                        <span class="clockwork-pill clockwork-pill--<?php echo esc_attr($pill['variant']); ?>">
+                                            <?php echo esc_html($pill['label']); ?>
+                                        </span>
+                                    </td>
+                                    <td><?php echo esc_html($summary); ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                <?php endif; ?>
+            </div>
+        </div>
+        <?php
+    }
+
+    private static function scanTargetLabel(string $target): string
+    {
+        return match ($target) {
+            'sitecheck' => 'Sucuri SiteCheck',
+            'core_checksums' => 'Core integrity',
+            'blacklist' => 'Domain blacklists',
+            '' => '—',
+            default => ucfirst(str_replace('_', ' ', $target)),
+        };
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @param  array<string, mixed>  $details
+     * @return array{variant: string, label: string}
+     */
+    private static function historyPill(array $row, array $details, bool $sucuriBlocked): array
+    {
+        if ($sucuriBlocked) {
+            return ['variant' => 'muted', 'label' => 'Blocked by firewall'];
+        }
+        $status = (string) ($details['status'] ?? '');
+        if ($status === 'failed' || empty($row['ok'])) {
+            return ['variant' => 'warn', 'label' => 'Failed'];
+        }
+        $hasIssue = ($status === 'issues_found')
+            || ! empty($details['has_malware_hit'])
+            || ! empty($details['blacklist_hit'])
+            || (int) ($details['modified_files_count'] ?? 0) > 0;
+        if ($hasIssue) {
+            return ['variant' => 'red', 'label' => 'Issues found'];
+        }
+
+        return ['variant' => 'green', 'label' => 'Clean'];
+    }
+
+    private static function formatTimestampUtc(string $ranAtUtc): string
+    {
+        if ($ranAtUtc === '') {
+            return '';
+        }
+        $ts = strtotime($ranAtUtc.' UTC');
+        if (! $ts) {
+            return '';
+        }
+
+        return wp_date('M j, Y g:i a', $ts);
+    }
+
+    /**
+     * Hosting-tier cards are always active (subject to host availability) —
+     * the check is a hosting feature, not a care-plan deliverable. Care-plan
+     * cards collapse to 'care-plan-off' when the flag is false.
+     *
      * @return 'active'|'host-unavailable'|'care-plan-off'
      */
-    private static function cardState(bool $onCarePlan, bool $availableOnHost): string
+    private static function cardState(string $tier, bool $onCarePlan, bool $availableOnHost): string
     {
+        if ($tier === 'hosting') {
+            return $availableOnHost ? 'active' : 'host-unavailable';
+        }
         if (! $onCarePlan) {
             return 'care-plan-off';
         }
@@ -120,8 +277,10 @@ class SecurityPage
             ?>
             <div class="clockwork-card" style="border-left: 4px solid #65a30d;">
                 <div class="clockwork-card__body">
-                    <strong>Daily security scans are part of your care plan.</strong>
-                    Your hosting provider runs the scans below on a schedule. Use the buttons to run one now.
+                    <strong>Hosting + care-plan security checks are running.</strong>
+                    Daily domain blacklist checks come with your hosting. Weekly malware scans (Sucuri) and daily
+                    WordPress core file integrity verification come with your care plan. Use the buttons below to
+                    run one now.
                 </div>
             </div>
             <?php
@@ -129,10 +288,12 @@ class SecurityPage
             ?>
             <div class="clockwork-card" style="border-left: 4px solid #f59e0b;">
                 <div class="clockwork-card__body">
-                    <strong>You're on hosting only — add a care plan to unlock these.</strong>
-                    With a care plan, your hosting provider runs <strong>weekly malware + blacklist scans</strong> via Sucuri SiteCheck
-                    and <strong>daily WordPress core file integrity verification</strong> over SSH. If anything gets flagged, they're alerted
-                    so it can be fixed before it affects your visitors. Talk to your hosting provider about adding a care plan.
+                    <strong>Hosting includes daily blacklist checks. A care plan adds the deeper scans.</strong>
+                    Your hosting provider checks every day to make sure your domain isn't flagged on Spamhaus, URLHaus,
+                    or Google Safe Browsing — that one's already running. With a care plan, they also run
+                    <strong>weekly Sucuri malware/JavaScript-injection scans</strong> and
+                    <strong>daily WordPress core file integrity verification</strong> over SSH.
+                    Talk to your hosting provider about adding a care plan.
                 </div>
             </div>
             <?php
@@ -146,8 +307,10 @@ class SecurityPage
      *   subtitle: string,
      *   cadence: string,
      *   scan_type: string,
+     *   tier: string,
      *   state: string,
      *   latest: ?array<string, mixed>,
+     *   runnable: bool,
      *   host_unavailable_note: ?string,
      * }  $card
      */
@@ -178,7 +341,7 @@ class SecurityPage
                 <?php echo esc_html($card['subtitle']); ?>
             </p>
 
-            <?php if ($card['state'] === 'active') : ?>
+            <?php if ($card['state'] === 'active' && ! empty($card['runnable'])) : ?>
                 <form method="POST" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="clockwork-scan-card__run">
                     <input type="hidden" name="action" value="<?php echo esc_attr(RunSecurityScanAction::ACTION_HOOK); ?>">
                     <input type="hidden" name="scan_type" value="<?php echo esc_attr($card['scan_type']); ?>">
@@ -201,7 +364,7 @@ class SecurityPage
                 <p class="clockwork-scan-card__empty">
                     <strong>Included with a care plan.</strong>
                     <?php if ($card['scan_type'] === 'sitecheck') : ?>
-                        <?php echo esc_html('Sucuri SiteCheck runs every Monday — scans your homepage for malware, JavaScript injections, defacement, and checks 30+ blacklists. If anything trips, your hosting provider gets alerted within minutes.'); ?>
+                        <?php echo esc_html('Sucuri SiteCheck runs every Monday — scans your homepage for malware, JavaScript injections, and defacement. If anything trips, your hosting provider gets alerted within minutes.'); ?>
                     <?php else : ?>
                         <?php echo esc_html('Every WordPress core file is verified against WordPress.org\'s published checksums daily. Catches PHP backdoors, modified core files, and shells dropped into wp-includes — the kind of malware Sucuri\'s public scan can\'t see.'); ?>
                     <?php endif; ?>
@@ -214,8 +377,9 @@ class SecurityPage
                 <p class="clockwork-scan-card__note">
                     <strong>Your site's firewall (likely Cloudflare) is blocking Sucuri's external scanner.</strong>
                     This is normal for sites behind a WAF — Sucuri tries to fetch the homepage from their servers
-                    and your firewall rejects them as bots. The <strong>Core file integrity</strong> check below
-                    runs server-side and isn't affected; that's the deeper malware check anyway.
+                    and your firewall rejects them as bots. The <strong>Domain blacklists</strong> card catches
+                    the same blacklist signal directly, and the <strong>Core file integrity</strong> check
+                    runs server-side — that's the deeper malware check anyway.
                 </p>
                 <dl class="clockwork-scan-card__stats">
                     <?php
@@ -236,6 +400,9 @@ class SecurityPage
                     if ($card['scan_type'] === 'sitecheck') {
                         self::renderStat('Malware', ! empty($details['has_malware_hit']) ? 'YES' : 'no');
                         self::renderStat('Blacklist', ! empty($details['blacklist_hit']) ? 'YES' : 'no');
+                    } elseif ($card['scan_type'] === 'blacklist') {
+                        self::renderStat('Blacklisted', ! empty($details['blacklist_hit']) ? 'YES' : 'no');
+                        self::renderStat('Result', ucfirst((string) ($details['status'] ?? 'unknown')));
                     } else {
                         $modified = (int) ($details['modified_files_count'] ?? 0);
                         $version = (string) ($details['wp_version'] ?? '');
@@ -488,6 +655,9 @@ class SecurityPage
         }
         if ($name === 'shield') {
             return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>';
+        }
+        if ($name === 'list') {
+            return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>';
         }
 
         return '';
