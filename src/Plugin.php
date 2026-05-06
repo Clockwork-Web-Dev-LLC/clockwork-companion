@@ -15,6 +15,7 @@ use ClockworkCompanion\Rest\CronRoute;
 use ClockworkCompanion\Rest\DetectRoute;
 use ClockworkCompanion\Rest\HealthRoute;
 use ClockworkCompanion\Rest\LockoutsRoute;
+use ClockworkCompanion\Rest\MalwareScanRoute;
 use ClockworkCompanion\Rest\PluginsRoute;
 use ClockworkCompanion\Rest\PluginUpdateRoute;
 use ClockworkCompanion\Rest\SecretRotateRoute;
@@ -46,6 +47,10 @@ class Plugin
         // this advertises that the wp-admin Security page also has functional
         // Run buttons.
         'security-scans',
+        // In-WP malware probe (PHP-in-uploads, obfuscated-eval signatures,
+        // recently-touched wp-config). Bypasses Cloudflare so Clockwork can
+        // get real signal on CF-fronted sites where Sucuri SiteCheck 403s.
+        'malware-scan',
         // Secret rotation endpoint (1.14.3+).
         'secret-rotate',
         // Auth-failure audit log surfaced on Tools → Clockwork → Security (1.14.4+).
@@ -74,6 +79,7 @@ class Plugin
             (new PluginUpdateRoute())->register();
             (new ActionLogAppendRoute())->register();
             (new SecretRotateRoute())->register();
+            (new MalwareScanRoute())->register();
         });
 
         // Admin UI — only registers its hooks if we're in wp-admin context.
