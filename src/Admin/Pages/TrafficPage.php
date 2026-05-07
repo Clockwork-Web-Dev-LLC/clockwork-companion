@@ -289,7 +289,6 @@ class TrafficPage
                             <?php echo esc_html($k); ?>
                         </span>
                     <?php endforeach; ?>
-                    <span style="margin-left: auto; color: #6b7280;">Hover any bar for the per-status breakdown.</span>
                 </div>
             </div>
         </div>
