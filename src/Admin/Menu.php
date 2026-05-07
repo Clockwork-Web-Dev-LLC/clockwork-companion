@@ -6,6 +6,7 @@ use ClockworkCompanion\Admin\Pages\ActivityPage;
 use ClockworkCompanion\Admin\Pages\BackupsPage;
 use ClockworkCompanion\Admin\Pages\PerformancePage;
 use ClockworkCompanion\Admin\Pages\SecurityPage;
+use ClockworkCompanion\Admin\Pages\TrafficPage;
 use ClockworkCompanion\Admin\Pages\UptimePage;
 
 /**
@@ -150,6 +151,16 @@ class Menu
             self::CAPABILITY,
             PerformancePage::SLUG,
             [PerformancePage::class, 'render']
+        );
+
+        // Traffic sits between Performance and Backups — matches Layout::tabs().
+        add_submenu_page(
+            self::SLUG,
+            'Traffic',
+            'Traffic',
+            self::CAPABILITY,
+            TrafficPage::SLUG,
+            [TrafficPage::class, 'render']
         );
 
         add_submenu_page(

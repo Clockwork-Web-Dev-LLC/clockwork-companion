@@ -22,6 +22,7 @@ use ClockworkCompanion\Rest\SecretRotateRoute;
 use ClockworkCompanion\Rest\SnapshotRoute;
 use ClockworkCompanion\Rest\SsoRoute;
 use ClockworkCompanion\Rest\TestContactFormRoute;
+use ClockworkCompanion\Rest\TrafficReportRoute;
 use ClockworkCompanion\Rest\WordfenceBlocksRoute;
 use ClockworkCompanion\Sso\Interceptor as SsoInterceptor;
 
@@ -55,6 +56,10 @@ class Plugin
         'secret-rotate',
         // Auth-failure audit log surfaced on Tools → Clockwork → Security (1.14.4+).
         'auth-audit',
+        // Daily 30-day traffic report surfaced on Tools → Clockwork → Traffic
+        // (1.16.0+). Push-only; agency rolls up nginx access logs and ships
+        // a digest each night.
+        'traffic-report',
     ];
 
     public function boot(): void
@@ -80,6 +85,7 @@ class Plugin
             (new ActionLogAppendRoute())->register();
             (new SecretRotateRoute())->register();
             (new MalwareScanRoute())->register();
+            (new TrafficReportRoute())->register();
         });
 
         // Admin UI — only registers its hooks if we're in wp-admin context.
