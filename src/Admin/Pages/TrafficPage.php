@@ -157,15 +157,18 @@ class TrafficPage
         // Total height of each bar comes from total requests, NOT visits, so
         // the stacked status-class breakdown adds up correctly. y-axis label
         // = "requests/day" so this is honest about what's being rendered.
-        $maxRequests = 0;
+        $observedMax = 0;
         foreach ($rows as $r) {
             if (is_array($r)) {
-                $maxRequests = max($maxRequests, (int) ($r['requests'] ?? 0));
+                $observedMax = max($observedMax, (int) ($r['requests'] ?? 0));
             }
         }
-        if ($maxRequests <= 0) {
-            $maxRequests = 1; // avoid div-by-zero on all-zero windows
-        }
+        // Round the chart top up to a "nice" tick boundary so the y-axis
+        // reads as 5k / 10k / 15k rather than the raw observed max
+        // (e.g. 9.2k). Bars scale against the rounded top, leaving a small
+        // sliver of headroom above the tallest bar.
+        $tickInfo = self::niceTicks(max(1, $observedMax));
+        $maxRequests = $tickInfo['top'];
 
         $width = 720;
         $height = 200;
@@ -261,9 +264,19 @@ class TrafficPage
                             $i++;
                         }
 
-                        // Top of y-axis label
-                        echo '<text x="'.($padX - 6).'" y="'.($padTop + 4).'" text-anchor="end" font-size="10" fill="#6b7280">'.esc_html(self::shortNumber($maxRequests)).'</text>';
-                        echo '<text x="'.($padX - 6).'" y="'.($baselineY + 4).'" text-anchor="end" font-size="10" fill="#6b7280">0</text>';
+                        // Y-axis ticks — labels + faint horizontal gridlines at
+                        // each "nice" boundary (5k, 10k, 15k …). Skip the 0
+                        // line gridline because the baseline already draws it.
+                        foreach ($tickInfo['ticks'] as $tickValue) {
+                            $tickY = $baselineY - (($tickValue / $maxRequests) * $plotH);
+                            if ($tickValue > 0) {
+                                printf(
+                                    '<line x1="%.2f" x2="%.2f" y1="%.2f" y2="%.2f" stroke="#e5e7eb" stroke-width="1" stroke-dasharray="2,3" />',
+                                    (float) $padX, (float) ($padX + $plotW), $tickY, $tickY
+                                );
+                            }
+                            echo '<text x="'.($padX - 6).'" y="'.number_format($tickY + 4, 2).'" text-anchor="end" font-size="10" fill="#6b7280">'.esc_html($tickValue === 0 ? '0' : self::shortNumber($tickValue)).'</text>';
+                        }
                         ?>
                     </svg>
                 </div>
@@ -373,6 +386,48 @@ class TrafficPage
             Refreshed nightly<?php if ($fetched) : ?> &middot; Last refresh <?php echo esc_html($fetched); ?><?php endif; ?>
         </p>
         <?php
+    }
+
+    /**
+     * Pick a "nice" y-axis configuration for the given observed maximum.
+     *
+     * Step sizes are restricted to the 1-2-5 × 10ⁿ sequence (the standard
+     * decimal nicely-divisible scale): 1, 2, 5, 10, 20, 50, 100, 200, 500,
+     * 1k, 2k, 5k, 10k, 20k, 50k, 100k, … so labels always read clean.
+     *
+     * Targets ~4 ticks above zero, rounding the chart top up to the next
+     * step boundary so the tallest bar leaves a small sliver of headroom.
+     *
+     * Examples:
+     *   max =  9,200 → step 5,000  → ticks [0, 5k, 10k]
+     *   max = 11,000 → step 5,000  → ticks [0, 5k, 10k, 15k]
+     *   max =    800 → step   500  → ticks [0, 500, 1000]
+     *   max =     50 → step    25  →  not a nice multiplier… falls back to
+     *                                 step 20 → ticks [0, 20, 40, 60]
+     *
+     * @return array{top: int, step: int, ticks: list<int>}
+     */
+    private static function niceTicks(int $observedMax, int $targetTickCount = 4): array
+    {
+        if ($observedMax <= 0) {
+            return ['top' => 1, 'step' => 1, 'ticks' => [0, 1]];
+        }
+        $rough = $observedMax / max(1, $targetTickCount);
+        $magnitude = (int) max(1, pow(10, floor(log10(max(1, $rough)))));
+        $normalized = $rough / $magnitude;
+        $multiplier = match (true) {
+            $normalized <= 1 => 1,
+            $normalized <= 2 => 2,
+            $normalized <= 5 => 5,
+            default => 10,
+        };
+        $step = $multiplier * $magnitude;
+        $top = (int) (ceil($observedMax / $step) * $step);
+        $ticks = [];
+        for ($t = 0; $t <= $top; $t += $step) {
+            $ticks[] = $t;
+        }
+        return ['top' => $top, 'step' => $step, 'ticks' => $ticks];
     }
 
     /**
