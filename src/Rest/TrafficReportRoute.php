@@ -82,14 +82,53 @@ class TrafficReportRoute
             'totals' => isset($payload['totals']) && is_array($payload['totals']) ? $payload['totals'] : [],
             'today_partial' => ! empty($payload['today_partial']),
             'has_data' => ! empty($payload['has_data']),
-            'top_paths' => isset($payload['top_paths']) && is_array($payload['top_paths'])
-                ? array_values(array_filter($payload['top_paths'], 'is_array'))
-                : [],
+            'top_paths' => self::normaliseTopPaths($payload['top_paths'] ?? null),
             'top_paths_date' => isset($payload['top_paths_date']) ? (string) $payload['top_paths_date'] : '',
         ];
 
         update_option(TrafficPage::OPTION, $stored, false);
 
         return new WP_REST_Response(['ok' => true]);
+    }
+
+    /**
+     * Coerce the inbound top_paths into the structured three-bucket shape
+     * Companion renders. Two valid input shapes:
+     *
+     *   1. Structured (1.16.1+ sender):
+     *      { pages: [{path,hits}], api: [{path,hits}], uploads: [{path,hits}] }
+     *
+     *   2. Flat list (1.16.0 sender — single mixed top-10):
+     *      [ {path,hits}, {path,hits}, ... ]
+     *      → folds into 'pages' so something still renders during the
+     *        sender-side deploy → backfill window.
+     *
+     * @param  mixed  $raw
+     * @return array{pages: list<array>, api: list<array>, uploads: list<array>}
+     */
+    private static function normaliseTopPaths($raw): array
+    {
+        if (! is_array($raw)) {
+            return ['pages' => [], 'api' => [], 'uploads' => []];
+        }
+
+        // Structured object — has at least one of the bucket keys.
+        if (isset($raw['pages']) || isset($raw['api']) || isset($raw['uploads'])) {
+            return [
+                'pages' => isset($raw['pages']) && is_array($raw['pages'])
+                    ? array_values(array_filter($raw['pages'], 'is_array')) : [],
+                'api' => isset($raw['api']) && is_array($raw['api'])
+                    ? array_values(array_filter($raw['api'], 'is_array')) : [],
+                'uploads' => isset($raw['uploads']) && is_array($raw['uploads'])
+                    ? array_values(array_filter($raw['uploads'], 'is_array')) : [],
+            ];
+        }
+
+        // Flat list fallback — fold into pages.
+        return [
+            'pages' => array_values(array_filter($raw, 'is_array')),
+            'api' => [],
+            'uploads' => [],
+        ];
     }
 }

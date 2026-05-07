@@ -260,25 +260,61 @@ class TrafficPage
     }
 
     /**
+     * Renders three Top Paths cards — Pages/Posts, API/Bots, Media Library.
+     *
+     * The ranked hit list mixes radically different things by default
+     * (visitor pages vs. WP internals vs. uploaded files) so we split them
+     * into three lists where each is interpretable on its own.
+     *
+     * Backwards-compat: if the receiver still has a flat list cached from
+     * a 1.16.0 push, fold it into Pages/Posts so the page still renders
+     * something during the sender-side deploy → backfill window.
+     *
      * @param  array<string, mixed>  $report
      */
     private static function renderTopPathsCard(array $report): void
     {
-        $paths = is_array($report['top_paths'] ?? null) ? $report['top_paths'] : [];
+        $top = $report['top_paths'] ?? null;
         $date = (string) ($report['top_paths_date'] ?? '');
 
-        if (empty($paths)) {
+        if (! is_array($top) || $top === []) {
             return;
         }
+
+        // Tolerate the legacy flat-list shape — fold into pages.
+        if (array_is_list($top)) {
+            $top = ['pages' => $top, 'api' => [], 'uploads' => []];
+        }
+
+        $sections = [
+            ['key' => 'pages',   'title' => 'Pages/Posts',     'sub' => 'Pages and posts your visitors actually viewed.'],
+            ['key' => 'api',     'title' => 'API/Bots',        'sub' => 'WordPress internals — admin-ajax, REST, sitemap, robots, theme/plugin assets. Mostly bot traffic.'],
+            ['key' => 'uploads', 'title' => 'Media Library',   'sub' => 'Files served from /wp-content/uploads/.'],
+        ];
+
+        foreach ($sections as $section) {
+            $rows = is_array($top[$section['key']] ?? null) ? $top[$section['key']] : [];
+            if ($rows === []) {
+                continue;
+            }
+            self::renderTopPathsBucket($section['title'], $section['sub'], $date, $rows);
+        }
+    }
+
+    /**
+     * @param  array<int, mixed>  $rows
+     */
+    private static function renderTopPathsBucket(string $title, string $sub, string $date, array $rows): void
+    {
         ?>
         <div class="clockwork-card">
             <div class="clockwork-card__head">
-                <h2>Top paths
+                <h2><?php echo esc_html($title); ?>
                     <?php if ($date !== '') : ?>
                         <span style="font-weight: 400; color: #6b7280; font-size: 12px;">· <?php echo esc_html($date); ?></span>
                     <?php endif; ?>
                 </h2>
-                <span style="font-size: 12px; color: #6b7280;">most recent day</span>
+                <span style="font-size: 12px; color: #6b7280;"><?php echo esc_html($sub); ?></span>
             </div>
             <div class="clockwork-card__body clockwork-card__body--tight">
                 <table class="clockwork-table">
@@ -289,7 +325,7 @@ class TrafficPage
                         </tr>
                     </thead>
                     <tbody>
-                        <?php foreach ($paths as $row) : ?>
+                        <?php foreach ($rows as $row) : ?>
                             <?php if (! is_array($row)) continue; ?>
                             <tr>
                                 <td class="mono"><?php echo esc_html((string) ($row['path'] ?? '—')); ?></td>
