@@ -134,7 +134,25 @@ class TrafficPage
     {
         $daily = is_array($report['daily'] ?? null) ? $report['daily'] : [];
         // Only the last 30 days; older data ignored if present.
-        $rows = array_slice($daily, -30);
+        $allRows = array_slice($daily, -30);
+
+        // Auto-crop the leading run of zero-data days so the bars span the
+        // full chart width. Newly-migrated / newly-onboarded sites have no
+        // rollup rows for the early window; rendering 30 slots with 9 bars
+        // wastes 70% of the canvas. Crop to the first day with data, keep
+        // intermittent zeros after that point (those are real zero-traffic
+        // days). Subhead surfaces the cropped range so it's still honest
+        // about how many days are actually represented.
+        $firstDataIdx = null;
+        foreach ($allRows as $idx => $r) {
+            if (is_array($r) && (int) ($r['requests'] ?? 0) > 0) {
+                $firstDataIdx = $idx;
+                break;
+            }
+        }
+        $rows = $firstDataIdx === null ? $allRows : array_slice($allRows, $firstDataIdx);
+        $cropped = $firstDataIdx !== null && $firstDataIdx > 0;
+        $firstDate = is_array($rows[0] ?? null) ? (string) ($rows[0]['date'] ?? '') : '';
 
         // Total height of each bar comes from total requests, NOT visits, so
         // the stacked status-class breakdown adds up correctly. y-axis label
@@ -166,26 +184,14 @@ class TrafficPage
             '4xx' => '#d97706',
             '5xx' => '#dc2626',
         ];
-
-        // Detect a leading run of zero-data days. New / recently-migrated sites
-        // typically have no rollup rows for the early window — leaving those
-        // days as bare baseline reads as "we have data and the site got zero
-        // traffic" which is wrong. Shade the leading zero-run so the empty
-        // space tells the right story ("we hadn't started tracking yet").
-        // Heuristic: contiguous run of zero-requests days from index 0 up to
-        // (but not including) the first day with any requests. Intermittent
-        // zeros after data starts are treated as real zero-traffic days.
-        $firstDataIdx = null;
-        foreach ($rows as $idx => $r) {
-            if (is_array($r) && (int) ($r['requests'] ?? 0) > 0) {
-                $firstDataIdx = $idx;
-                break;
-            }
-        }
         ?>
         <div class="clockwork-card">
             <div class="clockwork-card__head">
-                <h2>Last 30 days</h2>
+                <h2>Last 30 days
+                    <?php if ($cropped) : ?>
+                        <span style="font-weight: 400; color: #6b7280; font-size: 12px;">· tracking started <?php echo esc_html($firstDate); ?></span>
+                    <?php endif; ?>
+                </h2>
                 <span style="font-size: 12px; color: #6b7280;">requests/day, stacked by status</span>
             </div>
             <div class="clockwork-card__body">
@@ -197,27 +203,6 @@ class TrafficPage
                         <?php
                         // Y-axis baseline
                         $baselineY = $padTop + $plotH;
-
-                        // No-data shaded region (rendered before bars so bars
-                        // sit on top). Background: light gray (#f3f4f6) so it
-                        // reads as "this region intentionally empty" without
-                        // competing with the data bars.
-                        if ($firstDataIdx !== null && $firstDataIdx > 0) {
-                            $shadedW = $colW * $firstDataIdx;
-                            printf(
-                                '<rect x="%.2f" y="%.2f" width="%.2f" height="%.2f" fill="#f3f4f6" />',
-                                (float) $padX, (float) $padTop, (float) $shadedW, (float) $plotH
-                            );
-                            // Centered "no data yet" label inside the shaded
-                            // region — only render when the shaded area is wide
-                            // enough to comfortably hold the text (~80px).
-                            if ($shadedW >= 80) {
-                                $labelX = $padX + ($shadedW / 2);
-                                $labelY = $padTop + ($plotH / 2);
-                                echo '<text x="'.number_format($labelX, 2).'" y="'.number_format($labelY, 2).'" text-anchor="middle" dominant-baseline="middle" font-size="11" fill="#9ca3af" font-style="italic">no data captured yet</text>';
-                            }
-                        }
-
                         echo '<line x1="'.$padX.'" x2="'.($padX + $plotW).'" y1="'.$baselineY.'" y2="'.$baselineY.'" stroke="#d1d5db" stroke-width="1" />';
 
                         $i = 0;
