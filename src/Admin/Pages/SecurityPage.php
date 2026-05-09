@@ -255,6 +255,12 @@ class SecurityPage
                                 } elseif ($summary === '') {
                                     $summary = '—';
                                 }
+                                $findings = isset($details['findings']) && is_array($details['findings']) ? $details['findings'] : [];
+                                $transport = isset($details['transport']) ? (string) $details['transport'] : '';
+                                $scannedCount = $details['scanned_files_count'] ?? null;
+                                $scanAborted = (bool) ($details['scan_aborted'] ?? false);
+                                $abortReason = (string) ($details['abort_reason'] ?? '');
+                                $expandable = ! empty($findings) || $scanAborted;
                                 ?>
                                 <tr>
                                     <td class="mono">
@@ -269,7 +275,58 @@ class SecurityPage
                                             <?php echo esc_html($pill['label']); ?>
                                         </span>
                                     </td>
-                                    <td><?php echo esc_html($summary); ?></td>
+                                    <td>
+                                        <?php if ($expandable) : ?>
+                                            <details class="clockwork-finding-toggle">
+                                                <summary><?php echo esc_html($summary); ?></summary>
+                                                <div class="clockwork-finding-detail">
+                                                    <?php if ($transport !== '' || $scannedCount !== null || $scanAborted) : ?>
+                                                        <div class="clockwork-finding-meta">
+                                                            <?php if ($transport !== '') : ?>
+                                                                <span><strong>Transport:</strong> <span class="mono"><?php echo esc_html($transport); ?></span></span>
+                                                            <?php endif; ?>
+                                                            <?php if ($scannedCount !== null) : ?>
+                                                                <span><strong>Files scanned:</strong> <span class="mono"><?php echo esc_html(number_format((int) $scannedCount)); ?></span></span>
+                                                            <?php endif; ?>
+                                                            <?php if ($scanAborted) : ?>
+                                                                <span class="clockwork-finding-meta__warn">
+                                                                    Scan aborted<?php echo $abortReason !== '' ? ': ' . esc_html($abortReason) : ''; ?>
+                                                                </span>
+                                                            <?php endif; ?>
+                                                        </div>
+                                                    <?php endif; ?>
+                                                    <?php if (! empty($findings)) : ?>
+                                                        <div class="clockwork-finding-count">
+                                                            <?php echo (int) count($findings); ?> finding<?php echo count($findings) === 1 ? '' : 's'; ?>
+                                                        </div>
+                                                        <ul class="clockwork-finding-list">
+                                                            <?php foreach ($findings as $f) : ?>
+                                                                <?php
+                                                                if (! is_array($f)) {
+                                                                    continue;
+                                                                }
+                                                                $kind = (string) ($f['kind'] ?? 'unknown');
+                                                                $path = (string) ($f['path'] ?? '(no path)');
+                                                                $evidence = (string) ($f['evidence'] ?? '');
+                                                                ?>
+                                                                <li>
+                                                                    <div class="clockwork-finding-list__head">
+                                                                        <span class="clockwork-finding-kind"><?php echo esc_html($kind); ?></span>
+                                                                        <span class="mono"><?php echo esc_html($path); ?></span>
+                                                                    </div>
+                                                                    <?php if ($evidence !== '') : ?>
+                                                                        <div class="clockwork-finding-evidence mono"><?php echo esc_html($evidence); ?></div>
+                                                                    <?php endif; ?>
+                                                                </li>
+                                                            <?php endforeach; ?>
+                                                        </ul>
+                                                    <?php endif; ?>
+                                                </div>
+                                            </details>
+                                        <?php else : ?>
+                                            <?php echo esc_html($summary); ?>
+                                        <?php endif; ?>
+                                    </td>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>

@@ -270,6 +270,88 @@ body.wp-admin {
     font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 
+/* Expandable findings detail in the Scan History table.
+   Native <details>/<summary> — no JS dependency. The summary line
+   carries the original at-a-glance text; clicking it discloses the
+   per-finding kind/path/evidence breakdown. */
+.clockwork-finding-toggle > summary {
+    cursor: pointer;
+    list-style: none;
+    color: var(--cwk-text);
+}
+.clockwork-finding-toggle > summary::-webkit-details-marker { display: none; }
+.clockwork-finding-toggle > summary::before {
+    content: "▸";
+    display: inline-block;
+    width: 1em;
+    color: var(--cwk-text-soft);
+    transition: transform 120ms ease;
+    transform-origin: center;
+    margin-right: 4px;
+}
+.clockwork-finding-toggle[open] > summary::before { transform: rotate(90deg); }
+
+.clockwork-finding-detail {
+    margin-top: 10px;
+    padding: 10px 12px;
+    background: #faf8ff;
+    border: 1px solid var(--cwk-border);
+    border-radius: 4px;
+    font-size: 12px;
+}
+.clockwork-finding-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    color: var(--cwk-text-muted);
+    margin-bottom: 8px;
+}
+.clockwork-finding-meta strong {
+    color: var(--cwk-text);
+    font-weight: 600;
+}
+.clockwork-finding-meta__warn { color: #b45309; }
+.clockwork-finding-count {
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    color: var(--cwk-text-soft);
+    margin-bottom: 6px;
+}
+.clockwork-finding-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+.clockwork-finding-list > li {
+    padding: 6px 0 6px 10px;
+    border-left: 2px solid var(--cwk-border);
+    margin-bottom: 6px;
+}
+.clockwork-finding-list__head {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: baseline;
+}
+.clockwork-finding-kind {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: #fff;
+    border: 1px solid var(--cwk-border);
+    color: var(--cwk-text);
+}
+.clockwork-finding-evidence {
+    color: var(--cwk-text-muted);
+    margin-top: 2px;
+    font-size: 12px;
+    word-break: break-all;
+}
+
 /* Hide the default WP h1 and "Settings saved" notice — we render our own header */
 .clockwork-admin .wrap > h1:first-child,
 .clockwork-admin .notice {
