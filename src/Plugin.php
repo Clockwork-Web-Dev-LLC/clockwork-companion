@@ -18,12 +18,15 @@ use ClockworkCompanion\Rest\LockoutsRoute;
 use ClockworkCompanion\Rest\MalwareScanRoute;
 use ClockworkCompanion\Rest\PluginsRoute;
 use ClockworkCompanion\Rest\PluginUpdateRoute;
+use ClockworkCompanion\Rest\ResourceReportRoute;
 use ClockworkCompanion\Rest\SecretRotateRoute;
 use ClockworkCompanion\Rest\SnapshotRoute;
 use ClockworkCompanion\Rest\SsoRoute;
 use ClockworkCompanion\Rest\TestContactFormRoute;
 use ClockworkCompanion\Rest\TrafficReportRoute;
 use ClockworkCompanion\Rest\WordfenceBlocksRoute;
+use ClockworkCompanion\Resource\Sampler as ResourceSampler;
+use ClockworkCompanion\Resource\Schema as ResourceSchema;
 use ClockworkCompanion\Sso\Interceptor as SsoInterceptor;
 
 class Plugin
@@ -60,6 +63,10 @@ class Plugin
         // (1.16.0+). Push-only; agency rolls up nginx access logs and ships
         // a digest each night.
         'traffic-report',
+        // Per-request CPU + memory sampler with hourly rollups (1.17.0+).
+        // Clockwork pulls /resource-report every 15 min to feed the per-site
+        // CPU leaderboard on /capacity.
+        'resource-sampler',
     ];
 
     public function boot(): void
@@ -67,6 +74,13 @@ class Plugin
         Secret::ensure();
         ActionLogSchema::ensureInstalled();
         AuthAuditSchema::ensureInstalled();
+        ResourceSchema::ensureInstalled();
+
+        // Register the per-request CPU/memory sampler IMMEDIATELY (not on a
+        // hook). The sampler snapshots getrusage() at construction time and
+        // hooks shutdown internally, so the earlier this runs, the more of
+        // the request lifecycle it captures.
+        (new ResourceSampler())->register();
 
         add_action('rest_api_init', function (): void {
             (new HealthRoute())->register();
@@ -86,6 +100,7 @@ class Plugin
             (new SecretRotateRoute())->register();
             (new MalwareScanRoute())->register();
             (new TrafficReportRoute())->register();
+            (new ResourceReportRoute())->register();
         });
 
         // Admin UI — only registers its hooks if we're in wp-admin context.
