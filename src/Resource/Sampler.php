@@ -22,10 +22,31 @@ namespace ClockworkCompanion\Resource;
  */
 class Sampler
 {
+    /**
+     * Remote toggle flag — Clockwork POSTs to /resource-sampler-config to flip
+     * this. Default true: 1.17.0 sites that upgrade in-place pick up sampling
+     * automatically.
+     */
+    public const OPTION_ENABLED = 'clockwork_companion_resource_sampler_enabled';
+
     /** @var array{ru_utime_tv_sec: int, ru_utime_tv_usec: int, ru_stime_tv_sec: int, ru_stime_tv_usec: int}|null */
     private static ?array $startUsage = null;
 
     private static ?float $startWall = null;
+
+    public static function isEnabled(): bool
+    {
+        // get_option default is true so a missing row counts as "on" — matches
+        // the 1.17.0 install path where the option doesn't exist at all.
+        $val = get_option(self::OPTION_ENABLED, true);
+
+        return (bool) $val;
+    }
+
+    public static function setEnabled(bool $enabled): void
+    {
+        update_option(self::OPTION_ENABLED, $enabled, false);
+    }
 
     public function register(): void
     {
@@ -33,6 +54,12 @@ class Sampler
             // Some restricted environments (very rare on Linux WordPress
             // hosting) don't expose getrusage. Without it, we can't measure
             // CPU — quietly skip registration.
+            return;
+        }
+
+        if (! self::isEnabled()) {
+            // Operator paused sampling from Clockwork. Skip the shutdown hook
+            // entirely so each request pays zero extra cost.
             return;
         }
 

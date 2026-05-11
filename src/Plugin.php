@@ -19,6 +19,7 @@ use ClockworkCompanion\Rest\MalwareScanRoute;
 use ClockworkCompanion\Rest\PluginsRoute;
 use ClockworkCompanion\Rest\PluginUpdateRoute;
 use ClockworkCompanion\Rest\ResourceReportRoute;
+use ClockworkCompanion\Rest\ResourceSamplerConfigRoute;
 use ClockworkCompanion\Rest\SecretRotateRoute;
 use ClockworkCompanion\Rest\SnapshotRoute;
 use ClockworkCompanion\Rest\SsoRoute;
@@ -67,6 +68,10 @@ class Plugin
         // Clockwork pulls /resource-report every 15 min to feed the per-site
         // CPU leaderboard on /capacity.
         'resource-sampler',
+        // Remote toggle for the sampler (1.17.1+). Clockwork's Pause button
+        // POSTs to /resource-sampler-config to flip a wp_option, after which
+        // Sampler::register() short-circuits — zero per-request overhead.
+        'resource-sampler-toggle',
     ];
 
     public function boot(): void
@@ -101,6 +106,7 @@ class Plugin
             (new MalwareScanRoute())->register();
             (new TrafficReportRoute())->register();
             (new ResourceReportRoute())->register();
+            (new ResourceSamplerConfigRoute())->register();
         });
 
         // Admin UI — only registers its hooks if we're in wp-admin context.
