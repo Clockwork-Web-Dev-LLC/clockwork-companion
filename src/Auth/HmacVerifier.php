@@ -30,6 +30,13 @@ use WP_REST_Request;
  * against isn't brute force — it's noise. A flood of bad-signature requests
  * is otherwise free DB writes (transient counters) and free CPU. Cap each
  * IP at RATE_MAX failures per RATE_WINDOW seconds, return 429 above that.
+ *
+ * Behind a CDN (Cloudflare etc.), `REMOTE_ADDR` is the edge IP — every
+ * attacker shares one bucket and one noisy probe locks out the world.
+ * Define `CLOCKWORK_COMPANION_TRUST_PROXY = true` in wp-config.php to read
+ * the real client IP from `CF-Connecting-IP` / `X-Forwarded-For` instead.
+ * Opt-in because trusting those headers without a real proxy in front lets
+ * an attacker spoof their bucket key.
  */
 class HmacVerifier
 {
@@ -90,9 +97,31 @@ class HmacVerifier
 
     private static function clientIp(): string
     {
-        $ip = isset($_SERVER['REMOTE_ADDR']) ? (string) $_SERVER['REMOTE_ADDR'] : '';
+        $candidate = '';
 
-        return $ip !== '' ? $ip : 'unknown';
+        if (defined('CLOCKWORK_COMPANION_TRUST_PROXY') && constant('CLOCKWORK_COMPANION_TRUST_PROXY')) {
+            // Cloudflare puts the real client IP here directly; honoured first
+            // because it's a single-value header (no chain to parse).
+            if (! empty($_SERVER['HTTP_CF_CONNECTING_IP'])) {
+                $candidate = trim((string) $_SERVER['HTTP_CF_CONNECTING_IP']);
+            } elseif (! empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+                // Generic XFF: leftmost entry is the original client per
+                // RFC convention. Operator opted in via the constant above.
+                $candidate = trim(explode(',', (string) $_SERVER['HTTP_X_FORWARDED_FOR'])[0]);
+            }
+        }
+
+        if ($candidate === '' && isset($_SERVER['REMOTE_ADDR'])) {
+            $candidate = (string) $_SERVER['REMOTE_ADDR'];
+        }
+
+        // Validate so the audit table can't be poisoned by a garbage string
+        // if any upstream ever populates these from untrusted input.
+        if ($candidate !== '' && filter_var($candidate, FILTER_VALIDATE_IP)) {
+            return $candidate;
+        }
+
+        return 'unknown';
     }
 
     private static function transientKey(string $ip): string
