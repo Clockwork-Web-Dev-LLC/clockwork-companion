@@ -36,16 +36,17 @@ class Sampler
 
     public static function isEnabled(): bool
     {
-        // get_option default is true so a missing row counts as "on" — matches
-        // the 1.17.0 install path where the option doesn't exist at all.
-        $val = get_option(self::OPTION_ENABLED, true);
-
-        return (bool) $val;
+        // Use string sentinels rather than bools: WP's update_option short-
+        // circuits when the new value equals the old, and get_option on a
+        // missing row returns the caller-supplied default. Booleans collide
+        // with that default ("write false" looks like "no change" on a
+        // fresh install). 'enabled'/'disabled' have no such collision.
+        return get_option(self::OPTION_ENABLED, 'enabled') !== 'disabled';
     }
 
     public static function setEnabled(bool $enabled): void
     {
-        update_option(self::OPTION_ENABLED, $enabled, false);
+        update_option(self::OPTION_ENABLED, $enabled ? 'enabled' : 'disabled', false);
     }
 
     public function register(): void
