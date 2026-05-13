@@ -4,6 +4,7 @@ namespace ClockworkCompanion\Admin;
 
 use ClockworkCompanion\Admin\Pages\ActivityPage;
 use ClockworkCompanion\Admin\Pages\BackupsPage;
+use ClockworkCompanion\Admin\Pages\FormsPage;
 use ClockworkCompanion\Admin\Pages\PerformancePage;
 use ClockworkCompanion\Admin\Pages\SecurityPage;
 use ClockworkCompanion\Admin\Pages\TrafficPage;
@@ -161,6 +162,17 @@ class Menu
             self::CAPABILITY,
             TrafficPage::SLUG,
             [TrafficPage::class, 'render']
+        );
+
+        // Forms — contact-form test results pushed by Clockwork's scheduled
+        // runs. Lives between Traffic and Backups per Layout::tabs().
+        add_submenu_page(
+            self::SLUG,
+            'Forms',
+            'Forms',
+            self::CAPABILITY,
+            FormsPage::SLUG,
+            [FormsPage::class, 'render']
         );
 
         add_submenu_page(

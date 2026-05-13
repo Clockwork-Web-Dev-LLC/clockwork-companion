@@ -2,6 +2,7 @@
 
 namespace ClockworkCompanion\Rest;
 
+use ClockworkCompanion\Admin\Pages\FormsPage;
 use ClockworkCompanion\Auth\HmacVerifier;
 use ClockworkCompanion\ContactForm\Tester;
 use WP_REST_Request;
@@ -58,6 +59,12 @@ class TestContactFormRoute
         }
 
         $result = (new Tester())->run($plugin, $formId, $marker, $mode);
+
+        // Persist the outcome so the Forms admin page can render it
+        // without re-asking Clockwork. Side-effect only; never alters the
+        // wire response. 'lab' AND 'live' both get persisted — admins
+        // benefit from seeing every run's status, not just live ones.
+        FormsPage::recordResult($plugin, $formId, is_array($result) ? $result : []);
 
         return new WP_REST_Response($result);
     }

@@ -27,6 +27,7 @@ class Layout
             ['slug' => 'security', 'label' => 'Security', 'page' => \ClockworkCompanion\Admin\Pages\SecurityPage::SLUG],
             ['slug' => 'performance', 'label' => 'Performance', 'page' => \ClockworkCompanion\Admin\Pages\PerformancePage::SLUG],
             ['slug' => 'traffic', 'label' => 'Traffic', 'page' => \ClockworkCompanion\Admin\Pages\TrafficPage::SLUG],
+            ['slug' => 'forms', 'label' => 'Forms', 'page' => \ClockworkCompanion\Admin\Pages\FormsPage::SLUG],
             ['slug' => 'backups', 'label' => 'Backups', 'page' => \ClockworkCompanion\Admin\Pages\BackupsPage::SLUG],
         ];
     }
