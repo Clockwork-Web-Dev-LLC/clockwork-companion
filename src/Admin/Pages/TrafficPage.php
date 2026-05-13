@@ -133,26 +133,51 @@ class TrafficPage
     private static function renderChartCard(array $report): void
     {
         $daily = is_array($report['daily'] ?? null) ? $report['daily'] : [];
-        // Only the last 30 days; older data ignored if present.
-        $allRows = array_slice($daily, -30);
 
-        // Auto-crop the leading run of zero-data days so the bars span the
-        // full chart width. Newly-migrated / newly-onboarded sites have no
-        // rollup rows for the early window; rendering 30 slots with 9 bars
-        // wastes 70% of the canvas. Crop to the first day with data, keep
-        // intermittent zeros after that point (those are real zero-traffic
-        // days). Subhead surfaces the cropped range so it's still honest
-        // about how many days are actually represented.
-        $firstDataIdx = null;
-        foreach ($allRows as $idx => $r) {
-            if (is_array($r) && (int) ($r['requests'] ?? 0) > 0) {
-                $firstDataIdx = $idx;
+        // Pad to a full 30-day window — today minus 29 → today inclusive —
+        // so every day has its own column whether or not we have a rollup
+        // row for it. Newly-onboarded sites get empty leading columns; this
+        // makes "you've been tracked for 6 days, 24 more days of history
+        // coming" visible at a glance, which the previous auto-crop hid by
+        // making each bar absurdly wide.
+        $byDate = [];
+        foreach ($daily as $r) {
+            if (is_array($r) && isset($r['date'])) {
+                $byDate[(string) $r['date']] = $r;
+            }
+        }
+        $rows = [];
+        // Plugin runs in WP's configured timezone; the rollup keys use the
+        // same calendar day so DateTime() defaults are fine here.
+        $cursor = new \DateTime('today');
+        $cursor->modify('-29 days');
+        for ($i = 0; $i < 30; $i++) {
+            $date = $cursor->format('Y-m-d');
+            $rows[] = $byDate[$date] ?? [
+                'date' => $date,
+                'requests' => 0,
+                'status_2xx' => 0,
+                'status_3xx' => 0,
+                'status_4xx' => 0,
+                'status_5xx' => 0,
+            ];
+            $cursor->modify('+1 day');
+        }
+
+        // "Tracking started" annotation stays for newly-onboarded sites:
+        // first day with non-zero requests in the visible window.
+        $firstDataDate = null;
+        foreach ($rows as $r) {
+            if ((int) ($r['requests'] ?? 0) > 0) {
+                $firstDataDate = (string) $r['date'];
                 break;
             }
         }
-        $rows = $firstDataIdx === null ? $allRows : array_slice($allRows, $firstDataIdx);
-        $cropped = $firstDataIdx !== null && $firstDataIdx > 0;
-        $firstDate = is_array($rows[0] ?? null) ? (string) ($rows[0]['date'] ?? '') : '';
+        // Only annotate if tracking starts AFTER the leftmost slot — otherwise
+        // the full 30 days are populated and there's no "starting" event to
+        // surface.
+        $cropped = $firstDataDate !== null && $firstDataDate !== ($rows[0]['date'] ?? '');
+        $firstDate = $firstDataDate ?? '';
 
         // Total height of each bar comes from total requests, NOT visits, so
         // the stacked status-class breakdown adds up correctly. y-axis label
