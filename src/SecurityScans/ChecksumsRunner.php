@@ -23,6 +23,18 @@ class ChecksumsRunner
     private const CHECKSUMS_API = 'https://api.wordpress.org/core/checksums/1.0/';
 
     /**
+     * Files WordPress ships but that hosts and hardening guides commonly
+     * remove because they leak the WP version. Absence is intentional, not
+     * tampering — exclude from the "missing" tally so a hardened install
+     * doesn't flag a clean scan as failing.
+     */
+    private const EXPECTED_ABSENT = [
+        'license.txt',
+        'readme.html',
+        'wp-config-sample.php',
+    ];
+
+    /**
      * Whether this runner can do anything useful on the current host. Used by
      * the Security admin page to decide whether to render the Run button or
      * grey the card with a "host can't run this" message.
@@ -168,6 +180,11 @@ class ChecksumsRunner
             }
             $abs = ABSPATH.$relative;
             if (! is_readable($abs)) {
+                // license.txt / readme.html etc. are commonly stripped for
+                // hardening; their absence isn't tampering signal.
+                if (in_array($relative, self::EXPECTED_ABSENT, true)) {
+                    continue;
+                }
                 $missing[] = $relative;
 
                 continue;
@@ -234,14 +251,24 @@ class ChecksumsRunner
         $missing = [];
         $shouldNotExist = [];
         foreach (preg_split('/\r?\n/', $raw) as $line) {
+            // Match both wp-cli phrasings — older versions say "is missing",
+            // newer ones say "doesn't exist". Without both, a stripped-
+            // readme.html site reaches no finding and the caller treats the
+            // non-zero exit code as a generic failure.
             if (preg_match('/^(?:Warning:\s+)?File doesn\'t verify against checksum:\s*(.+)$/', $line, $m)) {
                 $modified[] = trim($m[1]);
-            } elseif (preg_match('/^(?:Warning:\s+)?File is missing:\s*(.+)$/', $line, $m)) {
+            } elseif (preg_match('/^(?:Warning:\s+)?File (?:is missing|doesn\'t exist):\s*(.+)$/', $line, $m)) {
                 $missing[] = trim($m[1]);
             } elseif (preg_match('/^(?:Warning:\s+)?File should not exist:\s*(.+)$/', $line, $m)) {
                 $shouldNotExist[] = trim($m[1]);
             }
         }
+
+        // Filter hardening-friendly absences out of "missing".
+        $missing = array_values(array_filter(
+            $missing,
+            fn (string $f) => ! in_array($f, self::EXPECTED_ABSENT, true)
+        ));
 
         $total = count($modified) + count($missing) + count($shouldNotExist);
 

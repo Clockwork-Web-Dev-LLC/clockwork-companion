@@ -2,6 +2,12 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.20.3 — 2026-05-14
+
+### Fix
+
+- **Core checksum scan tolerates intentionally-stripped disclosure files.** `license.txt`, `readme.html`, and `wp-config-sample.php` are commonly removed for hardening (they leak the WP version). Their absence isn't tampering. Both the wp-cli output parser and the pure-PHP fallback now filter these out of the "missing" tally, so a hardened install reports clean. Also matches the newer wp-cli phrasing `"File doesn't exist:"` alongside the older `"File is missing:"` — without both, a stripped-readme.html site fell through to a generic STATUS_FAILED.
+
 ## 1.20.2 — 2026-05-14
 
 ### Copy
