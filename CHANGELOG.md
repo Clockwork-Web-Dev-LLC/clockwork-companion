@@ -2,6 +2,12 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.19.1 — 2026-05-14
+
+### Fix
+
+- **Gravity Forms tests now handle every field type, not just text/email/textarea/checkbox.** Forms with required `select`, `radio`, `multiselect`, `date`, `time`, `phone`, `website`, `number`, or `address` fields previously failed validation with messages like *"Invalid selection. Please select from the available choices."* — the strategy was falling through to the `default` branch and submitting the literal name string. New behaviour: choice fields (`select`/`radio`/`multiselect`/`checkbox`) read the form's `choices` array and submit the first non-placeholder real value; format-validated fields (`date`/`time`/`phone`/`website`/`number`) submit a format-compliant placeholder; composite `address` fills the documented composite keys; non-input field types (`hidden`/`fileupload`/`section`/`html`/`page`/`captcha`) are skipped instead of getting a junk value.
+
 ## 1.19.0 — 2026-05-13
 
 ### Features

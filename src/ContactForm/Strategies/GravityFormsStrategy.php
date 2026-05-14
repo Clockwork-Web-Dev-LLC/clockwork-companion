@@ -115,14 +115,127 @@ class GravityFormsStrategy extends AbstractStrategy
                         : $payload['name'];
                     break;
                 case 'consent':
-                case 'checkbox':
                     $values[$key.'_1'] = '1';
                     break;
+                case 'checkbox':
+                    // Checkbox is multi-select with composite inputs: input_<id>_1,
+                    // input_<id>_2, etc. Picking the first real choice (value matches
+                    // one of the predefined options) is enough to satisfy a
+                    // "required" checkbox group.
+                    $first = $this->firstRealChoice($field);
+                    if ($first !== null) {
+                        $values[$key.'_1'] = $first;
+                    } else {
+                        // No choices defined → fall back to legacy behaviour.
+                        $values[$key.'_1'] = '1';
+                    }
+                    break;
+                case 'select':
+                case 'radio':
+                case 'multiselect':
+                    // Must match one of the predefined choices, otherwise GF
+                    // rejects with "Invalid selection. Please select from the
+                    // available choices." Picks the first non-placeholder
+                    // choice with a non-empty value.
+                    $choice = $this->firstRealChoice($field);
+                    if ($choice !== null) {
+                        $values[$key] = $type === 'multiselect' ? [$choice] : $choice;
+                    }
+                    break;
+                case 'date':
+                    // GF accepts MM/DD/YYYY by default; some forms use a 3-input
+                    // composite (input_<id>_1=month, _2=day, _3=year). Try both —
+                    // GF ignores the unused keys.
+                    $values[$key] = gmdate('m/d/Y');
+                    $values[$key.'_1'] = gmdate('m');
+                    $values[$key.'_2'] = gmdate('d');
+                    $values[$key.'_3'] = gmdate('Y');
+                    break;
+                case 'time':
+                    // Composite: input_<id>_1=hour, _2=minute, _3=am/pm.
+                    $values[$key.'_1'] = '12';
+                    $values[$key.'_2'] = '00';
+                    $values[$key.'_3'] = 'PM';
+                    break;
+                case 'phone':
+                    // Tolerant format; GF's regex pattern accepts this.
+                    $values[$key] = '555-555-5555';
+                    break;
+                case 'website':
+                    $values[$key] = 'https://example.com/';
+                    break;
+                case 'number':
+                    $values[$key] = '1';
+                    break;
+                case 'address':
+                    // Composite: .1=street, .2=street2, .3=city, .4=state,
+                    // .5=zip, .6=country. Filling all of them is overkill, but
+                    // safe; GF won't complain about extras.
+                    $values[$key.'_1'] = '1 Test St';
+                    $values[$key.'_3'] = 'Atlanta';
+                    $values[$key.'_4'] = 'GA';
+                    $values[$key.'_5'] = '30301';
+                    $values[$key.'_6'] = 'United States';
+                    break;
+                case 'hidden':
+                case 'fileupload':
+                case 'section':
+                case 'html':
+                case 'page':
+                case 'captcha':
+                    // Non-input or untestable field types — skip. GF preserves
+                    // hidden field defaults automatically.
+                    break;
                 default:
+                    // Unknown / new field type — fall back to the name string
+                    // so the form has *something* in the key. Worst case it
+                    // gets rejected; we already log the GF validation errors
+                    // back into the test result for the operator to see.
                     $values[$key] = $payload['name'];
             }
         }
 
         return $values;
+    }
+
+    /**
+     * Return the value of the first choice on this field that's a real option
+     * (non-placeholder, non-empty). Returns null if the field has no choices
+     * or every choice is empty/placeholder.
+     *
+     * @param  array<string, mixed>  $field
+     */
+    private function firstRealChoice(array $field): ?string
+    {
+        $choices = $field['choices'] ?? null;
+        if (! is_array($choices)) {
+            return null;
+        }
+        foreach ($choices as $choice) {
+            if (! is_array($choice)) {
+                continue;
+            }
+            if (! empty($choice['isSelected']) || ! empty($choice['placeholder'])) {
+                // Skip "Please select…" rows.
+                continue;
+            }
+            $value = isset($choice['value']) ? (string) $choice['value'] : '';
+            if ($value === '') {
+                continue;
+            }
+            return $value;
+        }
+        // Fall back to the first non-empty value regardless of selected/placeholder
+        // — some forms have a sole "selected by default" real option.
+        foreach ($choices as $choice) {
+            if (! is_array($choice)) {
+                continue;
+            }
+            $value = isset($choice['value']) ? (string) $choice['value'] : '';
+            if ($value !== '') {
+                return $value;
+            }
+        }
+        return null;
     }
 }
