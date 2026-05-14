@@ -2,6 +2,12 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.20.1 — 2026-05-14
+
+### Fix
+
+- **Traffic chart now fills its container width.** The SVG had `max-width: 720px` which left a large empty band on the right at typical wp-admin column widths. Bumped the intrinsic viewBox width to 1200 (~6:1 aspect) and dropped the max-width cap; the SVG already had `width: 100%; height: auto` so it stretches cleanly to fit. Bars get proportionally wider at larger sizes without distortion.
+
 ## 1.20.0 — 2026-05-14
 
 ### Features

@@ -195,7 +195,12 @@ class TrafficPage
         $tickInfo = self::niceTicks(max(1, $observedMax));
         $maxRequests = $tickInfo['top'];
 
-        $width = 720;
+        // Intrinsic viewBox width — the SVG `width: 100%` styling stretches
+        // this to the container, so bumping it gives finer detail at larger
+        // sizes without distorting aspect. 1200 paired with height=200 is a
+        // ~6:1 aspect that looks right at typical wp-admin column widths
+        // without becoming absurdly tall on ultra-wide screens.
+        $width = 1200;
         $height = 200;
         $padX = 32;
         $padTop = 12;
@@ -226,7 +231,7 @@ class TrafficPage
                 <div style="overflow-x: auto;">
                     <svg viewBox="0 0 <?php echo (int) $width; ?> <?php echo (int) $height; ?>"
                          preserveAspectRatio="xMidYMid meet"
-                         style="width: 100%; height: auto; max-width: <?php echo (int) $width; ?>px; display: block;"
+                         style="width: 100%; height: auto; display: block;"
                          role="img" aria-label="30-day traffic chart">
                         <?php
                         // Y-axis baseline
