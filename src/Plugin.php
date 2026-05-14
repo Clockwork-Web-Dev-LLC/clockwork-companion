@@ -4,6 +4,7 @@ namespace ClockworkCompanion;
 
 use ClockworkCompanion\ActionLog\Schema as ActionLogSchema;
 use ClockworkCompanion\Admin\Actions\RunSecurityScanAction;
+use ClockworkCompanion\Admin\FormsAjaxHandlers;
 use ClockworkCompanion\Admin\Menu;
 use ClockworkCompanion\Auth\Secret;
 use ClockworkCompanion\AuthAudit\Schema as AuthAuditSchema;
@@ -13,6 +14,7 @@ use ClockworkCompanion\Rest\BackupsReportRoute;
 use ClockworkCompanion\Rest\CommentsSummaryRoute;
 use ClockworkCompanion\Rest\CronRoute;
 use ClockworkCompanion\Rest\DetectRoute;
+use ClockworkCompanion\Rest\FormSubscriptionsRoute;
 use ClockworkCompanion\Rest\HealthRoute;
 use ClockworkCompanion\Rest\LockoutsRoute;
 use ClockworkCompanion\Rest\MalwareScanRoute;
@@ -72,6 +74,11 @@ class Plugin
         // POSTs to /resource-sampler-config to flip a wp_option, after which
         // Sampler::register() short-circuits — zero per-request overhead.
         'resource-sampler-toggle',
+        // Client-self-service form-test subscriptions (1.19.0+). Local admin
+        // picks forms to monitor in the wp-admin Forms tab; Clockwork pulls
+        // the list daily via /form-subscriptions and reconciles into the
+        // agency-side contact_form_tests table.
+        'form-subscriptions',
     ];
 
     public function boot(): void
@@ -107,7 +114,13 @@ class Plugin
             (new TrafficReportRoute())->register();
             (new ResourceReportRoute())->register();
             (new ResourceSamplerConfigRoute())->register();
+            (new FormSubscriptionsRoute())->register();
         });
+
+        // Self-service Forms tab AJAX. Capability + nonce gated; distinct
+        // from the HMAC-protected REST routes above (those are for
+        // Clockwork; these are for the local wp-admin user).
+        (new FormsAjaxHandlers())->register();
 
         // Admin UI — only registers its hooks if we're in wp-admin context.
         // Cheap to call on every request because Menu::register() just adds hooks.

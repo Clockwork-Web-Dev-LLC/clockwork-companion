@@ -2,6 +2,20 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.19.0 — 2026-05-13
+
+### Features
+
+- **Client self-service Forms tab.** Local wp-admin users can now subscribe forms to recurring testing directly inside Companion — no agency-side dashboard access needed. The Forms tab now shows two sections: "Forms detected on this site" (list of every form the active plugin reports, with a Monitor toggle per row) and "Forms you're monitoring" (subscribed forms with Test-now button + last-run status). Hard cap of 3 monitored forms, enforced both client-side (toggle disables) and server-side (`SubscriptionsService::subscribe()`). All AJAX paths gated on `manage_options` + nonce; the agency's HMAC paths are unchanged.
+- **New REST endpoint `/wp-json/clockwork/v1/form-subscriptions`** (HMAC-protected). Returns the local admin's subscriptions list; Clockwork's nightly `clockwork:sync-companion-form-subscriptions` pulls and reconciles into the agency-side `contact_form_tests` table with provenance `client`.
+- **`DetectedFormsCache`** caches `PluginRegistry` enumeration in a wp_option with a 24h TTL, so the Forms tab renders instantly. "Re-detect now" button forces a refresh.
+- **New capability advertised: `form-subscriptions`.** Lets Clockwork detect which sites support the self-service flow.
+
+### Notes
+
+- Existing agency-driven tests are unaffected — `contact_form_tests` rows with `created_by=agency` are managed entirely from the dashboard. Client subscriptions live alongside as `created_by=client`; the sync command only touches the latter.
+- Test-now from the wp-admin UI runs the local `Tester` directly (no HTTP roundtrip to the agency) and persists the result via `FormsPage::recordResult()` — same code path that the agency-initiated tests use.
+
 ## 1.18.0 — 2026-05-13
 
 ### Features
