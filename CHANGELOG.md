@@ -2,6 +2,12 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.19.2 — 2026-05-14
+
+### Fix
+
+- **Hotfix for 1.19.1's TypeError on choice-based Gravity Forms fields.** `firstRealChoice()` typed `$field` as `array`, but Gravity Forms enumerates fields as `GF_Field_*` ArrayAccess objects — the strict hint refused them and threw `TypeError: Argument #1 ($field) must be of type array, GF_Field_Checkbox given`, producing the WP "critical error" / HTTP 500 that the agency dashboard surfaced as a stuck "Testing…" button. Loosened the hint to `mixed`; ArrayAccess `$field['choices']` already worked for both shapes.
+
 ## 1.19.1 — 2026-05-14
 
 ### Fix

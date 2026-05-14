@@ -203,9 +203,16 @@ class GravityFormsStrategy extends AbstractStrategy
      * (non-placeholder, non-empty). Returns null if the field has no choices
      * or every choice is empty/placeholder.
      *
-     * @param  array<string, mixed>  $field
+     * Accepts `mixed` rather than `array` because Gravity Forms enumerates
+     * its fields as `GF_Field_*` instances (ArrayAccess-implementing
+     * objects), not plain arrays. `$field['choices']` works the same way
+     * for both, but the strict array type hint refused the GF objects and
+     * caused a TypeError fatal on every form that contained a choice-based
+     * field.
+     *
+     * @param  mixed  $field  Plain array or any ArrayAccess (GF_Field_*).
      */
-    private function firstRealChoice(array $field): ?string
+    private function firstRealChoice($field): ?string
     {
         $choices = $field['choices'] ?? null;
         if (! is_array($choices)) {
