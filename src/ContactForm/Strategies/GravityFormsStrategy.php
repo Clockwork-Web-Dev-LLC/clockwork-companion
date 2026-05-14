@@ -68,8 +68,35 @@ class GravityFormsStrategy extends AbstractStrategy
         }
 
         if (empty($result['is_valid'])) {
+            // Capture as much detail as we can — `validation_messages` is
+            // sometimes empty (whole-form rejections, conditional-logic
+            // misses, anti-spam triggers) and the real signal lives in
+            // other keys.
             $messages = $result['validation_messages'] ?? [];
-            $msgList = is_array($messages) ? implode('; ', array_map('strval', $messages)) : (string) $messages;
+            $msgList = is_array($messages) ? implode('; ', array_map(
+                fn ($k, $v) => "field#{$k}: {$v}",
+                array_keys($messages),
+                array_values($messages),
+            )) : (string) $messages;
+
+            if ($msgList === '') {
+                $hints = [];
+                if (! empty($result['page_number'])) {
+                    $hints[] = "page_number={$result['page_number']}";
+                }
+                if (! empty($result['source_page_number'])) {
+                    $hints[] = "source_page={$result['source_page_number']}";
+                }
+                $keys = array_keys($result);
+                $hints[] = 'keys=[' . implode(',', $keys) . ']';
+                // Dump the field values we submitted so we can correlate
+                // which ones GF dropped silently.
+                $submitted = array_keys($fieldValues);
+                sort($submitted);
+                $hints[] = 'submitted_keys=[' . implode(',', $submitted) . ']';
+                $msgList = '(no field messages) ' . implode(' · ', $hints);
+            }
+
             return StrategyResult::rejected("Gravity validation rejected: {$msgList}", 'validation_failed');
         }
 

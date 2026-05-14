@@ -2,6 +2,12 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.19.3 — 2026-05-14
+
+### Fix
+
+- **Better diagnostic when Gravity Forms validation rejects without per-field messages.** Previously a whole-form rejection (conditional-logic miss, anti-spam, page-routing mismatch) surfaced as the bare string `Gravity validation rejected:` with no detail. Now the strategy falls back to a hint string including the result keys, page numbers, and the names of the inputs we submitted, so the operator can see what GF was looking at when it bailed.
+
 ## 1.19.2 — 2026-05-14
 
 ### Fix
