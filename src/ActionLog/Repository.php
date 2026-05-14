@@ -59,20 +59,49 @@ class Repository
      */
     public static function findInWindow(string $startUtc, string $endUtc, int $limit = 500): array
     {
+        return self::findInWindowPaged($startUtc, $endUtc, 0, $limit);
+    }
+
+    /**
+     * Paged variant of findInWindow. Used by the Activity admin page so we
+     * don't dump every row of a busy month in one request.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function findInWindowPaged(string $startUtc, string $endUtc, int $offset, int $limit): array
+    {
         global $wpdb;
         $table = Schema::tableName();
 
         $rows = $wpdb->get_results(
             $wpdb->prepare(
-                "SELECT * FROM {$table} WHERE ran_at >= %s AND ran_at <= %s ORDER BY ran_at DESC LIMIT %d",
+                "SELECT * FROM {$table} WHERE ran_at >= %s AND ran_at <= %s ORDER BY ran_at DESC LIMIT %d OFFSET %d",
                 $startUtc,
                 $endUtc,
-                $limit
+                $limit,
+                max(0, $offset)
             ),
             ARRAY_A
         );
 
         return is_array($rows) ? $rows : [];
+    }
+
+    /**
+     * Total row count within a date window. Drives the paginator's "X of Y"
+     * label and prev/next visibility.
+     */
+    public static function countInWindow(string $startUtc, string $endUtc): int
+    {
+        global $wpdb;
+        $table = Schema::tableName();
+
+        $n = $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$table} WHERE ran_at >= %s AND ran_at <= %s",
+            $startUtc,
+            $endUtc,
+        ));
+        return (int) $n;
     }
 
     /**
@@ -110,19 +139,46 @@ class Repository
      */
     public static function findByActionType(string $actionType, int $limit = 50): array
     {
+        return self::findByActionTypePaged($actionType, 0, $limit);
+    }
+
+    /**
+     * Paged variant of findByActionType. Used by the Security admin page for
+     * scan history.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public static function findByActionTypePaged(string $actionType, int $offset, int $limit): array
+    {
         global $wpdb;
         $table = Schema::tableName();
 
         $rows = $wpdb->get_results(
             $wpdb->prepare(
-                "SELECT * FROM {$table} WHERE action_type = %s ORDER BY ran_at DESC LIMIT %d",
+                "SELECT * FROM {$table} WHERE action_type = %s ORDER BY ran_at DESC LIMIT %d OFFSET %d",
                 $actionType,
-                $limit
+                $limit,
+                max(0, $offset)
             ),
             ARRAY_A
         );
 
         return is_array($rows) ? $rows : [];
+    }
+
+    /**
+     * Total row count for a specific action_type. Drives the paginator.
+     */
+    public static function countByActionType(string $actionType): int
+    {
+        global $wpdb;
+        $table = Schema::tableName();
+
+        $n = $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$table} WHERE action_type = %s",
+            $actionType,
+        ));
+        return (int) $n;
     }
 
     /**

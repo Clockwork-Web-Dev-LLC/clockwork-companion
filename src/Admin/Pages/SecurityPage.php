@@ -206,10 +206,15 @@ class SecurityPage
      * row per scan per day, newest first. Mirrors the Backups page's history
      * table style so the two pages feel like siblings.
      */
+    /** Page size for the scan history table — kept in sync with ActivityPage. */
+    public const HISTORY_PER_PAGE = 25;
+
     private static function renderHistorySection(): void
     {
-        $rows = Repository::findByActionType('security_scan', 100);
-        $total = count($rows);
+        $total = Repository::countByActionType('security_scan');
+        $currentPage = Layout::currentPage();
+        $offset = ($currentPage - 1) * self::HISTORY_PER_PAGE;
+        $rows = Repository::findByActionTypePaged('security_scan', $offset, self::HISTORY_PER_PAGE);
 
         ?>
         <div class="clockwork-card" style="margin-top: 16px;">
@@ -335,6 +340,12 @@ class SecurityPage
             </div>
         </div>
         <?php
+        Layout::renderPagination(
+            $total,
+            self::HISTORY_PER_PAGE,
+            $currentPage,
+            ['page' => self::SLUG],
+        );
     }
 
     private static function scanTargetLabel(string $target): string
@@ -361,6 +372,13 @@ class SecurityPage
         $status = (string) ($details['status'] ?? '');
         if ($status === 'failed' || empty($row['ok'])) {
             return ['variant' => 'warn', 'label' => 'Failed'];
+        }
+        // Warning-status scans (e.g. `wp_config_recently_modified` finding
+        // with no actual malware) must downgrade to yellow even when
+        // modified_files_count is non-zero. The agency-side scanner stamps
+        // status='warning' on these; render them as Review, not Issues.
+        if ($status === 'warning') {
+            return ['variant' => 'warn', 'label' => 'Review'];
         }
         $hasIssue = ($status === 'issues_found')
             || ! empty($details['has_malware_hit'])
@@ -623,13 +641,17 @@ class SecurityPage
             return ['variant' => 'muted', 'label' => 'Blocked by firewall'];
         }
         $status = (string) ($details['status'] ?? '');
+        if ($status === 'failed' || empty($latest['ok'])) {
+            return ['variant' => 'warn', 'label' => 'Failed'];
+        }
+        // Same warning carve-out as historyPill() — see comment there.
+        if ($status === 'warning') {
+            return ['variant' => 'warn', 'label' => 'Review'];
+        }
         $hasIssue = ($status === 'issues_found')
             || ! empty($details['has_malware_hit'])
             || ! empty($details['blacklist_hit'])
             || (int) ($details['modified_files_count'] ?? 0) > 0;
-        if ($status === 'failed' || empty($latest['ok'])) {
-            return ['variant' => 'warn', 'label' => 'Failed'];
-        }
         if ($hasIssue) {
             return ['variant' => 'red', 'label' => 'Issues found'];
         }

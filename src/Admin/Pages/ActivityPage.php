@@ -31,6 +31,9 @@ class ActivityPage
         Layout::render('activity', [self::class, 'renderBody']);
     }
 
+    /** Page size for the activity table — kept in sync with SecurityPage. */
+    public const PER_PAGE = 25;
+
     public static function renderBody(): void
     {
         $month = isset($_GET['month']) ? (string) $_GET['month'] : '';
@@ -41,9 +44,20 @@ class ActivityPage
         $start = $month . '-01 00:00:00';
         $end = gmdate('Y-m-t 23:59:59', strtotime($month . '-01 00:00:00'));
 
-        $rows = Repository::findInWindow($start, $end);
         $earliest = Repository::earliestRanAt();
         $onCarePlan = Repository::latestCarePlanFlag();
+
+        // Totals are unpaginated — the "X actions performed this month" hero
+        // should always reflect the full month, not just the visible page.
+        $monthTotal = Repository::countInWindow($start, $end);
+
+        $currentPage = Layout::currentPage();
+        $offset = ($currentPage - 1) * self::PER_PAGE;
+        $rows = Repository::findInWindowPaged($start, $end, $offset, self::PER_PAGE);
+
+        // Build per-type breakdown for the "Totals" card from a separate
+        // unpaginated read so it agrees with the hero number.
+        $totalsRows = Repository::findInWindow($start, $end, 5000);
 
         Layout::pageHeader(
             'Activity',
@@ -52,8 +66,15 @@ class ActivityPage
 
         self::renderCarePlanBanner($onCarePlan);
         self::renderMonthPicker($month, $earliest);
-        self::renderTotals($rows);
+        self::renderTotals($totalsRows, $monthTotal);
         self::renderTable($rows);
+
+        Layout::renderPagination(
+            $monthTotal,
+            self::PER_PAGE,
+            $currentPage,
+            ['page' => self::SLUG, 'month' => $month],
+        );
     }
 
     private static function renderCarePlanBanner(bool $onCarePlan): void
@@ -120,11 +141,11 @@ class ActivityPage
     }
 
     /**
-     * @param  array<int, array<string, mixed>>  $rows
+     * @param  array<int, array<string, mixed>>  $rows  Unpaginated for accurate totals.
      */
-    private static function renderTotals(array $rows): void
+    private static function renderTotals(array $rows, ?int $totalOverride = null): void
     {
-        $total = count($rows);
+        $total = $totalOverride ?? count($rows);
         $byType = [];
         foreach ($rows as $r) {
             $t = (string) ($r['action_type'] ?? '');

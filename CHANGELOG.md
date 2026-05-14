@@ -2,6 +2,16 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.20.0 — 2026-05-14
+
+### Features
+
+- **Uniform pagination on Activity and Security admin pages.** Long-running care-plan sites accumulate hundreds of action_log entries and scan history rows; loading them all in one page render was getting heavy and the rendered table was hard to scan. New shared helper `Layout::renderPagination()` emits a consistent prev/next strip with row-range label ("26 – 50 of 312") and clamped page-of-pages controls. Both pages now load 25 rows per page via new repository methods `findInWindowPaged()` / `findByActionTypePaged()` and matching `countInWindow()` / `countByActionType()` for total counts. Activity's per-type breakdown still reads unpaginated so the "X actions performed this month" hero number reflects the full window, not just the visible page.
+
+### Fix
+
+- **Scan history pill respects the `warning` status downgrade.** A scan with only `wp_config_recently_modified` findings is stored as status=`warning` on the agency side, but the Companion's history table was painting it red ("Issues found") because the pill logic short-circuited on `modified_files_count > 0` before checking status. Now the warning branch wins first → yellow "Review" pill, matching the agency dashboard's per-site Security tab.
+
 ## 1.19.5 — 2026-05-14
 
 ### Fix

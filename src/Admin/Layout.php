@@ -84,4 +84,114 @@ class Layout
         </div>
         <?php
     }
+
+    /**
+     * Render a uniform prev/next pagination strip — used by every admin page
+     * that renders a list of rows so the UX is consistent between
+     * Activity, Security, Forms, Backups, etc.
+     *
+     * Reads/writes the `paged` query arg (WP convention). Caller passes the
+     * total row count and the page size; the helper computes total pages,
+     * clamps the current page into range, and emits the bar only if there's
+     * more than one page.
+     *
+     * Query args preserved across the prev/next links: caller supplies
+     * `$baseQuery` (e.g. `['page' => 'clockwork', 'month' => '2026-05']`)
+     * so the active filter context survives the navigation.
+     *
+     * @param  array<string, scalar>  $baseQuery
+     */
+    public static function renderPagination(int $totalRows, int $perPage, int $currentPage, array $baseQuery): void
+    {
+        if ($totalRows <= 0 || $perPage <= 0) {
+            return;
+        }
+        $totalPages = (int) ceil($totalRows / $perPage);
+        if ($totalPages <= 1) {
+            return;
+        }
+        $currentPage = max(1, min($currentPage, $totalPages));
+        $startRow = (($currentPage - 1) * $perPage) + 1;
+        $endRow = min($currentPage * $perPage, $totalRows);
+
+        $linkFor = function (int $page) use ($baseQuery): string {
+            $q = $baseQuery;
+            $q['paged'] = $page;
+            return esc_url(add_query_arg($q, admin_url('admin.php')));
+        };
+        ?>
+        <div class="clockwork-pagination">
+            <span class="clockwork-pagination__count">
+                <?php printf(
+                    /* translators: 1: start row, 2: end row, 3: total row count */
+                    esc_html__('%1$s – %2$s of %3$s', 'clockwork-companion'),
+                    number_format_i18n($startRow),
+                    number_format_i18n($endRow),
+                    number_format_i18n($totalRows)
+                ); ?>
+            </span>
+            <span class="clockwork-pagination__nav">
+                <?php if ($currentPage > 1) : ?>
+                    <a class="button" href="<?php echo $linkFor(1); ?>" aria-label="First page">«</a>
+                    <a class="button" href="<?php echo $linkFor($currentPage - 1); ?>" aria-label="Previous page">‹ Prev</a>
+                <?php else : ?>
+                    <span class="button disabled" aria-disabled="true">«</span>
+                    <span class="button disabled" aria-disabled="true">‹ Prev</span>
+                <?php endif; ?>
+
+                <span class="clockwork-pagination__page">
+                    Page <?php echo (int) $currentPage; ?> of <?php echo (int) $totalPages; ?>
+                </span>
+
+                <?php if ($currentPage < $totalPages) : ?>
+                    <a class="button" href="<?php echo $linkFor($currentPage + 1); ?>" aria-label="Next page">Next ›</a>
+                    <a class="button" href="<?php echo $linkFor($totalPages); ?>" aria-label="Last page">»</a>
+                <?php else : ?>
+                    <span class="button disabled" aria-disabled="true">Next ›</span>
+                    <span class="button disabled" aria-disabled="true">»</span>
+                <?php endif; ?>
+            </span>
+        </div>
+        <style>
+            .clockwork-pagination {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 12px;
+                flex-wrap: wrap;
+                margin-top: 12px;
+                font-size: 12px;
+                color: #6b7280;
+            }
+            .clockwork-pagination__nav {
+                display: inline-flex;
+                gap: 6px;
+                align-items: center;
+            }
+            .clockwork-pagination__nav .button {
+                padding: 2px 10px;
+                font-size: 12px;
+                line-height: 1.7;
+            }
+            .clockwork-pagination__nav .button.disabled {
+                opacity: 0.4;
+                pointer-events: none;
+            }
+            .clockwork-pagination__page {
+                padding: 0 8px;
+                color: #374151;
+            }
+        </style>
+        <?php
+    }
+
+    /**
+     * Resolve and clamp the `paged` query arg. Centralised so every admin
+     * page parses it identically.
+     */
+    public static function currentPage(): int
+    {
+        $raw = isset($_GET['paged']) ? (int) $_GET['paged'] : 1;
+        return max(1, $raw);
+    }
 }
