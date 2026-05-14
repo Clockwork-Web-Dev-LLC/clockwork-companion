@@ -68,29 +68,42 @@ class GravityFormsStrategy extends AbstractStrategy
         }
 
         if (empty($result['is_valid'])) {
-            // Capture as much detail as we can — `validation_messages` is
-            // sometimes empty (whole-form rejections, conditional-logic
-            // misses, anti-spam triggers) and the real signal lives in
-            // other keys.
-            $messages = $result['validation_messages'] ?? [];
-            $msgList = is_array($messages) ? implode('; ', array_map(
-                fn ($k, $v) => "field#{$k}: {$v}",
-                array_keys($messages),
-                array_values($messages),
-            )) : (string) $messages;
+            // GF stores per-field validation messages in TWO places:
+            //   1. $result['validation_messages']  (top-level, field_id => message)
+            //   2. $result['form']['fields'][i]['validation_message']  (per-field, set
+            //      when $field['failed_validation'] is true)
+            // We walk both because some GF versions/hooks only populate one.
+            $messages = [];
+            foreach (($result['validation_messages'] ?? []) as $k => $msg) {
+                $messages[] = "#{$k}: {$msg}";
+            }
+            foreach (($result['form']['fields'] ?? []) as $field) {
+                if (empty($field['failed_validation'])) {
+                    continue;
+                }
+                $fid = $field['id'] ?? '?';
+                $msg = $field['validation_message'] ?? '(no message)';
+                // Dedupe — skip if we already captured this field via the
+                // top-level array.
+                $already = false;
+                foreach ($messages as $existing) {
+                    if (str_starts_with($existing, "#{$fid}:")) {
+                        $already = true;
+                        break;
+                    }
+                }
+                if (! $already) {
+                    $messages[] = "#{$fid} ({$field['type']}): {$msg}";
+                }
+            }
+            $msgList = implode('; ', $messages);
 
             if ($msgList === '') {
-                $hints = [];
-                if (! empty($result['page_number'])) {
-                    $hints[] = "page_number={$result['page_number']}";
-                }
-                if (! empty($result['source_page_number'])) {
-                    $hints[] = "source_page={$result['source_page_number']}";
-                }
-                $keys = array_keys($result);
-                $hints[] = 'keys=[' . implode(',', $keys) . ']';
-                // Dump the field values we submitted so we can correlate
-                // which ones GF dropped silently.
+                $hints = [
+                    'page_number=' . ($result['page_number'] ?? '?'),
+                    'source_page=' . ($result['source_page_number'] ?? '?'),
+                    'keys=[' . implode(',', array_keys($result)) . ']',
+                ];
                 $submitted = array_keys($fieldValues);
                 sort($submitted);
                 $hints[] = 'submitted_keys=[' . implode(',', $submitted) . ']';

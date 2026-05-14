@@ -2,6 +2,12 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.19.4 — 2026-05-14
+
+### Fix
+
+- **Read per-field validation messages from BOTH places Gravity Forms stores them.** Some GF versions/hooks only populate `$result['form']['fields'][i]['validation_message']` (when `failed_validation` is true) and leave `$result['validation_messages']` empty. The strategy now walks both arrays and dedupes by field id, so a "no field messages" hint only fires when neither path has anything.
+
 ## 1.19.3 — 2026-05-14
 
 ### Fix
