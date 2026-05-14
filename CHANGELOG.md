@@ -2,6 +2,12 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.20.2 — 2026-05-14
+
+### Copy
+
+- **User-facing admin pages now name the brand explicitly ("Clockwork Web Dev") instead of generic "your hosting provider" / "your agency" / "the agency".** Every visible string across Activity, Uptime, Security, Performance, Traffic, Backups, and Forms got the same treatment so the wp-admin chrome promotes the agency consistently. Architectural docblocks and inline comments stay generic — they describe the Companion/Clockwork architecture, not the brand identity.
+
 ## 1.20.1 — 2026-05-14
 
 ### Fix

@@ -59,9 +59,9 @@ class BackupsPage
             <div class="clockwork-card__body">
                 <div class="clockwork-notice">
                     <strong>No backup report yet.</strong>
-                    Your hosting provider hasn't pushed backup configuration to this site yet.
+                    Clockwork Web Dev hasn't pushed backup configuration to this site yet.
                     This usually means the next scheduled push hasn't run — please check back in a few hours,
-                    or contact your agency if this persists.
+                    or contact Clockwork Web Dev if this persists.
                 </div>
             </div>
         </div>
@@ -179,12 +179,12 @@ class BackupsPage
                     <div style="padding: 20px;">
                         <div class="clockwork-notice clockwork-notice--muted">
                             <?php if ($onCarePlan) : ?>
-                                Backup history hasn't been indexed yet. Your backups are still running on your hosting provider's schedule —
-                                this view will populate within 24 hours of your provider's next sync. If you don't see runs after that, contact your hosting provider.
+                                Backup history hasn't been indexed yet. Your backups are still running on Clockwork Web Dev's schedule —
+                                this view will populate within 24 hours of Clockwork Web Dev's next sync. If you don't see runs after that, contact Clockwork Web Dev.
                             <?php else : ?>
                                 Detailed backup history isn't shown on the hosting-only tier. Your backups <strong>are</strong> running on schedule —
-                                your hosting provider keeps the last 30 days of off-site copies. <strong>Care plan members get 90 days of history with a full searchable log
-                                and monthly retention reports</strong> right on this page. Talk to your hosting provider about adding a care plan.
+                                Clockwork Web Dev keeps the last 30 days of off-site copies. <strong>Care plan members get 90 days of history with a full searchable log
+                                and monthly retention reports</strong> right on this page. Talk to Clockwork Web Dev about adding a care plan.
                             <?php endif; ?>
                         </div>
                     </div>
@@ -193,7 +193,7 @@ class BackupsPage
                         <div style="padding: 12px 20px 0;">
                             <div class="clockwork-notice clockwork-notice--muted" style="margin: 0;">
                                 Showing the last 30 days of backups (hosting tier). <strong>Care plan members get 90 days of history</strong>,
-                                full pagination, and monthly retention reports. Talk to your hosting provider about upgrading.
+                                full pagination, and monthly retention reports. Talk to Clockwork Web Dev about upgrading.
                             </div>
                         </div>
                     <?php endif; ?>

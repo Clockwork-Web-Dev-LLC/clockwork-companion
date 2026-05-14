@@ -61,8 +61,8 @@ class TrafficPage
             <div class="clockwork-card__body">
                 <div class="clockwork-notice">
                     <strong>No traffic report yet.</strong>
-                    Your hosting provider hasn't pushed a traffic report to this site yet.
-                    Reports refresh nightly — please check back tomorrow, or contact your agency if this persists.
+                    Clockwork Web Dev hasn't pushed a traffic report to this site yet.
+                    Reports refresh nightly — please check back tomorrow, or contact Clockwork Web Dev if this persists.
                 </div>
             </div>
         </div>
@@ -78,7 +78,7 @@ class TrafficPage
         ?>
         <div class="clockwork-notice clockwork-notice--muted" style="margin-bottom: 16px;">
             <strong>Refreshed nightly.</strong>
-            These are not live stats — your hosting provider's monitoring app rolls up your access logs once a day and pushes the result here.
+            These are not live stats — Clockwork Web Dev's monitoring app rolls up your access logs once a day and pushes the result here.
             <?php if ($fetchedAt) : ?>
                 Last refreshed <?php echo esc_html($fetchedAt); ?>.
             <?php endif; ?>

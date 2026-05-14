@@ -50,7 +50,7 @@ class PerformancePage
             <div class="clockwork-card" style="border-left: 4px solid #65a30d;">
                 <div class="clockwork-card__body">
                     <strong>Daily speed checks are part of your care plan.</strong>
-                    Your hosting provider runs a Lighthouse scan against your homepage every day at 03:30 UTC and
+                    Clockwork Web Dev runs a Lighthouse scan against your homepage every day at 03:30 UTC and
                     flags regressions in your performance score.
                 </div>
             </div>
@@ -60,11 +60,11 @@ class PerformancePage
             <div class="clockwork-card" style="border-left: 4px solid #f59e0b;">
                 <div class="clockwork-card__body">
                     <strong>Add a care plan to unlock daily speed checks.</strong>
-                    With a care plan, your hosting provider runs a Lighthouse scan every day — the same engine
+                    With a care plan, Clockwork Web Dev runs a Lighthouse scan every day — the same engine
                     Google uses to score your site for SEO. You'd see your <strong>Performance score</strong>,
                     <strong>Largest Contentful Paint</strong>, <strong>Cumulative Layout Shift</strong>, and
                     <strong>page weight</strong> trended over time, so a slow regression doesn't sneak past you.
-                    Talk to your hosting provider about adding a care plan.
+                    Talk to Clockwork Web Dev about adding a care plan.
                 </div>
             </div>
             <?php
@@ -200,7 +200,7 @@ class PerformancePage
                 <?php if (! $onCarePlan) : ?>
                     <div style="padding: 20px;">
                         <div class="clockwork-notice clockwork-notice--muted">
-                            Performance history is part of the care plan. Talk to your hosting provider about adding one.
+                            Performance history is part of the care plan. Talk to Clockwork Web Dev about adding one.
                         </div>
                     </div>
                 <?php elseif ($total === 0) : ?>

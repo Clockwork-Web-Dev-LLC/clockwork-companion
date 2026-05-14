@@ -96,7 +96,7 @@ class SecurityPage
                 'runnable' => true,
                 'host_unavailable_note' => $checksumsRunnable
                     ? null
-                    : "This host can't run core checksum verification — wp-cli isn't reachable and the WordPress HTTP API is blocked. Talk to your hosting provider.",
+                    : "This host can't run core checksum verification — wp-cli isn't reachable and the WordPress HTTP API is blocked. Talk to Clockwork Web Dev.",
             ]);
             ?>
         </div>
@@ -147,14 +147,14 @@ class SecurityPage
                     Failed authentication attempts on the Clockwork REST endpoints.
                     Cryptographic protocol is uncrackable; this catalogues
                     probing, misconfiguration, and stale-secret deployments so
-                    your hosting provider can investigate when the count spikes.
+                    Clockwork Web Dev can investigate when the count spikes.
                 </p>
 
                 <?php if ($totalSeen === 0) : ?>
                     <div class="clockwork-notice clockwork-notice--ok">
                         <i class="dashicons dashicons-shield-alt"></i>
-                        No failed attempts have been recorded. The Clockwork
-                        agency is the only signed caller of these endpoints.
+                        No failed attempts have been recorded. Clockwork Web Dev
+                        is the only signed caller of these endpoints.
                     </div>
                 <?php else : ?>
                     <?php if (! empty($top)) : ?>
@@ -230,7 +230,7 @@ class SecurityPage
                 <?php if ($total === 0) : ?>
                     <div style="padding: 20px;">
                         <div class="clockwork-notice clockwork-notice--muted">
-                            No scans recorded yet. Once your hosting provider's daily and weekly checks run,
+                            No scans recorded yet. Once Clockwork Web Dev's daily and weekly checks run,
                             their history will populate here.
                         </div>
                     </div>
@@ -459,11 +459,11 @@ class SecurityPage
             <div class="clockwork-card" style="border-left: 4px solid #f59e0b;">
                 <div class="clockwork-card__body">
                     <strong>Hosting includes daily blacklist checks. A care plan adds the deeper scans.</strong>
-                    Your hosting provider checks every day to make sure your domain isn't flagged on Spamhaus, URLHaus,
+                    Clockwork Web Dev checks every day to make sure your domain isn't flagged on Spamhaus, URLHaus,
                     or Google Safe Browsing — that one's already running. With a care plan, they also run
                     <strong>weekly Sucuri malware/JavaScript-injection scans</strong> and
                     <strong>daily WordPress core file integrity verification</strong> over SSH.
-                    Talk to your hosting provider about adding a care plan.
+                    Talk to Clockwork Web Dev about adding a care plan.
                 </div>
             </div>
             <?php
@@ -534,7 +534,7 @@ class SecurityPage
                 <p class="clockwork-scan-card__empty">
                     <strong>Included with a care plan.</strong>
                     <?php if ($card['scan_type'] === 'sitecheck') : ?>
-                        <?php echo esc_html('Sucuri SiteCheck runs every Monday — scans your homepage for malware, JavaScript injections, and defacement. If anything trips, your hosting provider gets alerted within minutes.'); ?>
+                        <?php echo esc_html('Sucuri SiteCheck runs every Monday — scans your homepage for malware, JavaScript injections, and defacement. If anything trips, Clockwork Web Dev gets alerted within minutes.'); ?>
                     <?php else : ?>
                         <?php echo esc_html('Every WordPress core file is verified against WordPress.org\'s published checksums daily. Catches PHP backdoors, modified core files, and shells dropped into wp-includes — the kind of malware Sucuri\'s public scan can\'t see.'); ?>
                     <?php endif; ?>

@@ -61,7 +61,7 @@ class ActivityPage
 
         Layout::pageHeader(
             'Activity',
-            'A log of the maintenance work your hosting provider has performed on this site.'
+            'A log of the maintenance work Clockwork Web Dev has performed on this site.'
         );
 
         self::renderCarePlanBanner($onCarePlan);
@@ -93,10 +93,10 @@ class ActivityPage
             <div class="clockwork-card" style="border-left: 4px solid #f59e0b;">
                 <div class="clockwork-card__body">
                     <strong>You're on hosting only — here's what a care plan would add.</strong>
-                    With a care plan, your hosting provider proactively runs <strong>WordPress core, theme, and plugin updates</strong>,
+                    With a care plan, Clockwork Web Dev proactively runs <strong>WordPress core, theme, and plugin updates</strong>,
                     <strong>weekly malware scans</strong>, <strong>daily core file integrity checks</strong>, and
                     <strong>backup retention extended to 90 days</strong>. The work appears on this page so you can see it happening.
-                    Anything done as ad-hoc maintenance today is billed separately. Talk to your hosting provider about adding a care plan.
+                    Anything done as ad-hoc maintenance today is billed separately. Talk to Clockwork Web Dev about adding a care plan.
                 </div>
             </div>
             <?php

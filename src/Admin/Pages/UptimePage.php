@@ -37,7 +37,7 @@ class UptimePage
     {
         Layout::pageHeader(
             'Uptime',
-            'Your hosting provider probes this site every few minutes and tracks how often it answers. Big drops trigger an alert to the agency immediately.'
+            'Clockwork Web Dev probes this site every few minutes and tracks how often it answers. Big drops trigger an internal Clockwork Web Dev alert immediately.'
         );
 
         $view = self::resolveView();
@@ -117,22 +117,22 @@ class UptimePage
             <div class="clockwork-card__body">
                 <dl class="clockwork-uptime-defs">
                     <dt>What we check</dt>
-                    <dd>Every few minutes, your hosting provider sends a request to <strong>https://<?php echo esc_html(self::currentHost()); ?>/</strong> and verifies it answers with a normal page.</dd>
+                    <dd>Every few minutes, Clockwork Web Dev sends a request to <strong>https://<?php echo esc_html(self::currentHost()); ?>/</strong> and verifies it answers with a normal page.</dd>
 
                     <dt>What counts as "down"</dt>
                     <dd>A page that doesn't load — server errors, timeouts, DNS failures, or anything other than a successful response. Cloudflare or WAF challenges that block our checker are flagged separately so they don't count as real outages.</dd>
 
                     <dt>Probe frequency</dt>
-                    <dd>Every 5 minutes by default. Your hosting provider can dial this up to once a minute or down to every 15 minutes globally — contact them if you want a specific cadence on this site.</dd>
+                    <dd>Every 5 minutes by default. Clockwork Web Dev can dial this up to once a minute or down to every 15 minutes globally — contact them if you want a specific cadence on this site.</dd>
 
                     <dt>Alert threshold</dt>
                     <dd>Two consecutive failures (about 10 minutes of real downtime) before an alert is fired. Recovery is instant — the moment your site comes back, the alert clears.</dd>
 
                     <dt>Where alerts go</dt>
-                    <dd>Your hosting provider's internal team chat. They get a notification with the failure reason and a link straight to your site, so they can investigate before you ever notice.</dd>
+                    <dd>Clockwork Web Dev's internal team chat. They get a notification with the failure reason and a link straight to your site, so they can investigate before you ever notice.</dd>
 
                     <dt>Want this changed?</dt>
-                    <dd>The schedule, threshold, and notification routing are all controlled by your hosting provider. Reach out to them and they can adjust things on their end.</dd>
+                    <dd>The schedule, threshold, and notification routing are all controlled by Clockwork Web Dev. Reach out to them and they can adjust things on their end.</dd>
                 </dl>
             </div>
         </div>
@@ -178,7 +178,7 @@ class UptimePage
                         <?php elseif ($hasAnyHistory) : ?>
                             <span class="clockwork-up-summary__pct">100%</span> uptime — no downtime recorded yet.
                         <?php else : ?>
-                            Monitoring is active. Your hosting provider has been probing this site and hasn't seen any issues.
+                            Monitoring is active. Clockwork Web Dev has been probing this site and hasn't seen any issues.
                         <?php endif; ?>
                     </strong>
                 </div>
@@ -261,7 +261,7 @@ class UptimePage
                 <?php if ($events === []) : ?>
                     <div style="padding: 20px;">
                         <div class="clockwork-notice clockwork-notice--muted">
-                            No transition events recorded yet. Your hosting provider's monitor probes
+                            No transition events recorded yet. Clockwork Web Dev's monitor probes
                             every few minutes; the first up-confirmation usually arrives within 24 hours
                             of installation.
                         </div>

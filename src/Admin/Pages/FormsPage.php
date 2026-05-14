@@ -45,7 +45,7 @@ class FormsPage
     {
         Layout::pageHeader(
             'Forms',
-            'Monitor your contact forms. Pick which forms to test below — your agency will run them on a schedule and ping us if one breaks.'
+            'Monitor your contact forms. Pick which forms to test below — Clockwork Web Dev will run them on a schedule and ping us if one breaks.'
         );
 
         // Lazy-refresh the detected-forms cache on first visit and after the
@@ -148,7 +148,7 @@ class FormsPage
                 <?php if ($forms === []) : ?>
                     <p class="clockwork-empty">No form plugins active, or no forms configured. Install Contact Form 7, WPForms, or Gravity Forms and create a form, then click <em>Re-detect now</em>.</p>
                 <?php else : ?>
-                    <p class="clockwork-help">Toggle a form on to have your agency test it on a schedule (weekly). Up to <?php echo SubscriptionsService::MAX; ?> forms can be monitored at once.</p>
+                    <p class="clockwork-help">Toggle a form on to have Clockwork Web Dev test it on a schedule (weekly). Up to <?php echo SubscriptionsService::MAX; ?> forms can be monitored at once.</p>
                     <table class="widefat striped clockwork-forms-table">
                         <thead>
                             <tr>
@@ -190,7 +190,7 @@ class FormsPage
                     <?php if ($atCap) : ?>
                         <p class="clockwork-help" style="margin-top: 12px;">
                             <strong>You're at the maximum of <?php echo SubscriptionsService::MAX; ?> monitored forms.</strong>
-                            Unsubscribe one below to free up a slot, or contact your agency to raise the limit.
+                            Unsubscribe one below to free up a slot, or contact Clockwork Web Dev to raise the limit.
                         </p>
                     <?php endif; ?>
                 <?php endif; ?>
@@ -408,7 +408,7 @@ class FormsPage
                     const action = wantOn ? 'clockwork_companion_subscribe_form' : 'clockwork_companion_unsubscribe_form';
                     const {status, json} = await postForm(action, {form_id: formId, plugin});
                     if (status === 200 && json && json.success) {
-                        setRowStatus(row, wantOn ? 'Monitoring — your agency will pick this up tonight.' : 'Stopped monitoring.', 'ok');
+                        setRowStatus(row, wantOn ? 'Monitoring — Clockwork Web Dev will pick this up tonight.' : 'Stopped monitoring.', 'ok');
                         // Reload the page so the Subscribed section + cap state refresh
                         // cleanly. Keeps the DOM dead-simple — no per-row reconciliation.
                         setTimeout(() => window.location.reload(), 800);

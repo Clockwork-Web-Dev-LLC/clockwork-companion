@@ -41,7 +41,7 @@ class FormsAjaxHandlers
         }
         if (SubscriptionsService::atCap() && ! SubscriptionsService::isSubscribed($formId)) {
             wp_send_json_error([
-                'message' => 'You\'re at the maximum of ' . SubscriptionsService::MAX . ' monitored forms. Unsubscribe one to add another, or contact your agency to raise the limit.',
+                'message' => 'You\'re at the maximum of ' . SubscriptionsService::MAX . ' monitored forms. Unsubscribe one to add another, or contact Clockwork Web Dev to raise the limit.',
             ], 409);
         }
         $ok = SubscriptionsService::subscribe($formId, $plugin);
