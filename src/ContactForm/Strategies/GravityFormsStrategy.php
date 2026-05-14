@@ -53,10 +53,24 @@ class GravityFormsStrategy extends AbstractStrategy
         $payload = $this->payload($marker);
         $fieldValues = $this->mapFieldValues($form, $payload);
 
+        // CAPTCHA / anti-bot filters (Cloudflare Turnstile, hCaptcha, reCAPTCHA,
+        // etc.) hook into gform_validation and globally fail the form when
+        // their token isn't present. The agency's automated tests can't
+        // produce a real CAPTCHA token, so in lab mode we temporarily suspend
+        // these filters and re-attach them after submit. Live mode runs
+        // untouched — anyone running a live test against a CAPTCHA-protected
+        // form will see the rejection and know to either disable CAPTCHA or
+        // remove the form from the monitored set.
+        $suspended = $mode === 'lab'
+            ? $this->suspendCaptchaFilters()
+            : [];
+
         try {
             $result = \GFAPI::submit_form((int) $formId, $fieldValues);
         } catch (\Throwable $e) {
             return StrategyResult::rejected('Gravity submit threw: '.$e->getMessage());
+        } finally {
+            $this->restoreCaptchaFilters($suspended);
         }
 
         if (is_wp_error($result)) {
@@ -236,6 +250,96 @@ class GravityFormsStrategy extends AbstractStrategy
         }
 
         return $values;
+    }
+
+    /**
+     * Pattern matched against callback names attached to gform_validation.
+     * Hits any anti-bot plugin whose callback contains one of these substrings
+     * — Cloudflare Turnstile (`cfturnstile_gravity_check`), reCAPTCHA, hCaptcha,
+     * etc. Case-insensitive.
+     */
+    private const CAPTCHA_CALLBACK_PATTERNS = [
+        'turnstile',
+        'captcha',
+        'recaptcha',
+        'hcaptcha',
+    ];
+
+    /**
+     * Hooks anti-bot callbacks fire from. We sweep each of these in lab mode
+     * because different plugins attach to different stages.
+     */
+    private const CAPTCHA_HOOKS = [
+        'gform_validation',
+        'gform_pre_validation',
+        'gform_entry_is_spam',
+    ];
+
+    /**
+     * Walk the global filter registry, locate callbacks whose name suggests
+     * CAPTCHA/anti-bot enforcement, and detach them. Returns a list of
+     * (hook, priority, callback) triples so we can re-attach in restore().
+     *
+     * @return list<array{hook: string, priority: int, callback: callable}>
+     */
+    private function suspendCaptchaFilters(): array
+    {
+        global $wp_filter;
+        $suspended = [];
+
+        foreach (self::CAPTCHA_HOOKS as $hook) {
+            if (! isset($wp_filter[$hook])) {
+                continue;
+            }
+            foreach ($wp_filter[$hook]->callbacks as $priority => $callbacks) {
+                foreach ($callbacks as $cb) {
+                    if (! isset($cb['function'])) {
+                        continue;
+                    }
+                    if (! $this->callbackLooksLikeCaptcha($cb['function'])) {
+                        continue;
+                    }
+                    remove_filter($hook, $cb['function'], (int) $priority);
+                    $suspended[] = [
+                        'hook' => $hook,
+                        'priority' => (int) $priority,
+                        'callback' => $cb['function'],
+                    ];
+                }
+            }
+        }
+        return $suspended;
+    }
+
+    /**
+     * @param  list<array{hook: string, priority: int, callback: callable}>  $suspended
+     */
+    private function restoreCaptchaFilters(array $suspended): void
+    {
+        foreach ($suspended as $entry) {
+            add_filter($entry['hook'], $entry['callback'], $entry['priority']);
+        }
+    }
+
+    /**
+     * @param  mixed  $callback
+     */
+    private function callbackLooksLikeCaptcha($callback): bool
+    {
+        $name = '';
+        if (is_string($callback)) {
+            $name = $callback;
+        } elseif (is_array($callback) && count($callback) === 2) {
+            $cls = is_object($callback[0]) ? get_class($callback[0]) : (string) $callback[0];
+            $name = $cls . '::' . (string) $callback[1];
+        }
+        $name = strtolower($name);
+        foreach (self::CAPTCHA_CALLBACK_PATTERNS as $pat) {
+            if (str_contains($name, $pat)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

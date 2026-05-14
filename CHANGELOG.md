@@ -2,6 +2,12 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.19.5 — 2026-05-14
+
+### Fix
+
+- **Lab-mode form tests now bypass CAPTCHA / anti-bot filters.** Forms protected by Cloudflare Turnstile, reCAPTCHA, hCaptcha, or similar were silently failing validation with no field message because the anti-bot plugin globally flips `is_valid=false` via `gform_validation` when no token is present — but an automated test can't produce a real token. In lab mode the strategy now sweeps `gform_validation`, `gform_pre_validation`, and `gform_entry_is_spam` for callbacks whose name contains `turnstile`/`captcha`/`recaptcha`/`hcaptcha`, detaches them around the submit, and reattaches them in a `finally`. Live mode runs untouched — an operator running a live test against a CAPTCHA-protected form still sees the rejection and can decide whether to disable CAPTCHA or stop monitoring that form.
+
 ## 1.19.4 — 2026-05-14
 
 ### Fix
