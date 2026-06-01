@@ -15,11 +15,15 @@ use ClockworkCompanion\Rest\CommentsSummaryRoute;
 use ClockworkCompanion\Rest\CronRoute;
 use ClockworkCompanion\Rest\DetectRoute;
 use ClockworkCompanion\Rest\FormSubscriptionsRoute;
+use ClockworkCompanion\Rest\PostUpdateVerifyRoute;
 use ClockworkCompanion\Rest\HealthRoute;
 use ClockworkCompanion\Rest\LockoutsRoute;
 use ClockworkCompanion\Rest\MalwareScanRoute;
+use ClockworkCompanion\Rest\CoreUpdateRoute;
 use ClockworkCompanion\Rest\PluginsRoute;
 use ClockworkCompanion\Rest\PluginUpdateRoute;
+use ClockworkCompanion\Rest\ThemesRoute;
+use ClockworkCompanion\Rest\ThemeUpdateRoute;
 use ClockworkCompanion\Rest\ResourceReportRoute;
 use ClockworkCompanion\Rest\ResourceSamplerConfigRoute;
 use ClockworkCompanion\Rest\SecretRotateRoute;
@@ -79,6 +83,12 @@ class Plugin
         // the list daily via /form-subscriptions and reconciles into the
         // agency-side contact_form_tests table.
         'form-subscriptions',
+        // Post-update state verification (1.21.3+). After every successful
+        // update Clockwork calls /post-update-verify with the pre-update
+        // active-plugin list + active theme. Companion re-activates any plugin
+        // that went inactive and restores the theme if it changed, then
+        // returns a repairs list that Clockwork persists to plugin_update_jobs.
+        'post-update-verify',
     ];
 
     public function boot(): void
@@ -101,13 +111,16 @@ class Plugin
             (new LockoutsRoute())->register();
             (new WordfenceBlocksRoute())->register();
             (new PluginsRoute())->register();
+            (new ThemesRoute())->register();
+            (new PluginUpdateRoute())->register();
+            (new ThemeUpdateRoute())->register();
+            (new CoreUpdateRoute())->register();
             (new AdminsRoute())->register();
             (new CronRoute())->register();
             (new CommentsSummaryRoute())->register();
             (new SnapshotRoute())->register();
             (new BackupsReportRoute())->register();
             (new SsoRoute())->register();
-            (new PluginUpdateRoute())->register();
             (new ActionLogAppendRoute())->register();
             (new SecretRotateRoute())->register();
             (new MalwareScanRoute())->register();
@@ -115,6 +128,7 @@ class Plugin
             (new ResourceReportRoute())->register();
             (new ResourceSamplerConfigRoute())->register();
             (new FormSubscriptionsRoute())->register();
+            (new PostUpdateVerifyRoute())->register();
         });
 
         // Self-service Forms tab AJAX. Capability + nonce gated; distinct
