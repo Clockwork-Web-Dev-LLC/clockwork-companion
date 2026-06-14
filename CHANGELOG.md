@@ -2,6 +2,19 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.21.3 — 2026-06-01
+
+### Features
+
+- **Post-update state verification and repair.** New `POST /wp-json/clockwork/v1/post-update-verify` endpoint. After every successful plugin, theme, or core update Clockwork calls this endpoint with the list of plugins that were active and the theme that was active before the update ran. Companion compares against current WordPress state: any plugin that was active but is no longer gets re-activated via `activate_plugin()`; if the active theme changed it is restored via `switch_theme()`. The response includes a `repairs` array (`[{type, slug, detail}]`) that Clockwork persists to the `plugin_update_jobs` row and surfaces in the action log summary. Best-effort from Clockwork's side — a verify failure never marks the update as failed.
+- **New capability advertised: `post-update-verify`.** Clockwork gates the verify call on this capability, so sites with older Companion versions skip it silently.
+
+## 1.21.2 — 2026-06-01
+
+### Fix
+
+- **Multisite theme protection during theme upgrades.** WordPress's `validate_current_theme()` can fire during the filesystem replacement window of a theme upgrade and silently switch a sub-site's active theme to a fallback. `ThemeUpdateRoute` now takes a pre-upgrade snapshot of every sub-site that uses the slug being upgraded (as stylesheet or template), and after the upgrade walks each affected sub-site, flushes the theme cache, and restores the theme if WordPress changed it. The number of sub-sites repaired is returned in the response and included in Clockwork's action log entry.
+
 ## 1.20.3 — 2026-05-14
 
 ### Fix
