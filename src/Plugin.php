@@ -84,6 +84,9 @@ class Plugin
         // the list daily via /form-subscriptions and reconciles into the
         // agency-side contact_form_tests table.
         'form-subscriptions',
+        // Unlock LLAR lockouts via DELETE /lockouts (1.20.0+).
+        // Clockwork can clear all lockouts or a specific IP without WP admin access.
+        'lockouts-unlock',
         // Post-update state verification (1.21.3+). After every successful
         // update Clockwork calls /post-update-verify with the pre-update
         // active-plugin list + active theme. Companion re-activates any plugin

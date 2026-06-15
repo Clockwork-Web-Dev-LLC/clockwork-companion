@@ -8,6 +8,7 @@ use ClockworkCompanion\Admin\Pages\FormsPage;
 use ClockworkCompanion\Admin\Pages\PerformancePage;
 use ClockworkCompanion\Admin\Pages\SecurityPage;
 use ClockworkCompanion\Admin\Pages\TrafficPage;
+use ClockworkCompanion\Admin\Pages\UnlockPage;
 use ClockworkCompanion\Admin\Pages\UptimePage;
 
 /**
@@ -56,6 +57,10 @@ class Menu
         add_action('admin_menu', [$this, 'addMenu']);
         add_action('admin_menu', [$this, 'maybeHideMenu'], 999);
         add_action('admin_enqueue_scripts', [$this, 'enqueueAssets']);
+
+        if (defined('CLOCKWORK_UNLOCK_HUB') && CLOCKWORK_UNLOCK_HUB) {
+            UnlockPage::registerAjax();
+        }
     }
 
     /**
@@ -183,6 +188,17 @@ class Menu
             BackupsPage::SLUG,
             [BackupsPage::class, 'render']
         );
+
+        if (defined('CLOCKWORK_UNLOCK_HUB') && CLOCKWORK_UNLOCK_HUB) {
+            add_submenu_page(
+                self::SLUG,
+                'Unlock',
+                'Unlock',
+                self::CAPABILITY,
+                UnlockPage::SLUG,
+                [UnlockPage::class, 'render']
+            );
+        }
     }
 
     public function enqueueAssets(string $hookSuffix): void

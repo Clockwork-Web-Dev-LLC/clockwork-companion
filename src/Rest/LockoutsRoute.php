@@ -7,26 +7,11 @@ use WP_REST_Request;
 use WP_REST_Response;
 
 /**
- * GET /wp-json/clockwork/v1/lockouts
+ * GET    /wp-json/clockwork/v1/lockouts        — list active LLAR lockouts.
+ * DELETE /wp-json/clockwork/v1/lockouts        — clear all lockouts.
+ * DELETE /wp-json/clockwork/v1/lockouts?ip=x  — clear one IP.
  *
- * Returns active "Limit Login Attempts Reloaded" lockouts for this site.
- *
- * Response:
- *   {
- *     "ok": true,
- *     "lockouts": [
- *       {
- *         "ip": "1.2.3.4",
- *         "unlock_at": "2026-05-02T23:50:00+00:00" | null,
- *         "source_table": "wp_limit_login_lockouts"
- *       },
- *       ...
- *     ]
- *   }
- *
- * Mirrors the shape produced by Clockwork's existing SSH+MySQL puller
- * (App\Services\Llar\LlarLockoutPuller). LLAR stores active lockouts in
- * two places depending on plugin version:
+ * LLAR stores active lockouts in two places depending on plugin version:
  *   1. A dedicated table `<prefix>limit_login_lockouts` (newer versions).
  *      Schemas seen in the wild:
  *        v2.x: id, ip, lockout_start, lockout_end, reason
@@ -35,16 +20,23 @@ use WP_REST_Response;
  *      serialized PHP array shaped `ip => unlock_unix_timestamp`.
  *
  * We try the table first (more authoritative), then merge in option-row
- * entries de-duped by IP (table source wins).
+ * entries de-duped by IP (table source wins). Unlocks clear both sources.
  */
 class LockoutsRoute
 {
     public function register(): void
     {
         register_rest_route(CLOCKWORK_COMPANION_NAMESPACE, '/lockouts', [
-            'methods' => 'GET',
-            'callback' => [$this, 'handle'],
-            'permission_callback' => [HmacVerifier::class, 'verify'],
+            [
+                'methods' => 'GET',
+                'callback' => [$this, 'handle'],
+                'permission_callback' => [HmacVerifier::class, 'verify'],
+            ],
+            [
+                'methods' => 'DELETE',
+                'callback' => [$this, 'handleDelete'],
+                'permission_callback' => [HmacVerifier::class, 'verify'],
+            ],
         ]);
     }
 
@@ -70,6 +62,118 @@ class LockoutsRoute
         return new WP_REST_Response([
             'ok' => true,
             'lockouts' => array_values($byIp),
+        ]);
+    }
+
+    public function handleDelete(WP_REST_Request $request): WP_REST_Response
+    {
+        $ip = $request->get_param('ip');
+
+        if ($ip !== null) {
+            $ip = trim((string) $ip);
+            if (! filter_var($ip, FILTER_VALIDATE_IP)) {
+                return new WP_REST_Response(['ok' => false, 'error' => 'Invalid IP address.'], 400);
+            }
+
+            return $this->unlockIp($ip);
+        }
+
+        return $this->unlockAll();
+    }
+
+    private function unlockIp(string $ip): WP_REST_Response
+    {
+        global $wpdb;
+
+        $tableName = $wpdb->prefix . 'limit_login_lockouts';
+
+        $existsSql = $wpdb->prepare('SHOW TABLES LIKE %s', $tableName);
+        if ($wpdb->get_var($existsSql) === $tableName) {
+            $wpdb->delete($tableName, ['ip' => $ip], ['%s']);
+        }
+
+        $lockouts = (array) get_option('limit_login_lockouts', []);
+        $wasLocked = isset($lockouts[$ip]);
+        unset($lockouts[$ip]);
+        update_option('limit_login_lockouts', $lockouts);
+
+        foreach (['limit_login_retries', 'limit_login_retries_valid'] as $opt) {
+            $data = (array) get_option($opt, []);
+            unset($data[$ip]);
+            update_option($opt, $data);
+        }
+
+        $log = (array) get_option('limit_login_logged', []);
+        $unlockedUsernames = [];
+        if (isset($log[$ip])) {
+            foreach ($log[$ip] as $username => &$entry) {
+                if (! is_array($entry)) {
+                    $entry = ['counter' => $entry];
+                }
+                $entry['unlocked'] = true;
+                $unlockedUsernames[] = $username;
+            }
+            unset($entry);
+            update_option('limit_login_logged', $log);
+        }
+
+        return new WP_REST_Response([
+            'ok' => true,
+            'ip' => $ip,
+            'was_locked' => $wasLocked,
+            'unlocked_usernames' => $unlockedUsernames,
+        ]);
+    }
+
+    private function unlockAll(): WP_REST_Response
+    {
+        global $wpdb;
+
+        $tableName = $wpdb->prefix . 'limit_login_lockouts';
+        $clearedIps = [];
+
+        $existsSql = $wpdb->prepare('SHOW TABLES LIKE %s', $tableName);
+        if ($wpdb->get_var($existsSql) === $tableName) {
+            $ips = $wpdb->get_col("SELECT DISTINCT ip FROM `{$tableName}`");
+            if (is_array($ips)) {
+                foreach ($ips as $tableIp) {
+                    $clearedIps[$tableIp] = true;
+                }
+            }
+            $wpdb->query("DELETE FROM `{$tableName}`");
+        }
+
+        $lockouts = (array) get_option('limit_login_lockouts', []);
+        foreach (array_keys($lockouts) as $optIp) {
+            $clearedIps[$optIp] = true;
+        }
+
+        delete_option('limit_login_lockouts');
+        delete_option('limit_login_retries');
+        delete_option('limit_login_retries_valid');
+
+        $log = (array) get_option('limit_login_logged', []);
+        $changed = false;
+        foreach ($log as &$entries) {
+            foreach ($entries as &$entry) {
+                if (! is_array($entry)) {
+                    $entry = ['counter' => $entry];
+                }
+                if (empty($entry['unlocked'])) {
+                    $entry['unlocked'] = true;
+                    $changed = true;
+                }
+            }
+            unset($entry);
+        }
+        unset($entries);
+        if ($changed) {
+            update_option('limit_login_logged', $log);
+        }
+
+        return new WP_REST_Response([
+            'ok' => true,
+            'cleared' => count($clearedIps),
         ]);
     }
 
