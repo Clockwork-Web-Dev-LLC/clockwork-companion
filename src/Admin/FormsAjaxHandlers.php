@@ -2,6 +2,7 @@
 
 namespace ClockworkCompanion\Admin;
 
+use ClockworkCompanion\ActionLog\Repository;
 use ClockworkCompanion\Admin\Pages\FormsPage;
 use ClockworkCompanion\ContactForm\DetectedFormsCache;
 use ClockworkCompanion\ContactForm\SubscriptionsService;
@@ -34,6 +35,7 @@ class FormsAjaxHandlers
     public function subscribe(): void
     {
         $this->guard();
+        $this->requireCarePlan();
         $formId = isset($_POST['form_id']) ? sanitize_text_field((string) $_POST['form_id']) : '';
         $plugin = isset($_POST['plugin']) ? sanitize_text_field((string) $_POST['plugin']) : '';
         if ($formId === '' || $plugin === '') {
@@ -65,6 +67,7 @@ class FormsAjaxHandlers
     public function testNow(): void
     {
         $this->guard();
+        $this->requireCarePlan();
         $formId = isset($_POST['form_id']) ? sanitize_text_field((string) $_POST['form_id']) : '';
         $plugin = isset($_POST['plugin']) ? sanitize_text_field((string) $_POST['plugin']) : '';
         if ($formId === '' || $plugin === '') {
@@ -104,6 +107,27 @@ class FormsAjaxHandlers
         $nonce = isset($_POST[self::NONCE_NAME]) ? (string) $_POST[self::NONCE_NAME] : '';
         if (! wp_verify_nonce($nonce, self::NONCE_ACTION)) {
             wp_send_json_error(['message' => 'Bad nonce.'], 403);
+        }
+    }
+
+    /**
+     * Defense-in-depth for the care-plan UI gate on FormsPage. Subscribe and
+     * Test-now are care-plan features; an off-plan admin who bypasses the
+     * disabled toggles (devtools, curl, custom script) still gets a clean 403
+     * with `error: care_plan_required` rather than silently creating a
+     * subscription that will never be tested.
+     *
+     * Unsubscribe and Re-detect deliberately skip this check — letting off-plan
+     * users clean up stale subscriptions and continue to demo form detection
+     * is the whole point of the "show what they're missing" upsell pattern.
+     */
+    private function requireCarePlan(): void
+    {
+        if (! Repository::latestCarePlanFlag()) {
+            wp_send_json_error([
+                'message' => 'Form monitoring requires an active care plan. Talk to Clockwork Web Dev about adding one.',
+                'error'   => 'care_plan_required',
+            ], 403);
         }
     }
 }

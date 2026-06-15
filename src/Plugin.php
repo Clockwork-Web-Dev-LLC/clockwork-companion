@@ -6,6 +6,7 @@ use ClockworkCompanion\ActionLog\Schema as ActionLogSchema;
 use ClockworkCompanion\Admin\Actions\RunSecurityScanAction;
 use ClockworkCompanion\Admin\FormsAjaxHandlers;
 use ClockworkCompanion\Admin\Menu;
+use ClockworkCompanion\Admin\UpdatesRefreshAjaxHandler;
 use ClockworkCompanion\Auth\Secret;
 use ClockworkCompanion\AuthAudit\Schema as AuthAuditSchema;
 use ClockworkCompanion\Rest\ActionLogAppendRoute;
@@ -15,6 +16,7 @@ use ClockworkCompanion\Rest\CommentsSummaryRoute;
 use ClockworkCompanion\Rest\CronRoute;
 use ClockworkCompanion\Rest\DetectRoute;
 use ClockworkCompanion\Rest\FormSubscriptionsRoute;
+use ClockworkCompanion\Rest\PostUpdateVerifyRoute;
 use ClockworkCompanion\Rest\HealthRoute;
 use ClockworkCompanion\Rest\LockoutsRoute;
 use ClockworkCompanion\Rest\MalwareScanRoute;
@@ -85,6 +87,12 @@ class Plugin
         // Unlock LLAR lockouts via DELETE /lockouts (1.20.0+).
         // Clockwork can clear all lockouts or a specific IP without WP admin access.
         'lockouts-unlock',
+        // Post-update state verification (1.21.3+). After every successful
+        // update Clockwork calls /post-update-verify with the pre-update
+        // active-plugin list + active theme. Companion re-activates any plugin
+        // that went inactive and restores the theme if it changed, then
+        // returns a repairs list that Clockwork persists to plugin_update_jobs.
+        'post-update-verify',
     ];
 
     public function boot(): void
@@ -124,12 +132,21 @@ class Plugin
             (new ResourceReportRoute())->register();
             (new ResourceSamplerConfigRoute())->register();
             (new FormSubscriptionsRoute())->register();
+            (new PostUpdateVerifyRoute())->register();
         });
 
         // Self-service Forms tab AJAX. Capability + nonce gated; distinct
         // from the HMAC-protected REST routes above (those are for
         // Clockwork; these are for the local wp-admin user).
         (new FormsAjaxHandlers())->register();
+
+        // Loopback admin-ajax handler that refreshes the update_plugins /
+        // update_themes transients in a real admin context. Triggered by
+        // PluginsRoute / ThemesRoute via wp_remote_post() to make premium
+        // plugins (Crocoblock, Elementor Pro, etc.) inject their licensed
+        // updates — they gate that injection on admin-context which REST
+        // requests don't have. HMAC-signed; not externally invokable.
+        (new UpdatesRefreshAjaxHandler())->register();
 
         // Admin UI — only registers its hooks if we're in wp-admin context.
         // Cheap to call on every request because Menu::register() just adds hooks.

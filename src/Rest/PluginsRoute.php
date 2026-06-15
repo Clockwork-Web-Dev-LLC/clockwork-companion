@@ -3,6 +3,7 @@
 namespace ClockworkCompanion\Rest;
 
 use ClockworkCompanion\Auth\HmacVerifier;
+use ClockworkCompanion\Updates\TransientRefresher;
 use WP_REST_Request;
 use WP_REST_Response;
 
@@ -12,10 +13,13 @@ use WP_REST_Response;
  * Full installed-plugin inventory. Replaces the SSH+wp-cli probe in
  * App\Services\Sites\WpPluginDetector for sites that have Companion.
  *
- * Reads the cached update_plugins transient — WP cron refreshes it every
- * ~12 hours via wp_version_check(). We deliberately do NOT call
- * wp_update_plugins() here; forcing a synchronous check on every snapshot
- * would hammer api.wordpress.org and slow the call by seconds.
+ * Reads the update_plugins transient, but first asks TransientRefresher to
+ * refresh it via a loopback admin-ajax call (rate-limited to once per 30
+ * min). The loopback makes premium-plugin filters (Freemius/Crocoblock/
+ * Elementor Pro/WPMU DEV) fire — they gate their update injection on
+ * admin context which a plain REST request doesn't have. Without the
+ * refresher, licensed plugins are invisible here even though they show
+ * up in wp-admin's update screen.
  *
  * Response:
  *   {
@@ -65,6 +69,12 @@ class PluginsRoute
     public function payload(): array
     {
         require_once ABSPATH . 'wp-admin/includes/plugin.php';
+
+        // Refresh the transient via loopback admin-ajax so premium plugins
+        // contribute their licensed-update entries. Rate-limited internally
+        // (30 min) so SnapshotRoute calling both PluginsRoute and ThemesRoute
+        // in the same request doesn't double-loopback.
+        TransientRefresher::refresh();
 
         $all = get_plugins();
         $activePaths = (array) get_option('active_plugins', []);

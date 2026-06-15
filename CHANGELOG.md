@@ -2,6 +2,37 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.21.6 — 2026-06-15
+
+### Fix
+
+- **Backups admin page no longer claims history "isn't shown" on the hosting tier.** Clockwork already pushes 30 days of backup history to off-plan sites (and 90 to care-plan sites) — but the BackupsPage empty-state copy was lying to off-plan clients, telling them "Detailed backup history isn't shown on the hosting-only tier" even when no data had been indexed yet. That message also fired when the actual cause was just "the nightly indexer hasn't run yet," making it look like a feature gate when it was a timing artifact. Empty state is now plan-agnostic: every site sees "Backup history hasn't been indexed yet, your backups are still running" with a small italic addendum for off-plan customers noting that care plan extends retention to 90 days with monthly retention reports. The "Last 30 days" / "Last 90 days" retention pill in the card header is now the canonical place the plan difference is communicated. Also removed the interruptive upsell banner that previously rendered above the table on off-plan sites with data — it duplicated what the retention pill already says and broke the "just show what's available" promise.
+
+## 1.21.5 — 2026-06-15
+
+### Features
+
+- **Forms admin page now upsells the care plan instead of silently no-op'ing.** Off-plan customers used to see the Monitor toggles as fully functional, but the agency-side scheduler never actually tested their submissions — confusing in-product, and a missed sales opportunity. `FormsPage` now reads the care-plan flag (same `Repository::latestCarePlanFlag()` used by Performance / Security / Backups), renders an amber upsell banner at the top explaining what scheduled form testing buys ("we submit it like a real visitor would, verify the email actually leaves your server, ping our team the moment a form starts silently failing"), and keeps the **Detected forms section fully visible** with the toggles styled normally — locked with a small inline "Care plan" pill and a `not-allowed` cursor. The list is the selling point: clients see exactly what they'd get tested. Existing subscriptions (from a previous care-plan period) stay rendered as the "Forms you were monitoring" section with a "Care plan paused" pill on each row; Stop-monitoring still works (cleanup), Test-now is gated. On-plan customers see the existing UX with a confident green confirmation banner above. Defense-in-depth: `FormsAjaxHandlers::subscribe` and `::testNow` refuse with `403 + error: care_plan_required` when off-plan, so a clever admin can't bypass the disabled UI. `unsubscribe` and `redetect` deliberately stay open — let them clean up old subs and continue to demo the detector.
+
+## 1.21.4 — 2026-06-15
+
+### Fix
+
+- **Premium-plugin updates now surface in `/plugins`, `/themes`, and `/snapshot`.** Plugins that ship update info via Crocoblock's Jet Dashboard (Jet Search, Jet Smart Filters, etc.) and similar admin-only update mechanisms gate their initialization on `is_admin()` — true for `/wp-admin/` and `admin-ajax.php` requests, false for plain `/wp-json/` REST. Without admin context, their `pre_set_site_transient_update_plugins` hook never registers and their updates are invisible to Clockwork (and to `wp-cli` for the same reason), even though wp-admin shows them. New `Updates\TransientRefresher` makes a `wp_remote_post()` loopback call to the site's own `admin-ajax.php` (action `clockwork_refresh_updates`, HMAC-signed with the Companion secret over `<action>|<timestamp>`). The admin-ajax request runs through the real admin lifecycle, so premium plugins initialize and their filters fire. The receiving `Admin\UpdatesRefreshAjaxHandler` calls `wp_update_plugins(['source' => 'clockwork-companion-loopback'])` — the non-empty `$extra_stats` array is **required**: it bypasses WP's built-in 60s/12h rate-limit short-circuit that otherwise causes the call to return without firing the filter chain when `last_checked` is recent. Rate-limited at the Companion side to once per 30 min via the transient's own `last_checked` so back-to-back snapshot calls don't loop. Soft-fails on loopback errors. Handler registers on both `wp_ajax_*` and `wp_ajax_nopriv_*` since the loopback has no user session; the HMAC + 60s replay window is the gate.
+
+## 1.21.3 — 2026-06-01
+
+### Features
+
+- **Post-update state verification and repair.** New `POST /wp-json/clockwork/v1/post-update-verify` endpoint. After every successful plugin, theme, or core update Clockwork calls this endpoint with the list of plugins that were active and the theme that was active before the update ran. Companion compares against current WordPress state: any plugin that was active but is no longer gets re-activated via `activate_plugin()`; if the active theme changed it is restored via `switch_theme()`. The response includes a `repairs` array (`[{type, slug, detail}]`) that Clockwork persists to the `plugin_update_jobs` row and surfaces in the action log summary. Best-effort from Clockwork's side — a verify failure never marks the update as failed.
+- **New capability advertised: `post-update-verify`.** Clockwork gates the verify call on this capability, so sites with older Companion versions skip it silently.
+
+## 1.21.2 — 2026-06-01
+
+### Fix
+
+- **Multisite theme protection during theme upgrades.** WordPress's `validate_current_theme()` can fire during the filesystem replacement window of a theme upgrade and silently switch a sub-site's active theme to a fallback. `ThemeUpdateRoute` now takes a pre-upgrade snapshot of every sub-site that uses the slug being upgraded (as stylesheet or template), and after the upgrade walks each affected sub-site, flushes the theme cache, and restores the theme if WordPress changed it. The number of sub-sites repaired is returned in the response and included in Clockwork's action log entry.
+
 ## 1.20.3 — 2026-05-14
 
 ### Fix

@@ -16,6 +16,16 @@ use WP_REST_Response;
  * PluginUpdateRoute's shape so the Clockwork UI can reuse the same
  * update-batch loop for both kinds.
  *
+ * On WordPress multisite, Theme_Upgrader replaces the theme directory
+ * network-wide. During the brief window when the old folder is gone and the
+ * new one is not yet in place, WordPress's validate_current_theme() can fire
+ * (on the next REST request or wp-cron tick) and silently switch any sub-site
+ * whose stylesheet/template option matched the slug to the default Twenty
+ * theme — persisting that wrong assignment to the database. To prevent this,
+ * we record which sub-sites use the slug before the upgrade, then after a
+ * successful upgrade we switch into each of those sub-sites and restore the
+ * theme if WordPress switched it away.
+ *
  * Request body:
  *   { "slug": "twentytwentyfive" }
  *
@@ -26,7 +36,8 @@ use WP_REST_Response;
  *     "before_version": "1.2",
  *     "after_version": "1.3",
  *     "messages": ["Downloading update...", "Unpacking the update..."],
- *     "elapsed_ms": 3200
+ *     "elapsed_ms": 3200,
+ *     "subsites_repaired": 0
  *   }
  */
 class ThemeUpdateRoute
@@ -84,18 +95,27 @@ class ThemeUpdateRoute
 
         if (! $hasUpdate) {
             return [
-                'ok'             => true,
-                'slug'           => $slug,
-                'before_version' => $beforeVersion,
-                'after_version'  => $beforeVersion,
-                'messages'       => ['Theme is already up to date.'],
-                'elapsed_ms'     => $this->elapsed($start),
+                'ok'               => true,
+                'slug'             => $slug,
+                'before_version'   => $beforeVersion,
+                'after_version'    => $beforeVersion,
+                'messages'         => ['Theme is already up to date.'],
+                'elapsed_ms'       => $this->elapsed($start),
+                'subsites_repaired' => 0,
             ];
         }
 
         if (! WP_Filesystem()) {
             return $this->fail($slug, 'filesystem_init_failed', 'WP_Filesystem could not be initialised.', $start);
         }
+
+        // On multisite: record which sub-sites use this slug as their active
+        // theme (stylesheet) or parent theme (template) before we touch the
+        // filesystem. Theme_Upgrader removes the old directory before placing
+        // the new one; any request that hits validate_current_theme() in that
+        // window will silently fall back to the default theme and persist
+        // that wrong value to the sub-site's options table.
+        $affectedBlogIds = $this->multisiteAffectedBlogs($slug);
 
         $skin     = new WP_Ajax_Upgrader_Skin();
         $upgrader = new Theme_Upgrader($skin);
@@ -113,27 +133,105 @@ class ThemeUpdateRoute
         $afterTheme   = wp_get_theme($slug);
         $afterVersion = (string) $afterTheme->get('Version') ?: $beforeVersion;
 
+        // Post-upgrade: restore any sub-sites where WordPress silently switched
+        // to a fallback theme during the filesystem replacement window.
+        $subsitesRepaired = $this->multisiteRepairThemes($slug, $affectedBlogIds);
+
         return [
-            'ok'             => true,
-            'slug'           => $slug,
-            'before_version' => $beforeVersion,
-            'after_version'  => $afterVersion,
-            'messages'       => $messages,
-            'elapsed_ms'     => $this->elapsed($start),
+            'ok'               => true,
+            'slug'             => $slug,
+            'before_version'   => $beforeVersion,
+            'after_version'    => $afterVersion,
+            'messages'         => $messages,
+            'elapsed_ms'       => $this->elapsed($start),
+            'subsites_repaired' => $subsitesRepaired,
         ];
+    }
+
+    /**
+     * On multisite: return the blog IDs of every sub-site whose active theme
+     * (stylesheet) or parent theme (template) matches $slug. On single-site
+     * or when there are no matching sub-sites, returns [].
+     *
+     * @return list<int>
+     */
+    private function multisiteAffectedBlogs(string $slug): array
+    {
+        if (! is_multisite()) {
+            return [];
+        }
+
+        $affected = [];
+
+        // get_sites() with number=0 returns all sites. On very large networks
+        // this could be slow, but theme updates are infrequent operator actions
+        // and the correctness guarantee is worth the extra query.
+        $blogs = get_sites(['number' => 0, 'fields' => 'ids', 'deleted' => 0, 'archived' => 0]);
+
+        foreach ($blogs as $blogId) {
+            switch_to_blog((int) $blogId);
+            $stylesheet = (string) get_option('stylesheet', '');
+            $template   = (string) get_option('template', '');
+            restore_current_blog();
+
+            if ($stylesheet === $slug || $template === $slug) {
+                $affected[] = (int) $blogId;
+            }
+        }
+
+        return $affected;
+    }
+
+    /**
+     * After a successful upgrade, switch into each affected sub-site and
+     * check whether WordPress silently changed its active theme. If it did,
+     * restore the intended theme via switch_theme().
+     *
+     * Returns the count of sub-sites that were repaired.
+     *
+     * @param list<int> $blogIds
+     */
+    private function multisiteRepairThemes(string $slug, array $blogIds): int
+    {
+        if ($blogIds === []) {
+            return 0;
+        }
+
+        // Clear the theme cache so wp_get_theme() and get_option('stylesheet')
+        // reflect the freshly-installed files, not stale transients.
+        wp_clean_themes_cache();
+
+        $repaired = 0;
+
+        foreach ($blogIds as $blogId) {
+            switch_to_blog($blogId);
+
+            $currentStylesheet = (string) get_option('stylesheet', '');
+
+            if ($currentStylesheet !== $slug) {
+                // WordPress switched this sub-site to a fallback — restore it.
+                switch_theme($slug);
+                $repaired++;
+            }
+
+            restore_current_blog();
+        }
+
+        return $repaired;
     }
 
     /** @param array<int, string> $messages */
     private function fail(string $slug, string $code, string $message, float $start, array $messages = []): array
     {
         return [
-            'ok'             => false,
-            'slug'           => $slug,
-            'before_version' => '',
-            'after_version'  => null,
-            'messages'       => $messages,
-            'elapsed_ms'     => $this->elapsed($start),
-            'error'          => "{$code}: {$message}",
+            'ok'               => false,
+            'slug'             => $slug,
+            'before_version'   => '',
+            'after_version'    => null,
+            'messages'         => $messages,
+            'elapsed_ms'       => $this->elapsed($start),
+            'error'            => "{$code}: {$message}",
+            'subsites_repaired' => 0,
         ];
     }
 
