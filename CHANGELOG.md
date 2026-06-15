@@ -2,6 +2,12 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.21.4 — 2026-06-15
+
+### Fix
+
+- **Premium-plugin updates now surface in `/plugins`, `/themes`, and `/snapshot`.** Plugins that ship update info via Crocoblock's Jet Dashboard (Jet Search, Jet Smart Filters, etc.) and similar admin-only update mechanisms gate their initialization on `is_admin()` — true for `/wp-admin/` and `admin-ajax.php` requests, false for plain `/wp-json/` REST. Without admin context, their `pre_set_site_transient_update_plugins` hook never registers and their updates are invisible to Clockwork (and to `wp-cli` for the same reason), even though wp-admin shows them. New `Updates\TransientRefresher` makes a `wp_remote_post()` loopback call to the site's own `admin-ajax.php` (action `clockwork_refresh_updates`, HMAC-signed with the Companion secret over `<action>|<timestamp>`). The admin-ajax request runs through the real admin lifecycle, so premium plugins initialize and their filters fire. The receiving `Admin\UpdatesRefreshAjaxHandler` calls `wp_update_plugins(['source' => 'clockwork-companion-loopback'])` — the non-empty `$extra_stats` array is **required**: it bypasses WP's built-in 60s/12h rate-limit short-circuit that otherwise causes the call to return without firing the filter chain when `last_checked` is recent. Rate-limited at the Companion side to once per 30 min via the transient's own `last_checked` so back-to-back snapshot calls don't loop. Soft-fails on loopback errors. Handler registers on both `wp_ajax_*` and `wp_ajax_nopriv_*` since the loopback has no user session; the HMAC + 60s replay window is the gate.
+
 ## 1.21.3 — 2026-06-01
 
 ### Features

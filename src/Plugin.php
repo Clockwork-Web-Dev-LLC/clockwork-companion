@@ -6,6 +6,7 @@ use ClockworkCompanion\ActionLog\Schema as ActionLogSchema;
 use ClockworkCompanion\Admin\Actions\RunSecurityScanAction;
 use ClockworkCompanion\Admin\FormsAjaxHandlers;
 use ClockworkCompanion\Admin\Menu;
+use ClockworkCompanion\Admin\UpdatesRefreshAjaxHandler;
 use ClockworkCompanion\Auth\Secret;
 use ClockworkCompanion\AuthAudit\Schema as AuthAuditSchema;
 use ClockworkCompanion\Rest\ActionLogAppendRoute;
@@ -135,6 +136,14 @@ class Plugin
         // from the HMAC-protected REST routes above (those are for
         // Clockwork; these are for the local wp-admin user).
         (new FormsAjaxHandlers())->register();
+
+        // Loopback admin-ajax handler that refreshes the update_plugins /
+        // update_themes transients in a real admin context. Triggered by
+        // PluginsRoute / ThemesRoute via wp_remote_post() to make premium
+        // plugins (Crocoblock, Elementor Pro, etc.) inject their licensed
+        // updates — they gate that injection on admin-context which REST
+        // requests don't have. HMAC-signed; not externally invokable.
+        (new UpdatesRefreshAjaxHandler())->register();
 
         // Admin UI — only registers its hooks if we're in wp-admin context.
         // Cheap to call on every request because Menu::register() just adds hooks.

@@ -3,6 +3,7 @@
 namespace ClockworkCompanion\Rest;
 
 use ClockworkCompanion\Auth\HmacVerifier;
+use ClockworkCompanion\Updates\TransientRefresher;
 use WP_REST_Request;
 use WP_REST_Response;
 
@@ -10,8 +11,11 @@ use WP_REST_Response;
  * GET /wp-json/clockwork/v1/themes
  *
  * Full installed-theme inventory, mirroring PluginsRoute's shape.
- * Reads the cached update_themes transient — WP cron refreshes it every
- * ~12 hours. We deliberately do NOT call wp_update_themes() here.
+ * Reads the update_themes transient, but first asks TransientRefresher to
+ * refresh it via a loopback admin-ajax call (rate-limited, shared with
+ * PluginsRoute via the same canary timestamp on update_plugins). The
+ * loopback makes premium-theme update filters fire — same reasoning as
+ * PluginsRoute, see that docblock for the full story.
  *
  * Response:
  *   {
@@ -59,6 +63,8 @@ class ThemesRoute
      */
     public function payload(): array
     {
+        TransientRefresher::refresh();
+
         $all            = wp_get_themes();
         $activeSlug     = get_stylesheet();
         $updateTransient = get_site_transient('update_themes');
