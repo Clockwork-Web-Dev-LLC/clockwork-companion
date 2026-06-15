@@ -2,6 +2,17 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.22.0 — 2026-06-15
+
+### Features
+
+- **`DELETE /wp-json/clockwork/v1/lockouts` endpoint to clear LLAR lockouts remotely.** `LockoutsRoute::handleDelete()` supports two modes: bare `DELETE /lockouts` clears every active lockout across both LLAR storage locations (the dedicated table AND the `wp_options` row that older LLAR versions use), and `DELETE /lockouts?ip=<addr>` clears a single IP along with its retry counters and log markers. HMAC-signed like every other Companion endpoint, so the agency can spring a customer's IP without needing wp-admin access. New `lockouts-unlock` capability advertised in `/health` so Clockwork can gate the call on Companion ≥ 1.22.0.
+- **Agency-side Unlock hub page (opt-in via `CLOCKWORK_UNLOCK_HUB` constant).** When `define('CLOCKWORK_UNLOCK_HUB', true);` is set in `wp-config.php`, Companion adds a `Clockwork → Unlock` submenu page where the agency operator can clear LLAR lockouts on any other Companion-installed site without leaving the dashboard. The page reads its target-site roster from `wp_options` (pre-configured per-site secrets) and fires HMAC-signed `DELETE /lockouts` calls server-side via `wp_remote_request()`. Page, AJAX handler, and menu entry are **only registered when the constant is defined** — client sites with the plugin installed see no UI difference and no new attack surface.
+
+### Internal
+
+- Merged accumulated 1.21.1 → 1.21.6 changes onto the feature branch before integration (ThemesRoute, ThemeUpdateRoute, CoreUpdateRoute, premium-plugin loopback, Forms upsell, backups page tidy-up, custom REST UA).
+
 ## 1.21.6 — 2026-06-15
 
 ### Fix
