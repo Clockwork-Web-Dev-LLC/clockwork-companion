@@ -11,10 +11,13 @@ use ClockworkCompanion\Admin\Layout;
  * (populated by Clockwork posting to /wp-json/clockwork/v1/backups-report) and
  * renders it in the Gravity-Forms-style chrome.
  *
- * Empty state: explicit notice that the agency hasn't pushed a report yet —
- * not a scary "broken" message. SpinupWP's API limitation re. backup history
- * is also surfaced explicitly so clients understand why we're showing config
- * + next run rather than a list of past backup files.
+ * Backup history is shown for EVERY site, plan or not — hosting tier keeps
+ * 30 days, care plan extends to 90. The retention pill in the card header is
+ * the canonical place that difference is communicated; the empty-state copy
+ * stays plan-agnostic (it's about "no data yet," not "no feature for you").
+ *
+ * Empty state for a totally-missing report: explicit "agency hasn't pushed yet"
+ * notice rather than a scary broken-feature message.
  */
 class BackupsPage
 {
@@ -178,25 +181,15 @@ class BackupsPage
                 <?php if ($totalRuns === 0) : ?>
                     <div style="padding: 20px;">
                         <div class="clockwork-notice clockwork-notice--muted">
-                            <?php if ($onCarePlan) : ?>
-                                Backup history hasn't been indexed yet. Your backups are still running on Clockwork Web Dev's schedule —
-                                this view will populate within 24 hours of Clockwork Web Dev's next sync. If you don't see runs after that, contact Clockwork Web Dev.
-                            <?php else : ?>
-                                Detailed backup history isn't shown on the hosting-only tier. Your backups <strong>are</strong> running on schedule —
-                                Clockwork Web Dev keeps the last 30 days of off-site copies. <strong>Care plan members get 90 days of history with a full searchable log
-                                and monthly retention reports</strong> right on this page. Talk to Clockwork Web Dev about adding a care plan.
+                            Backup history hasn't been indexed yet. Your backups are still running on Clockwork Web Dev's schedule —
+                            this view will populate within 24 hours of Clockwork Web Dev's next sync. If you don't see runs after that, contact Clockwork Web Dev.
+                            <?php if (! $onCarePlan) : ?>
+                                <br><br>
+                                <em>Hosting tier keeps the last 30 days of off-site copies; care plan extends that to 90 days with monthly retention reports.</em>
                             <?php endif; ?>
                         </div>
                     </div>
                 <?php else : ?>
-                    <?php if (! $onCarePlan) : ?>
-                        <div style="padding: 12px 20px 0;">
-                            <div class="clockwork-notice clockwork-notice--muted" style="margin: 0;">
-                                Showing the last 30 days of backups (hosting tier). <strong>Care plan members get 90 days of history</strong>,
-                                full pagination, and monthly retention reports. Talk to Clockwork Web Dev about upgrading.
-                            </div>
-                        </div>
-                    <?php endif; ?>
                     <table class="clockwork-table">
                         <thead>
                             <tr>

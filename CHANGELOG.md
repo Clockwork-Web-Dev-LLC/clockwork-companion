@@ -2,6 +2,12 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.21.6 — 2026-06-15
+
+### Fix
+
+- **Backups admin page no longer claims history "isn't shown" on the hosting tier.** Clockwork already pushes 30 days of backup history to off-plan sites (and 90 to care-plan sites) — but the BackupsPage empty-state copy was lying to off-plan clients, telling them "Detailed backup history isn't shown on the hosting-only tier" even when no data had been indexed yet. That message also fired when the actual cause was just "the nightly indexer hasn't run yet," making it look like a feature gate when it was a timing artifact. Empty state is now plan-agnostic: every site sees "Backup history hasn't been indexed yet, your backups are still running" with a small italic addendum for off-plan customers noting that care plan extends retention to 90 days with monthly retention reports. The "Last 30 days" / "Last 90 days" retention pill in the card header is now the canonical place the plan difference is communicated. Also removed the interruptive upsell banner that previously rendered above the table on off-plan sites with data — it duplicated what the retention pill already says and broke the "just show what's available" promise.
+
 ## 1.21.5 — 2026-06-15
 
 ### Features
