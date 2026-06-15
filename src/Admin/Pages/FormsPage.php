@@ -2,6 +2,7 @@
 
 namespace ClockworkCompanion\Admin\Pages;
 
+use ClockworkCompanion\ActionLog\Repository;
 use ClockworkCompanion\Admin\FormsAjaxHandlers;
 use ClockworkCompanion\Admin\Layout;
 use ClockworkCompanion\ContactForm\DetectedFormsCache;
@@ -48,6 +49,8 @@ class FormsPage
             'Monitor your contact forms. Pick which forms to test below — Clockwork Web Dev will run them on a schedule and ping us if one breaks.'
         );
 
+        $onCarePlan = Repository::latestCarePlanFlag();
+
         // Lazy-refresh the detected-forms cache on first visit and after the
         // 24h TTL. The "Re-detect" button forces it for cases where someone
         // just installed a new form plugin and doesn't want to wait.
@@ -55,11 +58,49 @@ class FormsPage
         $subs = SubscriptionsService::all();
         $results = self::loadStore();
 
+        self::renderCarePlanBanner($onCarePlan);
         self::renderCadenceBanner($detected, $results);
-        self::renderDetectedSection($detected, $subs);
-        self::renderSubscribedSection($subs, $results);
+        self::renderDetectedSection($detected, $subs, $onCarePlan);
+        self::renderSubscribedSection($subs, $results, $onCarePlan);
         self::renderInlineStyles();
         self::renderInlineScript();
+    }
+
+    /**
+     * Same upsell shape as PerformancePage / SecurityPage — on-plan gets a
+     * confident "this is part of your care plan" reassurance; off-plan gets
+     * the value-prop pitch with concrete features named. The detected-forms
+     * section below stays visible either way (decision: "show what they're
+     * missing, don't hide the feature"), so the banner is the place to do
+     * the actual selling.
+     */
+    private static function renderCarePlanBanner(bool $onCarePlan): void
+    {
+        if ($onCarePlan) {
+            ?>
+            <div class="clockwork-card" style="border-left: 4px solid #65a30d; margin-bottom: 16px;">
+                <div class="clockwork-card__body">
+                    <strong>Scheduled form testing is part of your care plan.</strong>
+                    Clockwork Web Dev runs each form you've subscribed below on a weekly cadence, verifies the
+                    submission email actually leaves your server, and pings us if a form breaks so you don't
+                    hear about it from a frustrated lead first.
+                </div>
+            </div>
+            <?php
+        } else {
+            ?>
+            <div class="clockwork-card" style="border-left: 4px solid #f59e0b; margin-bottom: 16px;">
+                <div class="clockwork-card__body">
+                    <strong>Add a care plan to unlock scheduled form testing.</strong>
+                    With a care plan, every form you flag below gets <strong>tested weekly</strong> by Clockwork
+                    Web Dev — we submit it like a real visitor would, verify the resulting <strong>email actually
+                    leaves your server</strong>, and ping our team the moment a form starts silently failing.
+                    No more "did anyone fill out the contact form this month?" guesswork; no more leads lost to
+                    a misconfigured SMTP plugin. Talk to Clockwork Web Dev about adding a care plan.
+                </div>
+            </div>
+            <?php
+        }
     }
 
     /**
@@ -133,7 +174,7 @@ class FormsPage
      * @param  array{plugin: ?string, forms: list<array{id:string,title:string,page_url:?string}>, fetched_at: ?string}  $detected
      * @param  array<string, array<string, mixed>>  $subs
      */
-    private static function renderDetectedSection(array $detected, array $subs): void
+    private static function renderDetectedSection(array $detected, array $subs, bool $onCarePlan): void
     {
         $forms = $detected['forms'];
         $plugin = (string) ($detected['plugin'] ?? '');
@@ -148,19 +189,29 @@ class FormsPage
                 <?php if ($forms === []) : ?>
                     <p class="clockwork-empty">No form plugins active, or no forms configured. Install Contact Form 7, WPForms, or Gravity Forms and create a form, then click <em>Re-detect now</em>.</p>
                 <?php else : ?>
-                    <p class="clockwork-help">Toggle a form on to have Clockwork Web Dev test it on a schedule (weekly). Up to <?php echo SubscriptionsService::MAX; ?> forms can be monitored at once.</p>
+                    <?php if ($onCarePlan) : ?>
+                        <p class="clockwork-help">Toggle a form on to have Clockwork Web Dev test it on a schedule (weekly). Up to <?php echo SubscriptionsService::MAX; ?> forms can be monitored at once.</p>
+                    <?php else : ?>
+                        <p class="clockwork-help">Below is every form we'd test for you on a weekly schedule once your care plan is active. The toggles are locked until then — see the banner above.</p>
+                    <?php endif; ?>
                     <table class="widefat striped clockwork-forms-table">
                         <thead>
                             <tr>
                                 <th>Form</th>
                                 <th>Plugin ID</th>
-                                <th style="width: 130px;">Monitor</th>
+                                <th style="width: 170px;">Monitor</th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php foreach ($forms as $f) :
                                 $isSubscribed = isset($subs[$f['id']]);
-                                $disabled = ! $isSubscribed && $atCap;
+                                // Subscribed rows stay toggleable even off-plan so the user
+                                // can clean up (toggle-off triggers unsubscribe). Only
+                                // toggle-ON is gated — i.e. unsubscribed forms on an
+                                // off-plan site, OR any form when at the subscription cap.
+                                $disabled = (! $isSubscribed && $atCap)
+                                    || (! $isSubscribed && ! $onCarePlan);
+                                $careLocked = ! $isSubscribed && ! $onCarePlan;
                             ?>
                                 <tr data-form-id="<?php echo esc_attr($f['id']); ?>"
                                     data-plugin="<?php echo esc_attr($plugin); ?>">
@@ -174,13 +225,19 @@ class FormsPage
                                     </td>
                                     <td><code>#<?php echo esc_html($f['id']); ?></code></td>
                                     <td>
-                                        <label class="clockwork-switch <?php echo $disabled ? 'is-disabled' : ''; ?>">
+                                        <label class="clockwork-switch <?php echo $disabled ? 'is-disabled' : ''; ?>"
+                                               <?php if ($careLocked) : ?>title="Add a care plan to enable form monitoring."<?php endif; ?>>
                                             <input type="checkbox"
                                                    class="clockwork-subscribe-toggle"
                                                    <?php checked($isSubscribed); ?>
                                                    <?php disabled($disabled); ?> />
                                             <span class="clockwork-switch__track"></span>
                                         </label>
+                                        <?php if ($careLocked) : ?>
+                                            <span class="clockwork-row-lock" title="Add a care plan to enable form monitoring." aria-label="Care plan required">
+                                                <span class="dashicons dashicons-lock"></span> Care plan
+                                            </span>
+                                        <?php endif; ?>
                                         <span class="clockwork-row-status" aria-live="polite"></span>
                                     </td>
                                 </tr>
@@ -203,7 +260,7 @@ class FormsPage
      * @param  array<string, array<string, mixed>>  $subs
      * @param  array{forms: array<string, array<string, mixed>>, updated_at: ?string}  $results
      */
-    private static function renderSubscribedSection(array $subs, array $results): void
+    private static function renderSubscribedSection(array $subs, array $results, bool $onCarePlan): void
     {
         if ($subs === []) {
             return;
@@ -212,16 +269,34 @@ class FormsPage
         ?>
         <div class="clockwork-card" style="margin-top: 18px;">
             <div class="clockwork-card__head">
-                <h2>Forms you're monitoring</h2>
-                <span class="clockwork-card__meta"><?php echo count($subs); ?> / <?php echo SubscriptionsService::MAX; ?></span>
+                <h2><?php echo $onCarePlan ? "Forms you're monitoring" : "Forms you were monitoring"; ?></h2>
+                <span class="clockwork-card__meta">
+                    <?php if (! $onCarePlan) : ?>
+                        <span class="clockwork-care-paused-pill" title="Tests are paused until a care plan is added.">
+                            <span class="dashicons dashicons-pause"></span> Care plan paused
+                        </span> ·
+                    <?php endif; ?>
+                    <?php echo count($subs); ?> / <?php echo SubscriptionsService::MAX; ?>
+                </span>
             </div>
             <div class="clockwork-card__body">
+                <?php if (! $onCarePlan) : ?>
+                    <p class="clockwork-help">
+                        These forms were configured to be monitored, but the schedule is paused because the
+                        care plan is inactive. They'll resume the moment a care plan is added — your selections
+                        are preserved. You can still stop monitoring any form to clean up the list.
+                    </p>
+                <?php endif; ?>
                 <div class="clockwork-forms-grid">
                     <?php foreach ($subs as $formId => $sub) :
                         $result = $resultMap[$formId] ?? null;
                         $state = $result ? (string) ($result['last_result'] ?? '') : '';
                         $statusClass = $state === 'fail' ? 'is-fail' : ($state === 'pass' ? 'is-pass' : 'is-unknown');
                         $statusLabel = $state === 'fail' ? 'Failing' : ($state === 'pass' ? 'Passing' : 'Not tested yet');
+                        if (! $onCarePlan) {
+                            $statusClass .= ' is-care-paused';
+                            $statusLabel = 'Paused';
+                        }
                         $ranAt = $result ? self::formatTimestamp($result['last_run_at'] ?? null) : null;
                     ?>
                         <div class="clockwork-card clockwork-form-card <?php echo esc_attr($statusClass); ?>"
@@ -249,7 +324,15 @@ class FormsPage
                                     <?php endif; ?>
                                 </dl>
                                 <div class="clockwork-form-card__actions">
-                                    <button type="button" class="button clockwork-test-now-btn">Test now</button>
+                                    <?php if ($onCarePlan) : ?>
+                                        <button type="button" class="button clockwork-test-now-btn">Test now</button>
+                                    <?php else : ?>
+                                        <button type="button" class="button" disabled
+                                                title="Add a care plan to run on-demand tests.">
+                                            <span class="dashicons dashicons-lock" style="font-size: 14px; line-height: 24px; vertical-align: text-bottom;"></span>
+                                            Test now
+                                        </button>
+                                    <?php endif; ?>
                                     <button type="button" class="button-link clockwork-unsubscribe-btn">Stop monitoring</button>
                                 </div>
                             </div>
@@ -324,6 +407,38 @@ class FormsPage
             .clockwork-switch input:checked + .clockwork-switch__track { background: #16a34a; }
             .clockwork-switch input:checked + .clockwork-switch__track::before { transform: translateX(16px); }
             .clockwork-switch.is-disabled .clockwork-switch__track { opacity: 0.5; cursor: not-allowed; }
+
+            /* "Care plan" inline lock — keeps the toggle visually present (so
+               the off-plan customer can see exactly what they'd get) but signals
+               clearly that the action is gated. Matches the disabled track
+               opacity so the row reads as paused, not broken. */
+            .clockwork-row-lock {
+                display: inline-flex; align-items: center; gap: 4px;
+                margin-left: 10px; padding: 2px 8px;
+                font-size: 11px; font-weight: 600;
+                color: #92400e; background: #fef3c7;
+                border-radius: 9999px;
+                vertical-align: middle;
+                cursor: help;
+            }
+            .clockwork-row-lock .dashicons { font-size: 13px; width: 13px; height: 13px; line-height: 13px; }
+
+            .clockwork-care-paused-pill {
+                display: inline-flex; align-items: center; gap: 4px;
+                padding: 1px 8px;
+                font-size: 11px; font-weight: 600;
+                color: #92400e; background: #fef3c7;
+                border-radius: 9999px;
+                vertical-align: middle;
+            }
+            .clockwork-care-paused-pill .dashicons { font-size: 13px; width: 13px; height: 13px; line-height: 13px; }
+
+            /* Paused-state form card — same border treatment as the regular
+               cards but in amber so it picks up the same accent as the upsell
+               banner. Keeps the data legible (don't fade it heavily) — the
+               point is to show what was being monitored, not hide it. */
+            .clockwork-form-card.is-care-paused { border-left: 4px solid #f59e0b; }
+            .clockwork-form-card.is-care-paused .clockwork-form-card__pill { background: #fef3c7; color: #92400e; }
 
             .clockwork-forms-grid {
                 display: grid;

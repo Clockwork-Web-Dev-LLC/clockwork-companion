@@ -2,6 +2,12 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.21.5 — 2026-06-15
+
+### Features
+
+- **Forms admin page now upsells the care plan instead of silently no-op'ing.** Off-plan customers used to see the Monitor toggles as fully functional, but the agency-side scheduler never actually tested their submissions — confusing in-product, and a missed sales opportunity. `FormsPage` now reads the care-plan flag (same `Repository::latestCarePlanFlag()` used by Performance / Security / Backups), renders an amber upsell banner at the top explaining what scheduled form testing buys ("we submit it like a real visitor would, verify the email actually leaves your server, ping our team the moment a form starts silently failing"), and keeps the **Detected forms section fully visible** with the toggles styled normally — locked with a small inline "Care plan" pill and a `not-allowed` cursor. The list is the selling point: clients see exactly what they'd get tested. Existing subscriptions (from a previous care-plan period) stay rendered as the "Forms you were monitoring" section with a "Care plan paused" pill on each row; Stop-monitoring still works (cleanup), Test-now is gated. On-plan customers see the existing UX with a confident green confirmation banner above. Defense-in-depth: `FormsAjaxHandlers::subscribe` and `::testNow` refuse with `403 + error: care_plan_required` when off-plan, so a clever admin can't bypass the disabled UI. `unsubscribe` and `redetect` deliberately stay open — let them clean up old subs and continue to demo the detector.
+
 ## 1.21.4 — 2026-06-15
 
 ### Fix
