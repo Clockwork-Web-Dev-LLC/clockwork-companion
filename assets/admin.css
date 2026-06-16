@@ -230,7 +230,9 @@ body.wp-admin {
     font-size: 13px;
     line-height: 1.5;
     border-left: 4px solid var(--cwk-primary);
+    margin-bottom: 16px;
 }
+.clockwork-notice:last-child { margin-bottom: 0; }
 .clockwork-notice--muted {
     background: #f5f3fb;
     color: var(--cwk-text-muted);
@@ -246,7 +248,7 @@ body.wp-admin {
 }
 .clockwork-table th {
     text-align: left;
-    padding: 10px 16px;
+    padding: 14px 16px;
     background: #faf8ff;
     border-bottom: 1px solid var(--cwk-border);
     font-weight: 600;
