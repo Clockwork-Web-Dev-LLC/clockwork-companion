@@ -96,7 +96,8 @@ class ActivityPage
                     With a care plan, Clockwork Web Dev proactively runs <strong>WordPress core, theme, and plugin updates</strong>,
                     <strong>weekly malware scans</strong>, <strong>daily core file integrity checks</strong>, and
                     <strong>backup retention extended to 90 days</strong>. The work appears on this page so you can see it happening.
-                    Anything done as ad-hoc maintenance today is billed separately. Talk to Clockwork Web Dev about adding a care plan.
+                    Anything done as <a href="https://clockworkwd.com/support/" target="_blank" rel="noopener">ad-hoc maintenance</a> today is billed separately.
+                    <a href="https://clockworkwd.com/contact/" target="_blank" rel="noopener">Talk to Clockwork Web Dev about adding a care plan.</a>
                 </div>
             </div>
             <?php
@@ -152,7 +153,6 @@ class ActivityPage
             $byType[$t] = ($byType[$t] ?? 0) + 1;
         }
 
-        $labels = self::typeLabels();
         ?>
         <div class="clockwork-card">
             <div class="clockwork-card__body">
@@ -163,7 +163,7 @@ class ActivityPage
                 <?php if ($byType) : ?>
                     <ul style="margin: 0; padding-left: 1.25rem;">
                         <?php foreach ($byType as $type => $count) : ?>
-                            <li><?php echo esc_html(($labels[$type] ?? $type) . ': ' . $count); ?></li>
+                            <li><?php echo esc_html(self::labelForType($type) . ': ' . $count); ?></li>
                         <?php endforeach; ?>
                     </ul>
                 <?php endif; ?>
@@ -177,7 +177,6 @@ class ActivityPage
      */
     private static function renderTable(array $rows): void
     {
-        $labels = self::typeLabels();
         ?>
         <div class="clockwork-card">
             <div class="clockwork-card__body">
@@ -206,7 +205,7 @@ class ActivityPage
                                         <?php echo esc_html($when); ?>
                                     </td>
                                     <td style="white-space: nowrap; font-size: 12px;">
-                                        <?php echo esc_html($labels[$type] ?? $type); ?>
+                                        <?php echo esc_html(self::labelForType($type)); ?>
                                     </td>
                                     <td>
                                         <?php echo esc_html($summary); ?>
@@ -224,20 +223,13 @@ class ActivityPage
         <?php
     }
 
-    /** @return array<string, string> */
-    private static function typeLabels(): array
+    private static function labelForType(string $type): string
     {
-        return [
-            'plugin_update' => 'Plugin update',
+        // Exceptions where the auto-generated label would be wrong.
+        $overrides = [
             'sso_login' => 'SSO login',
-            'companion_install' => 'Companion install',
-            'companion_update' => 'Companion update',
-            'manual_ban' => 'Manual ban',
-            'manual_unban' => 'Manual unban',
-            'review_approve' => 'Review approve',
-            'review_dismiss' => 'Review dismiss',
-            'care_plan_toggled' => 'Care plan toggled',
-            'security_scan' => 'Security scan',
         ];
+
+        return $overrides[$type] ?? ucfirst(str_replace('_', ' ', $type));
     }
 }

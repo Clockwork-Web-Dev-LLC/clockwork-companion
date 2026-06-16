@@ -311,13 +311,24 @@ class TrafficPage
                     </svg>
                 </div>
                 <div style="display: flex; gap: 18px; flex-wrap: wrap; padding: 8px 0 0; font-size: 12px; color: #4b5563;">
-                    <?php foreach ($colors as $k => $color) : ?>
+                    <?php
+                    $legend = [
+                        '2xx' => ['color' => $colors['2xx'], 'label' => '2xx', 'desc' => 'Successful requests'],
+                        '3xx' => ['color' => $colors['3xx'], 'label' => '3xx', 'desc' => 'Redirects (e.g. HTTP → HTTPS)'],
+                        '4xx' => ['color' => $colors['4xx'], 'label' => '4xx', 'desc' => 'Not found / access errors'],
+                        '5xx' => ['color' => $colors['5xx'], 'label' => '5xx', 'desc' => 'Server errors'],
+                    ];
+                    foreach ($legend as $entry) :
+                    ?>
                         <span style="display: inline-flex; align-items: center; gap: 6px;">
-                            <span style="display: inline-block; width: 10px; height: 10px; background: <?php echo esc_attr($color); ?>; border-radius: 2px;"></span>
-                            <?php echo esc_html($k); ?>
+                            <span style="display: inline-block; width: 10px; height: 10px; background: <?php echo esc_attr($entry['color']); ?>; border-radius: 2px; flex-shrink: 0;"></span>
+                            <strong><?php echo esc_html($entry['label']); ?></strong> — <?php echo esc_html($entry['desc']); ?>
                         </span>
                     <?php endforeach; ?>
                 </div>
+                <p style="margin: 10px 0 0; font-size: 12px; color: #6b7280;">
+                    Seeing a spike in 4xx or 5xx errors? <a href="https://clockworkwd.com/support/" target="_blank" rel="noopener">Reach out to Clockwork Web Dev</a> and we can help investigate.
+                </p>
             </div>
         </div>
         <?php

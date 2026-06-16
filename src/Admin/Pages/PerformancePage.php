@@ -64,7 +64,7 @@ class PerformancePage
                     Google uses to score your site for SEO. You'd see your <strong>Performance score</strong>,
                     <strong>Largest Contentful Paint</strong>, <strong>Cumulative Layout Shift</strong>, and
                     <strong>page weight</strong> trended over time, so a slow regression doesn't sneak past you.
-                    Talk to Clockwork Web Dev about adding a care plan.
+                    <a href="https://clockworkwd.com/contact/" target="_blank" rel="noopener">Talk to Clockwork Web Dev</a> about adding a care plan.
                 </div>
             </div>
             <?php
@@ -171,6 +171,13 @@ class PerformancePage
                     self::renderVital('Page weight', self::formatBytes($details['page_weight_bytes'] ?? null), '');
                     ?>
                 </dl>
+                <?php if ($scoreClass === 'orange' || $scoreClass === 'red') : ?>
+                    <p class="clockwork-perf-hero__improve-note">
+                        There may be opportunities to improve this score.
+                        <a href="https://clockworkwd.com/contact/" target="_blank" rel="noopener">Talk to Clockwork Web Dev</a>
+                        about performance optimization for this site.
+                    </p>
+                <?php endif; ?>
             <?php elseif (! empty($latest['error'])) : ?>
                 <p class="clockwork-perf-hero__error">
                     <strong>Scan failed:</strong> <?php echo esc_html((string) $latest['error']); ?>
@@ -200,7 +207,7 @@ class PerformancePage
                 <?php if (! $onCarePlan) : ?>
                     <div style="padding: 20px;">
                         <div class="clockwork-notice clockwork-notice--muted">
-                            Performance history is part of the care plan. Talk to Clockwork Web Dev about adding one.
+                            Performance history is part of the care plan. <a href="https://clockworkwd.com/contact/" target="_blank" rel="noopener">Talk to Clockwork Web Dev</a> about adding one.
                         </div>
                     </div>
                 <?php elseif ($total === 0) : ?>
@@ -453,6 +460,14 @@ class PerformancePage
             background: #fef3c7;
             border-radius: 6px;
             color: #92400e;
+            font-size: 13px;
+        }
+        .clockwork-perf-hero__improve-note {
+            margin: 0;
+            padding: 10px 12px;
+            background: #f3f4f6;
+            border-radius: 6px;
+            color: #4b5563;
             font-size: 13px;
         }
         .clockwork-perf-score {

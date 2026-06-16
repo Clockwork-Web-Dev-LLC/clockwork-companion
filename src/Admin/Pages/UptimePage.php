@@ -84,7 +84,7 @@ class UptimePage
     {
         $tabs = [
             'activity' => 'Uptime Activity',
-            'settings' => 'Settings',
+            'settings' => 'About',
         ];
         ?>
         <div class="clockwork-uptime-subtabs">
@@ -123,7 +123,7 @@ class UptimePage
                     <dd>A page that doesn't load — server errors, timeouts, DNS failures, or anything other than a successful response. Cloudflare or WAF challenges that block our checker are flagged separately so they don't count as real outages.</dd>
 
                     <dt>Probe frequency</dt>
-                    <dd>Every 5 minutes by default. Clockwork Web Dev can dial this up to once a minute or down to every 15 minutes globally — contact them if you want a specific cadence on this site.</dd>
+                    <dd>Every 5 minutes by default. Clockwork Web Dev can dial this up to once a minute or down to every 15 minutes globally — <a href="https://clockworkwd.com/support/" target="_blank" rel="noopener">contact them</a> if you want a specific cadence on this site.</dd>
 
                     <dt>Alert threshold</dt>
                     <dd>Two consecutive failures (about 10 minutes of real downtime) before an alert is fired. Recovery is instant — the moment your site comes back, the alert clears.</dd>
@@ -132,7 +132,7 @@ class UptimePage
                     <dd>Clockwork Web Dev's internal team chat. They get a notification with the failure reason and a link straight to your site, so they can investigate before you ever notice.</dd>
 
                     <dt>Want this changed?</dt>
-                    <dd>The schedule, threshold, and notification routing are all controlled by Clockwork Web Dev. Reach out to them and they can adjust things on their end.</dd>
+                    <dd>The schedule, threshold, and notification routing are all controlled by Clockwork Web Dev. <a href="https://clockworkwd.com/support/" target="_blank" rel="noopener">Reach out to them</a> and they can adjust things on their end.</dd>
                 </dl>
             </div>
         </div>
