@@ -2,6 +2,13 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.22.1 — 2026-06-16
+
+### Copy + UI polish
+
+- **Admin pages got a consistency pass across Activity, Forms, Performance, Security, Traffic, and Uptime.** Anton's `feature/normalize-action-labels` branch normalized link labels, button copy, empty-state phrasing, and inter-section spacing so the six client-visible pages read like one product instead of six independently-evolved screens. `FormsPage` picks up a richer page subtitle that pulls the value-prop ("we submit it like a real visitor would, verify the email actually leaves your server, alert immediately when a form silently fails") into the header rather than burying it in the off-plan banner — works on care-plan AND off-plan since the framing is "what this feature does," not "what you'd unlock." `SecurityPage` saw the deepest revision (47 insertions / 13 deletions): tightened the malware-scan + Sucuri SiteCheck + core-checksums card copy, fixed link affordances, evened out vertical rhythm against the other admin pages. `PerformancePage` and `TrafficPage` got mirror treatments at smaller scale. `ActivityPage` actually went down 5 net lines — refactor cleanup, not a behavior change.
+- **No REST routes touched, no capabilities advertised, no schema migrations.** Purely client-facing presentation.
+
 ## 1.22.0 — 2026-06-15
 
 ### Features
