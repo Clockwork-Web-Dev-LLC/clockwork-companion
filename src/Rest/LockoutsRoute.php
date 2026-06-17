@@ -83,98 +83,144 @@ class LockoutsRoute
 
     private function unlockIp(string $ip): WP_REST_Response
     {
-        global $wpdb;
-
-        $tableName = $wpdb->prefix . 'limit_login_lockouts';
-
-        $existsSql = $wpdb->prepare('SHOW TABLES LIKE %s', $tableName);
-        if ($wpdb->get_var($existsSql) === $tableName) {
-            $wpdb->delete($tableName, ['ip' => $ip], ['%s']);
-        }
-
-        $lockouts = (array) get_option('limit_login_lockouts', []);
-        $wasLocked = isset($lockouts[$ip]);
-        unset($lockouts[$ip]);
-        update_option('limit_login_lockouts', $lockouts);
-
-        foreach (['limit_login_retries', 'limit_login_retries_valid'] as $opt) {
-            $data = (array) get_option($opt, []);
-            unset($data[$ip]);
-            update_option($opt, $data);
-        }
-
-        $log = (array) get_option('limit_login_logged', []);
+        $wasLocked = false;
         $unlockedUsernames = [];
-        if (isset($log[$ip])) {
-            foreach ($log[$ip] as $username => &$entry) {
-                if (! is_array($entry)) {
-                    $entry = ['counter' => $entry];
-                }
-                $entry['unlocked'] = true;
-                $unlockedUsernames[] = $username;
+
+        foreach ($this->siteIds() as $siteId) {
+            $this->maybeSwitchBlog($siteId);
+
+            global $wpdb;
+            $tableName = $wpdb->prefix . 'limit_login_lockouts';
+
+            $existsSql = $wpdb->prepare('SHOW TABLES LIKE %s', $tableName);
+            if ($wpdb->get_var($existsSql) === $tableName) {
+                $wpdb->delete($tableName, ['ip' => $ip], ['%s']);
             }
-            unset($entry);
-            update_option('limit_login_logged', $log);
+
+            $lockouts = (array) get_option('limit_login_lockouts', []);
+            if (isset($lockouts[$ip])) {
+                $wasLocked = true;
+            }
+            unset($lockouts[$ip]);
+            update_option('limit_login_lockouts', $lockouts);
+
+            foreach (['limit_login_retries', 'limit_login_retries_valid'] as $opt) {
+                $data = (array) get_option($opt, []);
+                unset($data[$ip]);
+                update_option($opt, $data);
+            }
+
+            $log = (array) get_option('limit_login_logged', []);
+            if (isset($log[$ip])) {
+                foreach ($log[$ip] as $username => &$entry) {
+                    if (! is_array($entry)) {
+                        $entry = ['counter' => $entry];
+                    }
+                    $entry['unlocked'] = true;
+                    $unlockedUsernames[] = $username;
+                }
+                unset($entry);
+                update_option('limit_login_logged', $log);
+            }
+
+            $this->maybeRestoreBlog($siteId);
         }
 
         return new WP_REST_Response([
             'ok' => true,
             'ip' => $ip,
             'was_locked' => $wasLocked,
-            'unlocked_usernames' => $unlockedUsernames,
+            'unlocked_usernames' => array_values(array_unique($unlockedUsernames)),
         ]);
     }
 
     private function unlockAll(): WP_REST_Response
     {
-        global $wpdb;
-
-        $tableName = $wpdb->prefix . 'limit_login_lockouts';
         $clearedIps = [];
 
-        $existsSql = $wpdb->prepare('SHOW TABLES LIKE %s', $tableName);
-        if ($wpdb->get_var($existsSql) === $tableName) {
-            $ips = $wpdb->get_col("SELECT DISTINCT ip FROM `{$tableName}`");
-            if (is_array($ips)) {
-                foreach ($ips as $tableIp) {
-                    $clearedIps[$tableIp] = true;
+        foreach ($this->siteIds() as $siteId) {
+            $this->maybeSwitchBlog($siteId);
+
+            global $wpdb;
+            $tableName = $wpdb->prefix . 'limit_login_lockouts';
+
+            $existsSql = $wpdb->prepare('SHOW TABLES LIKE %s', $tableName);
+            if ($wpdb->get_var($existsSql) === $tableName) {
+                $ips = $wpdb->get_col("SELECT DISTINCT ip FROM `{$tableName}`");
+                if (is_array($ips)) {
+                    foreach ($ips as $tableIp) {
+                        $clearedIps[$tableIp] = true;
+                    }
                 }
+                $wpdb->query("DELETE FROM `{$tableName}`");
             }
-            $wpdb->query("DELETE FROM `{$tableName}`");
-        }
 
-        $lockouts = (array) get_option('limit_login_lockouts', []);
-        foreach (array_keys($lockouts) as $optIp) {
-            $clearedIps[$optIp] = true;
-        }
-
-        delete_option('limit_login_lockouts');
-        delete_option('limit_login_retries');
-        delete_option('limit_login_retries_valid');
-
-        $log = (array) get_option('limit_login_logged', []);
-        $changed = false;
-        foreach ($log as &$entries) {
-            foreach ($entries as &$entry) {
-                if (! is_array($entry)) {
-                    $entry = ['counter' => $entry];
-                }
-                if (empty($entry['unlocked'])) {
-                    $entry['unlocked'] = true;
-                    $changed = true;
-                }
+            $lockouts = (array) get_option('limit_login_lockouts', []);
+            foreach (array_keys($lockouts) as $optIp) {
+                $clearedIps[$optIp] = true;
             }
-            unset($entry);
-        }
-        unset($entries);
-        if ($changed) {
-            update_option('limit_login_logged', $log);
+
+            delete_option('limit_login_lockouts');
+            delete_option('limit_login_retries');
+            delete_option('limit_login_retries_valid');
+
+            $log = (array) get_option('limit_login_logged', []);
+            $changed = false;
+            foreach ($log as &$entries) {
+                foreach ($entries as &$entry) {
+                    if (! is_array($entry)) {
+                        $entry = ['counter' => $entry];
+                    }
+                    if (empty($entry['unlocked'])) {
+                        $entry['unlocked'] = true;
+                        $changed = true;
+                    }
+                }
+                unset($entry);
+            }
+            unset($entries);
+            if ($changed) {
+                update_option('limit_login_logged', $log);
+            }
+
+            $this->maybeRestoreBlog($siteId);
         }
 
         return new WP_REST_Response([
             'ok' => true,
             'cleared' => count($clearedIps),
         ]);
+    }
+
+    /**
+     * Returns all blog IDs on multisite, or [null] on single-site.
+     * Null signals "no switch needed" to maybeSwitchBlog/maybeRestoreBlog.
+     *
+     * @return array<int, int|null>
+     */
+    private function siteIds(): array
+    {
+        if (! is_multisite()) {
+            return [null];
+        }
+
+        $ids = get_sites(['fields' => 'ids', 'number' => 0]);
+
+        return array_map('intval', is_array($ids) ? $ids : []);
+    }
+
+    private function maybeSwitchBlog(?int $siteId): void
+    {
+        if ($siteId !== null) {
+            switch_to_blog($siteId);
+        }
+    }
+
+    private function maybeRestoreBlog(?int $siteId): void
+    {
+        if ($siteId !== null) {
+            restore_current_blog();
+        }
     }
 
     /**
