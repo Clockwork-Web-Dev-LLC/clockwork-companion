@@ -205,11 +205,23 @@ class LockoutsRoute
         }
 
         // LLAR "Network/Site Wide" mode stores lockouts in wp_sitemeta rather
-        // than per-blog options. Clear those too.
+        // than per-blog options. Read directly from the DB to bypass the WP
+        // object cache (which can serve a stale empty value after the
+        // switch_to_blog loop), then delete via the API so WP also primes its
+        // cache correctly for any subsequent reads in this request.
         if (is_multisite()) {
-            $netLockouts = (array) get_site_option('limit_login_lockouts', []);
-            foreach (array_keys($netLockouts) as $netIp) {
-                $clearedIps[$netIp] = true;
+            global $wpdb;
+            $raw = $wpdb->get_var($wpdb->prepare(
+                "SELECT meta_value FROM {$wpdb->sitemeta} WHERE site_id = %d AND meta_key = 'limit_login_lockouts' LIMIT 1",
+                get_current_network_id()
+            ));
+            if ($raw) {
+                $netLockouts = @unserialize($raw, ['allowed_classes' => false]);
+                if (is_array($netLockouts)) {
+                    foreach (array_keys($netLockouts) as $netIp) {
+                        $clearedIps[$netIp] = true;
+                    }
+                }
             }
             delete_site_option('limit_login_lockouts');
             delete_site_option('limit_login_retries');
