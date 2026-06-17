@@ -126,6 +126,24 @@ class LockoutsRoute
             $this->maybeRestoreBlog($siteId);
         }
 
+        // LLAR "Network/Site Wide" mode stores lockouts in wp_sitemeta rather
+        // than per-blog options. Clear those too so a network-level lockout
+        // doesn't survive a per-site sweep.
+        if (is_multisite()) {
+            $netLockouts = (array) get_site_option('limit_login_lockouts', []);
+            if (isset($netLockouts[$ip])) {
+                $wasLocked = true;
+            }
+            unset($netLockouts[$ip]);
+            update_site_option('limit_login_lockouts', $netLockouts);
+
+            foreach (['limit_login_retries', 'limit_login_retries_valid'] as $opt) {
+                $data = (array) get_site_option($opt, []);
+                unset($data[$ip]);
+                update_site_option($opt, $data);
+            }
+        }
+
         return new WP_REST_Response([
             'ok' => true,
             'ip' => $ip,
@@ -184,6 +202,18 @@ class LockoutsRoute
             }
 
             $this->maybeRestoreBlog($siteId);
+        }
+
+        // LLAR "Network/Site Wide" mode stores lockouts in wp_sitemeta rather
+        // than per-blog options. Clear those too.
+        if (is_multisite()) {
+            $netLockouts = (array) get_site_option('limit_login_lockouts', []);
+            foreach (array_keys($netLockouts) as $netIp) {
+                $clearedIps[$netIp] = true;
+            }
+            delete_site_option('limit_login_lockouts');
+            delete_site_option('limit_login_retries');
+            delete_site_option('limit_login_retries_valid');
         }
 
         return new WP_REST_Response([
