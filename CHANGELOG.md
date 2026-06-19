@@ -2,6 +2,15 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.22.2 — 2026-06-19
+
+### Fix
+
+- **Multisite network-active plugins no longer silently deactivate during plugin upgrades.** The 1.21.3 post-update-verify covered single-site `wp_options.active_plugins`, but on multisite a network-activated plugin (Beaver Builder on a multisite-built design, WPMU DEV plugins, MainWP, etc.) lives in `wp_sitemeta.active_sitewide_plugins` — invisible to `get_option('active_plugins')`. When WordPress's filesystem-swap step during a plugin upgrade temporarily deactivated the network-active plugin, the verifier didn't know it was supposed to be active and never re-activated it. Caught after a client site lost Beaver Builder during an unrelated `bb-theme-builder` upgrade (same shape as another client site a month prior). Three changes:
+  - `PluginsRoute` now reads `get_site_option('active_sitewide_plugins')` on multisite and merges those slugs into the `active=true` set in the snapshot. Each plugin row gets a new `network_active` boolean field so downstream code can distinguish per-site vs network activation. Single-site installs always get `network_active=false`.
+  - `PostUpdateVerifyRoute` accepts a new `network_active_plugins` array in the request body and runs a parallel verify pass against `active_sitewide_plugins`, re-activating any missing slugs via `activate_plugin($slug, '', true)` (the `$network_wide=true` branch, which writes back to `active_sitewide_plugins`). Emits `network_plugin_reactivated` / `network_plugin_reactivate_failed` repair types so action logs distinguish the two scopes.
+  - On the Clockwork side, `AbstractRunUpdate::captureStateBefore` splits the snapshot's active plugins into per-site and network buckets, and `ClockworkCompanionClient::verifyAndRepair` sends both lists. Backward-compatible: pre-1.22.2 Companions ignore the new key; pre-fix snapshots (no `network_active` field) populate an empty list, preserving the pre-fix behavior on those sites until the snapshot refreshes.
+
 ## 1.22.1 — 2026-06-16
 
 ### Copy + UI polish
