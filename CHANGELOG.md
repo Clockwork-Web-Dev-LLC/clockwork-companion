@@ -2,6 +2,18 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.23.0 — 2026-06-22
+
+### Added
+
+- **Bulk import on the Unlock Manager admin page.** Paste the Markdown table from the fleet secrets snapshot (the `| Site | Server | Companion secret |` format) and the page parses domains + 64-char hex secrets in a single submit. Existing entries with a changed secret are updated in place; invalid rows are counted and skipped without aborting the import. Reports added / updated / skipped counts on success. Replaces the per-site one-at-a-time entry flow when bootstrapping a new operator's hub install.
+
+### Fix
+
+- **LLAR unlock now works across every subsite on multisite.** `unlockIp` and `unlockAll` previously only touched the main blog's `limit_login_*` options, leaving locked-out IPs stuck on subsites. The endpoints now iterate every blog via `switch_to_blog()` so per-site option storage is cleared everywhere. Single-site installs are unaffected — they iterate exactly one blog.
+- **LLAR "Network/Site Wide" mode lockouts are also cleared.** When LLAR is configured to store lockouts via `update_site_option()` into `wp_sitemeta` (the network-mode storage path), the previous per-blog sweep missed them entirely and the IP stayed locked out network-wide. Post-loop sweep now clears `limit_login_lockouts` / `limit_login_retries` / `limit_login_retries_valid` from `wp_sitemeta` too.
+- **Cleared-count on multisite no longer under-reports.** `get_site_option()` could return a stale empty value from the WP object cache after the `switch_to_blog()` loop, making the cleared-count display "0" even when a network-level lockout was successfully removed. Query `$wpdb->sitemeta` directly before the delete so the count reflects what's actually in the DB.
+
 ## 1.22.2 — 2026-06-19
 
 ### Fix
