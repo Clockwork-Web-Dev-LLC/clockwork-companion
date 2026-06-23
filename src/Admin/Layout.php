@@ -54,7 +54,10 @@ class Layout
                     <img src="<?php echo esc_url($logoUrl); ?>" alt="Clockwork" />
                     <span class="clockwork-admin__brand-text">Companion</span>
                 </div>
-                <span class="clockwork-admin__version">v<?php echo esc_html(CLOCKWORK_COMPANION_VERSION); ?></span>
+                <div style="display:flex;align-items:center;gap:12px;">
+                    <button type="button" class="cwk-support-trigger cwk-header-support-btn">Get Support</button>
+                    <span class="clockwork-admin__version">v<?php echo esc_html(CLOCKWORK_COMPANION_VERSION); ?></span>
+                </div>
             </header>
 
             <nav class="clockwork-admin__tabs">
@@ -173,9 +176,14 @@ class Layout
                 align-items: center;
             }
             .clockwork-pagination__nav .button {
-                padding: 2px 10px;
+                display: inline-flex;
+                align-items: center;
+                padding: 0 10px;
                 font-size: 12px;
-                line-height: 1.7;
+                height: 26px;
+                min-height: 0;
+                line-height: 1;
+                box-sizing: border-box;
             }
             .clockwork-pagination__nav .button.disabled {
                 opacity: 0.4;

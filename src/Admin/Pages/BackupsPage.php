@@ -177,16 +177,24 @@ class BackupsPage
                     <?php endif; ?>
                 </div>
             </div>
+            <div class="clockwork-card__body" style="padding-bottom: 0;">
+                <?php if ($onCarePlan) : ?>
+                    <div class="clockwork-notice clockwork-notice--ok">
+                        Your care plan includes 90 days of backup history.
+                    </div>
+                <?php else : ?>
+                    <div class="clockwork-notice">
+                        Your hosting plan includes 30 days of backup history.
+                        <button type="button" class="cwk-support-trigger cwk-link-btn">Talk to Clockwork Web Dev</button> about a care plan to extend retention to 90 days.
+                    </div>
+                <?php endif; ?>
+            </div>
             <div class="clockwork-card__body clockwork-card__body--tight">
                 <?php if ($totalRuns === 0) : ?>
                     <div style="padding: 20px;">
                         <div class="clockwork-notice clockwork-notice--muted">
                             Backup history hasn't been indexed yet. Your backups are still running on Clockwork Web Dev's schedule —
                             this view will populate within 24 hours of Clockwork Web Dev's next sync. If you don't see runs after that, contact Clockwork Web Dev.
-                            <?php if (! $onCarePlan) : ?>
-                                <br><br>
-                                <em>Hosting tier keeps the last 30 days of off-site copies; care plan extends that to 90 days with monthly retention reports.</em>
-                            <?php endif; ?>
                         </div>
                     </div>
                 <?php else : ?>

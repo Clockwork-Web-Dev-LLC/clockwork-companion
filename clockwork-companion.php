@@ -19,6 +19,14 @@ define('CLOCKWORK_COMPANION_VERSION', '1.22.0');
 define('CLOCKWORK_COMPANION_DIR', __DIR__ . '/clockwork-companion');
 define('CLOCKWORK_COMPANION_NAMESPACE', 'clockwork/v1');
 
+// Support form — endpoint for the GF form on the Clockwork site.
+// To enable Basic auth (WP Application Password), also define:
+//   CLOCKWORK_SUPPORT_GF_USER  — WordPress username on clockworkwp.com
+//   CLOCKWORK_SUPPORT_GF_PASS  — Application Password generated for that user
+if (! defined('CLOCKWORK_SUPPORT_SITE_URL')) {
+    define('CLOCKWORK_SUPPORT_SITE_URL', 'https://www.clockworkwp.com');
+}
+
 spl_autoload_register(function (string $class): void {
     $prefix = 'ClockworkCompanion\\';
     if (strncmp($class, $prefix, strlen($prefix)) !== 0) {
