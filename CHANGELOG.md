@@ -2,6 +2,34 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.23.0 — 2026-06-22
+
+### Added
+
+- **Bulk import on the Unlock Manager admin page.** Paste the Markdown table from the fleet secrets snapshot (the `| Site | Server | Companion secret |` format) and the page parses domains + 64-char hex secrets in a single submit. Existing entries with a changed secret are updated in place; invalid rows are counted and skipped without aborting the import. Reports added / updated / skipped counts on success. Replaces the per-site one-at-a-time entry flow when bootstrapping a new operator's hub install.
+
+### Fix
+
+- **LLAR unlock now works across every subsite on multisite.** `unlockIp` and `unlockAll` previously only touched the main blog's `limit_login_*` options, leaving locked-out IPs stuck on subsites. The endpoints now iterate every blog via `switch_to_blog()` so per-site option storage is cleared everywhere. Single-site installs are unaffected — they iterate exactly one blog.
+- **LLAR "Network/Site Wide" mode lockouts are also cleared.** When LLAR is configured to store lockouts via `update_site_option()` into `wp_sitemeta` (the network-mode storage path), the previous per-blog sweep missed them entirely and the IP stayed locked out network-wide. Post-loop sweep now clears `limit_login_lockouts` / `limit_login_retries` / `limit_login_retries_valid` from `wp_sitemeta` too.
+- **Cleared-count on multisite no longer under-reports.** `get_site_option()` could return a stale empty value from the WP object cache after the `switch_to_blog()` loop, making the cleared-count display "0" even when a network-level lockout was successfully removed. Query `$wpdb->sitemeta` directly before the delete so the count reflects what's actually in the DB.
+
+## 1.22.2 — 2026-06-19
+
+### Fix
+
+- **Multisite network-active plugins no longer silently deactivate during plugin upgrades.** The 1.21.3 post-update-verify covered single-site `wp_options.active_plugins`, but on multisite a network-activated plugin (Beaver Builder on a multisite-built design, WPMU DEV plugins, MainWP, etc.) lives in `wp_sitemeta.active_sitewide_plugins` — invisible to `get_option('active_plugins')`. When WordPress's filesystem-swap step during a plugin upgrade temporarily deactivated the network-active plugin, the verifier didn't know it was supposed to be active and never re-activated it. Caught after a client site lost Beaver Builder during an unrelated `bb-theme-builder` upgrade (same shape as another client site a month prior). Three changes:
+  - `PluginsRoute` now reads `get_site_option('active_sitewide_plugins')` on multisite and merges those slugs into the `active=true` set in the snapshot. Each plugin row gets a new `network_active` boolean field so downstream code can distinguish per-site vs network activation. Single-site installs always get `network_active=false`.
+  - `PostUpdateVerifyRoute` accepts a new `network_active_plugins` array in the request body and runs a parallel verify pass against `active_sitewide_plugins`, re-activating any missing slugs via `activate_plugin($slug, '', true)` (the `$network_wide=true` branch, which writes back to `active_sitewide_plugins`). Emits `network_plugin_reactivated` / `network_plugin_reactivate_failed` repair types so action logs distinguish the two scopes.
+  - On the Clockwork side, `AbstractRunUpdate::captureStateBefore` splits the snapshot's active plugins into per-site and network buckets, and `ClockworkCompanionClient::verifyAndRepair` sends both lists. Backward-compatible: pre-1.22.2 Companions ignore the new key; pre-fix snapshots (no `network_active` field) populate an empty list, preserving the pre-fix behavior on those sites until the snapshot refreshes.
+
+## 1.22.1 — 2026-06-16
+
+### Copy + UI polish
+
+- **Admin pages got a consistency pass across Activity, Forms, Performance, Security, Traffic, and Uptime.** Anton's `feature/normalize-action-labels` branch normalized link labels, button copy, empty-state phrasing, and inter-section spacing so the six client-visible pages read like one product instead of six independently-evolved screens. `FormsPage` picks up a richer page subtitle that pulls the value-prop ("we submit it like a real visitor would, verify the email actually leaves your server, alert immediately when a form silently fails") into the header rather than burying it in the off-plan banner — works on care-plan AND off-plan since the framing is "what this feature does," not "what you'd unlock." `SecurityPage` saw the deepest revision (47 insertions / 13 deletions): tightened the malware-scan + Sucuri SiteCheck + core-checksums card copy, fixed link affordances, evened out vertical rhythm against the other admin pages. `PerformancePage` and `TrafficPage` got mirror treatments at smaller scale. `ActivityPage` actually went down 5 net lines — refactor cleanup, not a behavior change.
+- **No REST routes touched, no capabilities advertised, no schema migrations.** Purely client-facing presentation.
+
 ## 1.22.0 — 2026-06-15
 
 ### Features

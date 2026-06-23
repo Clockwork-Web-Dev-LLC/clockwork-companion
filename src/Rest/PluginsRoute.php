@@ -78,6 +78,20 @@ class PluginsRoute
 
         $all = get_plugins();
         $activePaths = (array) get_option('active_plugins', []);
+
+        // Multisite: network-active plugins live in `wp_sitemeta.active_sitewide_plugins`
+        // (a slug => activated_at map), NOT in the main blog's `active_plugins` option.
+        // Without merging this, network-activated plugins (Beaver Builder on multisite
+        // designs, etc.) show as `active=false` here — which (a) misleads operators
+        // looking at the snapshot, and (b) means PostUpdateVerifyRoute never knows to
+        // re-activate them when WordPress's filesystem-swap window deactivates them
+        // during a plugin upgrade. Caught after a client site lost Beaver Builder
+        // during an unrelated bb-theme-builder upgrade in June 2026.
+        $networkActiveMap = function_exists('is_multisite') && is_multisite()
+            ? (array) get_site_option('active_sitewide_plugins', [])
+            : [];
+        $networkActivePaths = array_keys($networkActiveMap);
+
         $updateTransient = get_site_transient('update_plugins');
         $autoUpdates = (array) get_site_option('auto_update_plugins', []);
 
@@ -97,7 +111,12 @@ class PluginsRoute
         $updateCount = 0;
 
         foreach ($all as $slug => $meta) {
-            $isActive = in_array($slug, $activePaths, true);
+            $isNetworkActive = in_array($slug, $networkActivePaths, true);
+            $isSiteActive = in_array($slug, $activePaths, true);
+            // A network-active plugin counts as active for the purposes of "is
+            // this plugin actually running on the site?" — same effective state.
+            $isActive = $isSiteActive || $isNetworkActive;
+
             $hasUpdate = isset($updates[$slug]);
             $newVersion = $hasUpdate && isset($updates[$slug]->new_version)
                 ? (string) $updates[$slug]->new_version
@@ -115,6 +134,12 @@ class PluginsRoute
                 'name' => (string) ($meta['Name'] ?? $slug),
                 'version' => (string) ($meta['Version'] ?? ''),
                 'active' => $isActive,
+                // New field (Companion 1.22.2+): distinguishes per-site activation
+                // from network-wide activation on multisite. PostUpdateVerifyRoute
+                // uses this to know whether to call activate_plugin() per-site or
+                // with $network_wide=true after an upgrade silently deactivates a
+                // plugin. Always present (false on single-site installs).
+                'network_active' => $isNetworkActive,
                 'update_available' => $hasUpdate,
                 'new_version' => $newVersion,
                 'auto_update' => in_array($slug, $autoUpdates, true),

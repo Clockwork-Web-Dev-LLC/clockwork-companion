@@ -466,8 +466,8 @@ class SecurityPage
             <div class="clockwork-card" style="border-left: 4px solid #f59e0b;">
                 <div class="clockwork-card__body">
                     <strong>Hosting includes daily blacklist checks. A care plan adds the deeper scans.</strong>
-                    Clockwork Web Dev checks every day to make sure your domain isn't flagged on Spamhaus, URLHaus,
-                    or Google Safe Browsing — that one's already running. With a care plan, they also run
+                    The <strong>domain blacklist check</strong> is already running — Clockwork Web Dev checks every day to make sure
+                    your domain isn't flagged on Spamhaus, URLHaus, or Google Safe Browsing. With a care plan, they also run
                     <strong>weekly Sucuri malware/JavaScript-injection scans</strong> and
                     <strong>daily WordPress core file integrity verification</strong> over SSH.
                     Talk to Clockwork Web Dev about adding a care plan.
@@ -523,8 +523,8 @@ class SecurityPage
                     <input type="hidden" name="action" value="<?php echo esc_attr(RunSecurityScanAction::ACTION_HOOK); ?>">
                     <input type="hidden" name="scan_type" value="<?php echo esc_attr($card['scan_type']); ?>">
                     <?php wp_nonce_field(RunSecurityScanAction::NONCE_ACTION); ?>
-                    <button type="submit" class="button">
-                        <span class="dashicons dashicons-update" style="vertical-align: middle; margin-top: -2px;"></span>
+                    <button type="submit" class="button clockwork-scan-card__run-btn">
+                        <span class="dashicons dashicons-update"></span>
                         Run scan now
                     </button>
                 </form>
@@ -588,6 +588,13 @@ class SecurityPage
                     }
                     ?>
                 </dl>
+                <?php if ($pill['variant'] === 'red') : ?>
+                    <div class="clockwork-scan-card__alert-note">
+                        <span class="dashicons dashicons-warning" aria-hidden="true"></span>
+                        <strong>Clockwork Web Dev has been alerted to these findings and is investigating.</strong>
+                        <a href="https://clockworkwd.com/support/" target="_blank" rel="noopener">Reach out</a> if you have questions or haven't heard back.
+                    </div>
+                <?php endif; ?>
             <?php endif; ?>
         </div>
         <?php
@@ -727,6 +734,16 @@ class SecurityPage
         .clockwork-scan-card__run {
             margin: 0;
         }
+        .clockwork-scan-card__run-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .clockwork-scan-card__run-btn .dashicons {
+            width: 16px;
+            height: 16px;
+            font-size: 16px;
+        }
         .clockwork-scan-card__summary {
             margin: 0;
             color: #111827;
@@ -744,6 +761,28 @@ class SecurityPage
             border-radius: 6px;
             font-size: 12px;
             color: #4b5563;
+        }
+        .clockwork-scan-card__alert-note {
+            margin: 0;
+            padding: 10px 12px;
+            background: #fef3c7;
+            border: 1px solid #fde68a;
+            border-radius: 6px;
+            font-size: 13px;
+            color: #92400e;
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .clockwork-scan-card__alert-note .dashicons {
+            flex-shrink: 0;
+            font-size: 16px;
+            width: 16px;
+            height: 16px;
+        }
+        .clockwork-scan-card__alert-note a {
+            color: #92400e;
         }
         .clockwork-scan-card__stats {
             display: grid;

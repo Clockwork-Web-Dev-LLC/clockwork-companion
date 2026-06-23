@@ -25,16 +25,23 @@ use WP_REST_Response;
  *
  * Request body:
  *   {
- *     "active_plugins": ["plugin-a/plugin-a.php", "plugin-b/plugin-b.php"],
- *     "stylesheet": "my-theme",
- *     "template": "my-parent-theme"
+ *     "active_plugins":         ["plugin-a/plugin-a.php", "plugin-b/plugin-b.php"],
+ *     "network_active_plugins": ["beaver/beaver.php"],
+ *     "stylesheet":             "my-theme",
+ *     "template":               "my-parent-theme"
  *   }
+ *
+ * `network_active_plugins` (1.22.2+) is the multisite counterpart of
+ * `active_plugins`. They're disjoint sets — a plugin is either per-site
+ * active OR network active. The verifier checks each set against the
+ * relevant WP store and re-activates with the matching scope.
  *
  * Response (200):
  *   {
  *     "ok": true,
  *     "repairs": [
  *       { "type": "plugin_reactivated", "slug": "plugin-a/plugin-a.php", "detail": "..." },
+ *       { "type": "network_plugin_reactivated", "slug": "beaver/beaver.php", "detail": "..." },
  *       { "type": "theme_restored", "slug": "my-theme", "detail": "was: twentytwentyfive" }
  *     ]
  *   }
@@ -62,12 +69,22 @@ class PostUpdateVerifyRoute
         $expectedPlugins    = isset($body['active_plugins']) && is_array($body['active_plugins'])
             ? array_values(array_filter($body['active_plugins'], 'is_string'))
             : [];
+        // New in 1.22.2: list of slugs that were NETWORK-active on multisite
+        // pre-update. These need a different re-activation path (network-wide,
+        // writing to wp_sitemeta.active_sitewide_plugins) and a different
+        // "currently active?" check (get_site_option, not get_option). Sites
+        // not on multisite send an empty list; old Clockwork (pre-1.22.2 fix)
+        // sends no key at all. Either way, default to empty.
+        $expectedNetworkPlugins = isset($body['network_active_plugins']) && is_array($body['network_active_plugins'])
+            ? array_values(array_filter($body['network_active_plugins'], 'is_string'))
+            : [];
         $expectedStylesheet = isset($body['stylesheet']) ? (string) $body['stylesheet'] : '';
         $expectedTemplate   = isset($body['template']) ? (string) $body['template'] : $expectedStylesheet;
 
         $repairs = [];
 
         $repairs = array_merge($repairs, $this->verifyPlugins($expectedPlugins));
+        $repairs = array_merge($repairs, $this->verifyNetworkPlugins($expectedNetworkPlugins));
         $repairs = array_merge($repairs, $this->verifyTheme($expectedStylesheet, $expectedTemplate));
 
         return new WP_REST_Response([
@@ -118,6 +135,71 @@ class PostUpdateVerifyRoute
                     'type'   => 'plugin_reactivated',
                     'slug'   => $slug,
                     'detail' => 'was inactive after update; re-activated successfully',
+                ];
+            }
+        }
+
+        return $repairs;
+    }
+
+    /**
+     * Multisite network-active companion to verifyPlugins(). The per-site
+     * verifier above misses network-active plugins (Beaver Builder on a
+     * multisite-built design, MainWP, etc.) because their activation state
+     * lives in `wp_sitemeta.active_sitewide_plugins`, not the main blog's
+     * `active_plugins` option. Result before this method existed: WordPress's
+     * filesystem-swap step during ANY plugin upgrade can quietly deactivate
+     * network-active plugins, verifyPlugins() doesn't see them, the site
+     * comes out the other side missing key functionality.
+     *
+     * Re-activates via `activate_plugin($slug, '', true)` — the third
+     * argument is `$network_wide`, which makes WordPress write back to
+     * `active_sitewide_plugins` instead of the per-site option.
+     *
+     * No-ops on single-site installs (is_multisite() false) and when no
+     * network plugins were passed.
+     *
+     * @param  list<string>  $expectedSlugs
+     * @return list<array{type: string, slug: string, detail: string}>
+     */
+    private function verifyNetworkPlugins(array $expectedSlugs): array
+    {
+        if ($expectedSlugs === [] || ! function_exists('is_multisite') || ! is_multisite()) {
+            return [];
+        }
+
+        require_once ABSPATH . 'wp-admin/includes/plugin.php';
+
+        $currentSitewide = (array) get_site_option('active_sitewide_plugins', []);
+        $currentNetworkActive = array_keys($currentSitewide);
+        $installed = array_keys(get_plugins());
+        $repairs   = [];
+
+        foreach ($expectedSlugs as $slug) {
+            if (in_array($slug, $currentNetworkActive, true)) {
+                continue; // still network-active — nothing to do
+            }
+
+            if (! in_array($slug, $installed, true)) {
+                continue; // no longer installed — skip
+            }
+
+            // $network_wide=true is the third argument. Writes to
+            // active_sitewide_plugins rather than the main blog's
+            // active_plugins.
+            $result = activate_plugin($slug, '', true, true);
+
+            if (is_wp_error($result)) {
+                $repairs[] = [
+                    'type'   => 'network_plugin_reactivate_failed',
+                    'slug'   => $slug,
+                    'detail' => $result->get_error_message(),
+                ];
+            } else {
+                $repairs[] = [
+                    'type'   => 'network_plugin_reactivated',
+                    'slug'   => $slug,
+                    'detail' => 'was inactive network-wide after update; re-activated across the network',
                 ];
             }
         }

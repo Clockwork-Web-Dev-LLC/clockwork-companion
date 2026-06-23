@@ -32,12 +32,16 @@ class UnlockPage
 
     public static function renderBody(): void
     {
+        $importResult = null;
+
         if (isset($_POST['cw_unlock_action']) && check_admin_referer(self::NONCE_ACTION)) {
             $act = sanitize_text_field((string) $_POST['cw_unlock_action']);
             if ($act === 'add') {
                 self::handleAdd();
             } elseif ($act === 'remove') {
                 self::handleRemove();
+            } elseif ($act === 'import') {
+                $importResult = self::handleImport();
             }
         }
 
@@ -49,7 +53,7 @@ class UnlockPage
         );
 
         self::renderUnlockCard($sites);
-        self::renderSitesCard($sites);
+        self::renderSitesCard($sites, $importResult);
         self::renderInlineStyles();
         self::renderScript();
     }
@@ -144,6 +148,68 @@ class UnlockPage
         update_option(self::OPTION_KEY, $sites);
     }
 
+    /**
+     * @return array{added: int, updated: int, skipped: int}
+     */
+    private static function handleImport(): array
+    {
+        $raw = isset($_POST['import_data'])
+            ? sanitize_textarea_field(wp_unslash((string) $_POST['import_data']))
+            : '';
+
+        $added   = 0;
+        $updated = 0;
+        $skipped = 0;
+
+        $sites   = self::getSites();
+        $siteMap = [];
+        foreach ($sites as $i => $site) {
+            $siteMap[$site['domain']] = $i;
+        }
+
+        foreach (preg_split('/\r?\n/', $raw) as $line) {
+            $line = trim($line);
+            if ($line === '' || $line[0] !== '|') {
+                continue;
+            }
+
+            $cols = explode('|', $line);
+            if (count($cols) < 4) {
+                continue;
+            }
+
+            $domain = trim($cols[1]);
+            $secret = trim($cols[3], " \t`");
+
+            // Skip header and separator rows.
+            if ($domain === '' || preg_match('/^[-: ]+$/', $domain) || strtolower($domain) === 'site') {
+                continue;
+            }
+
+            $domain = preg_replace('#^https?://#i', '', rtrim($domain, '/'));
+
+            if ($domain === '' || ! preg_match('/^[a-f0-9]{64}$/', $secret)) {
+                $skipped++;
+                continue;
+            }
+
+            if (isset($siteMap[$domain])) {
+                if ($sites[$siteMap[$domain]]['secret'] !== $secret) {
+                    $sites[$siteMap[$domain]]['secret'] = $secret;
+                    $updated++;
+                }
+            } else {
+                $siteMap[$domain] = count($sites);
+                $sites[]          = ['domain' => $domain, 'secret' => $secret];
+                $added++;
+            }
+        }
+
+        update_option(self::OPTION_KEY, array_values($sites));
+
+        return ['added' => $added, 'updated' => $updated, 'skipped' => $skipped];
+    }
+
     private static function handleRemove(): void
     {
         $domain = isset($_POST['domain']) ? sanitize_text_field((string) $_POST['domain']) : '';
@@ -215,8 +281,9 @@ class UnlockPage
 
     /**
      * @param  array<int, array{domain: string, secret: string}>  $sites
+     * @param  array{added: int, updated: int, skipped: int}|null  $importResult
      */
-    private static function renderSitesCard(array $sites): void
+    private static function renderSitesCard(array $sites, ?array $importResult = null): void
     {
         $count = count($sites);
         ?>
@@ -230,6 +297,19 @@ class UnlockPage
                 <?php endif; ?>
             </div>
             <div class="clockwork-card__body">
+
+                <?php if ($importResult !== null) : ?>
+                    <?php
+                    $parts = [];
+                    if ($importResult['added'])   $parts[] = $importResult['added'] . ' added';
+                    if ($importResult['updated'])  $parts[] = $importResult['updated'] . ' updated';
+                    if ($importResult['skipped'])  $parts[] = $importResult['skipped'] . ' skipped (invalid)';
+                    $summary = $parts ? implode(', ', $parts) : 'nothing to import';
+                    ?>
+                    <div class="notice notice-success inline" style="margin: 0 0 16px;">
+                        <p>Import complete: <?php echo esc_html($summary); ?>.</p>
+                    </div>
+                <?php endif; ?>
 
                 <?php if (! empty($sites)) : ?>
                     <table class="clockwork-table" style="margin-bottom: 28px;">
@@ -310,6 +390,30 @@ class UnlockPage
                     </table>
                     <p style="margin-top: 14px;">
                         <button type="submit" class="button">Save site</button>
+                    </p>
+                </form>
+
+                <hr style="margin: 24px 0; border: none; border-top: 1px solid #e5e7eb;">
+
+                <h3 style="margin: 0 0 6px; font-size: 13px; font-weight: 600; color: #111827;">Bulk import</h3>
+                <p style="margin: 0 0 10px; color: #6b7280; font-size: 13px;">
+                    Paste the Markdown table from the fleet snapshot. The <strong>Site</strong> and
+                    <strong>Companion secret</strong> columns are used; the Server column is ignored.
+                    Existing entries are updated when the secret has changed.
+                </p>
+                <form method="post">
+                    <?php wp_nonce_field(self::NONCE_ACTION); ?>
+                    <input type="hidden" name="cw_unlock_action" value="import">
+                    <textarea
+                        name="import_data"
+                        rows="6"
+                        style="width: 100%; font-family: monospace; font-size: 12px; resize: vertical;"
+                        placeholder="| site.com | web01.example.com | `abc123…` |
+| site2.com | web02.example.com | `def456…` |"
+                        spellcheck="false"
+                    ></textarea>
+                    <p style="margin-top: 10px;">
+                        <button type="submit" class="button">Import sites</button>
                     </p>
                 </form>
 

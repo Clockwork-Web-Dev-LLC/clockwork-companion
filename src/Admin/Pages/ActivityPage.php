@@ -204,7 +204,6 @@ class ActivityPage
      */
     private static function renderTable(array $rows): void
     {
-        $labels = self::typeLabels();
         ?>
         <div class="clockwork-card">
             <div class="clockwork-card__body">
@@ -233,7 +232,7 @@ class ActivityPage
                                         <?php echo esc_html($when); ?>
                                     </td>
                                     <td style="white-space: nowrap; font-size: 12px;">
-                                        <?php echo esc_html($labels[$type] ?? $type); ?>
+                                        <?php echo esc_html(self::labelForType($type)); ?>
                                     </td>
                                     <td>
                                         <?php echo esc_html($summary); ?>
@@ -278,14 +277,9 @@ class ActivityPage
         ];
     }
 
-    /**
-     * Singular labels for the per-action detail table rows.
-     *
-     * @return array<string, string>
-     */
-    private static function typeLabels(): array
+    private static function labelForType(string $type): string
     {
-        return [
+        $labels = [
             'plugin_update'           => 'Plugin update',
             'sso_login'               => 'SSO login',
             'companion_install'       => 'Companion install',
@@ -303,6 +297,7 @@ class ActivityPage
             'core_update'             => 'Core update',
             'backup'                  => 'Backup',
         ];
+        return $labels[$type] ?? ucfirst(str_replace('_', ' ', $type));
     }
 
     private static function typeIcon(string $icon): string

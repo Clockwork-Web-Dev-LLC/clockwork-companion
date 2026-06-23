@@ -84,7 +84,7 @@ class UptimePage
     {
         $tabs = [
             'activity' => 'Uptime Activity',
-            'settings' => 'Settings',
+            'settings' => 'About',
         ];
         ?>
         <div class="clockwork-uptime-subtabs">

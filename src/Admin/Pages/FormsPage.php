@@ -46,7 +46,7 @@ class FormsPage
     {
         Layout::pageHeader(
             'Forms',
-            'Monitor your contact forms. Pick which forms to test below — Clockwork Web Dev will run them on a schedule and ping us if one breaks.'
+            'Keep your contact forms working. Clockwork Web Dev periodically submits each monitored form like a real visitor would, verifies the submission email actually leaves your server, and alerts their team immediately if a form starts silently failing.'
         );
 
         $onCarePlan = Repository::latestCarePlanFlag();
@@ -82,8 +82,8 @@ class FormsPage
                 <div class="clockwork-card__body">
                     <strong>Scheduled form testing is part of your care plan.</strong>
                     Clockwork Web Dev runs each form you've subscribed below on a weekly cadence, verifies the
-                    submission email actually leaves your server, and pings us if a form breaks so you don't
-                    hear about it from a frustrated lead first.
+                    submission email actually leaves your server, and alerts their team immediately if a form
+                    breaks — so you don't hear about it from a frustrated lead first.
                 </div>
             </div>
             <?php
