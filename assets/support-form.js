@@ -59,6 +59,8 @@
             success.style.display = 'none';
             if (form) form.style.display = '';
             if (form) form.reset();
+            var intro = modal.querySelector('.cwk-modal-intro');
+            if (intro) intro.style.display = '';
             // Re-prefill after reset
             var data = window.cwkSupport || {};
             prefillIfEmpty('cwk-first-name', data.user && data.user.firstName);
@@ -110,6 +112,8 @@
         .then(function (json) {
             if (json.success) {
                 if (form) form.style.display = 'none';
+                var intro = modal.querySelector('.cwk-modal-intro');
+                if (intro) intro.style.display = 'none';
                 var success = document.getElementById('cwk-form-success');
                 if (success) success.style.display = 'block';
             } else {

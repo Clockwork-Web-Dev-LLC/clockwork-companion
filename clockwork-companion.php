@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Clockwork Companion
  * Description: Companion mu-plugin for the Clockwork monitoring app. Exposes signed REST endpoints under /wp-json/clockwork/v1/ for fleet-wide control of WordPress maintenance tasks (contact-form testing, plugin updates, security scans, etc.).
- * Version: 1.23.0
+ * Version: 1.24.0
  * Author: Clockwork Web Dev, LLC
  * License: Proprietary
  *
@@ -15,14 +15,14 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-define('CLOCKWORK_COMPANION_VERSION', '1.23.0');
+define('CLOCKWORK_COMPANION_VERSION', '1.24.0');
 define('CLOCKWORK_COMPANION_DIR', __DIR__ . '/clockwork-companion');
 define('CLOCKWORK_COMPANION_NAMESPACE', 'clockwork/v1');
 
-// Support form — endpoint for the GF form on the Clockwork site.
-// To enable Basic auth (WP Application Password), also define:
-//   CLOCKWORK_SUPPORT_GF_USER  — WordPress username on clockworkwp.com
-//   CLOCKWORK_SUPPORT_GF_PASS  — Application Password generated for that user
+// Support form — proxies to GF REST API v2 on the Clockwork site.
+// Define these with the keys from clockworkwp.com → Forms → Settings → REST API → Authentication (API version 2):
+//   CLOCKWORK_SUPPORT_GF_KEY    — Consumer Key  (ck_…)
+//   CLOCKWORK_SUPPORT_GF_SECRET — Consumer Secret (cs_…)
 if (! defined('CLOCKWORK_SUPPORT_SITE_URL')) {
     define('CLOCKWORK_SUPPORT_SITE_URL', 'https://www.clockworkwp.com');
 }

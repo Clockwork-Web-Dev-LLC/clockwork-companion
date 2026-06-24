@@ -2,6 +2,17 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.24.0 — 2026-06-24
+
+### Added
+
+- **Support form modal.** A "Get Support" button in the admin header opens a modal that proxies submissions to the Clockwork GF form via the Gravity Forms REST API v2 (Basic Auth with Consumer Key + Secret). The form auto-fills the user's name, email, and site URL. Includes billing-acknowledgement checkbox and optional email-updates opt-in.
+
+### Fix
+
+- **Activity page care-plan banner icon** updated to a styled SVG party-popper matching the Clockwork brand icon set.
+- **Support form intro text** no longer persists in the modal after a successful send; it is hidden on success and restored when the modal reopens.
+
 ## 1.23.0 — 2026-06-22
 
 ### Added

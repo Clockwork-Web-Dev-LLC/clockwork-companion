@@ -26,10 +26,10 @@ namespace ClockworkCompanion\Admin\Support;
  *   input_6_1  = Billing approval checkbox
  *   input_9_1  = Newsletter subscribe checkbox
  *
- * Auth: if CLOCKWORK_SUPPORT_GF_USER and CLOCKWORK_SUPPORT_GF_PASS are defined
- * (WP Application Password created on the CW site) they are sent as HTTP
- * Basic auth. Leave undefined when the GF form allows unauthenticated
- * submissions.
+ * Auth: uses GF REST API v2. Define these constants with the keys from
+ * clockworkwp.com → Forms → Settings → REST API → Authentication (API version 2):
+ *   CLOCKWORK_SUPPORT_GF_KEY    — Consumer Key  (ck_…)
+ *   CLOCKWORK_SUPPORT_GF_SECRET — Consumer Secret (cs_…)
  */
 class SupportForm
 {
@@ -53,7 +53,7 @@ class SupportForm
             'clockwork-support-form',
             plugins_url('assets/support-form.js', CLOCKWORK_COMPANION_DIR . '/clockwork-companion.php'),
             [],
-            CLOCKWORK_COMPANION_VERSION . '-2',
+            CLOCKWORK_COMPANION_VERSION,
             true
         );
 
@@ -147,7 +147,7 @@ class SupportForm
                         <div class="cwk-form-group cwk-form-checkbox">
                             <label class="cwk-checkbox-label">
                                 <input type="checkbox" name="approved" value="1" required>
-                                <span><?php echo esc_html(self::BILLING_NOTICE); ?></span>
+                                <span><?php echo esc_html(self::BILLING_NOTICE); ?> <span class="cwk-required" aria-hidden="true">*</span></span>
                             </label>
                         </div>
 
@@ -230,6 +230,7 @@ class SupportForm
         }
         .cwk-form-checkbox input[type="checkbox"] {
             flex-shrink:0; margin-top:2px; accent-color:#4f46e5; width:14px; height:14px;
+            appearance:checkbox; -webkit-appearance:checkbox;
         }
         .cwk-form-actions { margin-top:18px; }
         .cwk-submit-btn {
@@ -294,33 +295,39 @@ class SupportForm
         }
 
         $body = [
-            'input_1_3' => $firstName,
-            'input_1_6' => $lastName,
-            'input_3'   => $email,
-            'input_2'   => $siteUrl,
-            'input_8'   => $shortDesc,
-            'input_4'   => $longDesc,
-            'input_7'   => 'I am an existing client',
-            'input_6_1' => self::BILLING_NOTICE,
+            'input_1_3'    => $firstName,
+            'input_1_6'    => $lastName,
+            'input_3'      => $email,
+            'input_2'      => $siteUrl,
+            'input_8'      => $shortDesc,
+            'input_4'      => $longDesc,
+            'input_7'      => 'I am an existing client',
+            'input_6_1'    => self::BILLING_NOTICE,
+            'source_page'  => 1,
+            'target_page'  => 0,
+            'field_values' => '',
         ];
         if ($subscribe) {
             $body['input_9_1'] = self::SUBSCRIBE_TEXT;
         }
 
-        $baseUrl     = defined('CLOCKWORK_SUPPORT_SITE_URL') ? (string) CLOCKWORK_SUPPORT_SITE_URL : 'https://www.clockworkwp.com';
-        $endpoint    = rtrim($baseUrl, '/') . '/wp-json/gf/v2/forms/' . self::GF_FORM_ID . '/submissions';
-        $supportUrl  = esc_url(rtrim($baseUrl, '/') . '/support');
+        $baseUrl      = defined('CLOCKWORK_SUPPORT_SITE_URL') ? (string) CLOCKWORK_SUPPORT_SITE_URL : 'https://www.clockworkwp.com';
+        $endpoint     = rtrim($baseUrl, '/') . '/wp-json/gf/v2/forms/' . self::GF_FORM_ID . '/submissions';
+        $supportUrl   = esc_url(rtrim($baseUrl, '/') . '/support');
         $fallbackLink = ' <a href="' . $supportUrl . '" target="_blank" rel="noopener">Open our support page →</a>';
 
-        $headers = ['Accept' => 'application/json'];
-        if (defined('CLOCKWORK_SUPPORT_GF_USER') && defined('CLOCKWORK_SUPPORT_GF_PASS')) {
+        $headers = [
+            'Accept'       => 'application/json',
+            'Content-Type' => 'application/json',
+        ];
+        if (defined('CLOCKWORK_SUPPORT_GF_KEY') && defined('CLOCKWORK_SUPPORT_GF_SECRET')) {
             $headers['Authorization'] = 'Basic ' . base64_encode(
-                CLOCKWORK_SUPPORT_GF_USER . ':' . CLOCKWORK_SUPPORT_GF_PASS
+                CLOCKWORK_SUPPORT_GF_KEY . ':' . CLOCKWORK_SUPPORT_GF_SECRET
             );
         }
 
         $response = wp_remote_post($endpoint, [
-            'body'    => $body,
+            'body'    => wp_json_encode($body),
             'headers' => $headers,
             'timeout' => 20,
         ]);
@@ -336,8 +343,12 @@ class SupportForm
             wp_send_json_success(['message' => "Thanks — we'll get back to you shortly."]);
         }
 
-        if (! empty($responseBody['validation_messages'])) {
+        if (isset($responseBody['is_valid']) && $responseBody['is_valid'] === false) {
             wp_send_json_error(['message' => 'The support form returned a validation error. Please try again.'], 422);
+        }
+
+        if ((int) $code === 401 || (int) $code === 403) {
+            wp_send_json_error(['message' => 'The support system requires authentication. Please contact Clockwork to configure API credentials.'], 500);
         }
 
         wp_send_json_error(['message' => 'Something went wrong (HTTP ' . (int) $code . '). Please try again or' . $fallbackLink], 500);

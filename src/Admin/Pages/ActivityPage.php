@@ -325,13 +325,13 @@ class ActivityPage
 
     private static function confettiIcon(): string
     {
-        return '<svg viewBox="0 0 24 24" fill="currentColor">'
-            . '<rect x="3" y="5" width="3.5" height="5" rx="0.8" transform="rotate(-30 4.75 7.5)"/>'
-            . '<rect x="16.5" y="3.5" width="3.5" height="5" rx="0.8" transform="rotate(25 18.25 6)"/>'
-            . '<rect x="10" y="14.5" width="3.5" height="5" rx="0.8" transform="rotate(-15 11.75 17)"/>'
-            . '<circle cx="18.5" cy="14" r="2"/>'
-            . '<circle cx="5" cy="16.5" r="1.5"/>'
-            . '<circle cx="14" cy="8" r="1.5"/>'
+        return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+            . '<path d="M5.8 11.3 2 22l10.7-3.79"/>'
+            . '<path d="m22 2-7 20-4-9-9-4 20-7"/>'
+            . '<circle cx="4" cy="3" r="1.2" fill="currentColor" stroke="none"/>'
+            . '<circle cx="15" cy="2" r="1.2" fill="currentColor" stroke="none"/>'
+            . '<circle cx="22" cy="8" r="1.2" fill="currentColor" stroke="none"/>'
+            . '<circle cx="22" cy="20" r="1.2" fill="currentColor" stroke="none"/>'
             . '</svg>';
     }
 
