@@ -54,6 +54,8 @@ class SecurityPage
         self::renderFlash();
         self::renderCarePlanBanner($onCarePlan);
 
+        $sucuriWafBlocked = self::isSucuriBlockedByWaf($latestSitecheck, 'sitecheck');
+
         ?>
         <div class="clockwork-security-grid">
             <?php
@@ -72,18 +74,23 @@ class SecurityPage
                 'runnable' => false,
                 'host_unavailable_note' => null,
             ]);
-            self::renderCard([
-                'icon' => 'globe',
-                'title' => 'Sucuri SiteCheck',
-                'subtitle' => 'Remote malware and page-content scan that flags suspicious changes to your homepage.',
-                'cadence' => 'Weekly — Mondays 02:00 UTC',
-                'scan_type' => 'sitecheck',
-                'tier' => 'care-plan',
-                'state' => self::cardState('care-plan', $onCarePlan, true),
-                'latest' => $latestSitecheck,
-                'runnable' => true,
-                'host_unavailable_note' => null,
-            ]);
+            // Sucuri's external scanner is blocked by Cloudflare WAF on proxied
+            // sites (403 on every attempt). Hide the widget entirely when that's
+            // the case — the internal scans cover the same ground more reliably.
+            if (! $sucuriWafBlocked) {
+                self::renderCard([
+                    'icon' => 'globe',
+                    'title' => 'Sucuri SiteCheck',
+                    'subtitle' => 'Remote malware and page-content scan that flags suspicious changes to your homepage.',
+                    'cadence' => 'Weekly — Mondays 02:00 UTC',
+                    'scan_type' => 'sitecheck',
+                    'tier' => 'care-plan',
+                    'state' => self::cardState('care-plan', $onCarePlan, true),
+                    'latest' => $latestSitecheck,
+                    'runnable' => true,
+                    'host_unavailable_note' => null,
+                ]);
+            }
             self::renderCard([
                 'icon' => 'shield',
                 'title' => 'Core file integrity',
