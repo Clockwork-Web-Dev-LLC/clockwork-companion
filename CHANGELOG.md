@@ -2,6 +2,12 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.24.1 — 2026-06-30
+
+### Fix
+
+- **Companion REST endpoints no longer 401 on sites running perfmatters with "Disable REST API" enabled.** The `perfmatters` plugin (a popular performance optimizer) lets site owners disable anonymous REST API access via a `rest_authentication_errors` filter at priority 20. It ships with a hard-coded allowlist (contact-form-7, wordfence, elementor, ws-form, etc.) and exposes the `perfmatters_rest_api_exceptions` filter for additional plugins to register themselves — but Companion wasn't on the list, so Clockwork's HMAC-signed calls were being rejected at WordPress's REST auth layer *before* Companion's per-route permission_callback ran. Symptom: SSO mint fails with "rest_authentication_error", snapshot refreshes silently fail (companion_last_seen_at drifts), every other endpoint 401s. Caught on a client site 2026-06-30 — site had been quietly broken since perfmatters' REST-disable was toggled on. New `ClockworkCompanion\Compat\PerfmattersCompat` class registers via `Plugin::boot()` and unconditionally adds `clockwork` to the `perfmatters_rest_api_exceptions` allowlist. No-op on sites without perfmatters installed.
+
 ## 1.24.0 — 2026-06-24
 
 ### Added

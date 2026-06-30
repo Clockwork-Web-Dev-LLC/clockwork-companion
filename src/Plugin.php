@@ -103,6 +103,12 @@ class Plugin
         AuthAuditSchema::ensureInstalled();
         ResourceSchema::ensureInstalled();
 
+        // Third-party plugin compatibility shims — run before route registration
+        // so any filters they install are live by the time WordPress's REST
+        // auth layer runs. Each shim is unconditional + no-ops cleanly on
+        // sites that don't have the targeted plugin active.
+        \ClockworkCompanion\Compat\PerfmattersCompat::register();
+
         // Register the per-request CPU/memory sampler IMMEDIATELY (not on a
         // hook). The sampler snapshots getrusage() at construction time and
         // hooks shutdown internally, so the earlier this runs, the more of
