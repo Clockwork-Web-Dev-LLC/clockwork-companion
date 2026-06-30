@@ -2,6 +2,17 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.25.0 — 2026-06-30
+
+### Added
+
+- **Dashboard widget stats grid.** The wp-admin "Clockwork Web Dev" dashboard widget now shows a 6-tile grid — uptime, security, backups, performance, traffic, and tasks done this month — instead of just the support button, so a glance at wp-admin shows the site is actively monitored. Each tile links to its full Tools → Clockwork page. Added `summary()` to `UptimePage`, `SecurityPage`, `BackupsPage`, `PerformancePage`, `TrafficPage`, and `ActivityPage` so the widget reuses each page's own status/scoring logic rather than duplicating it — the numbers can never disagree with the full pages.
+
+### Fix
+
+- **Activity page care-plan banner icon** actually renders a party popper now. The previous SVG (added in 1.24.0) used the wrong path data and looked like a paper airplane/rocket.
+- **Performance page spacing.** The "opportunities to improve this score" note sat flush against the vitals grid above it; added top margin.
+
 ## 1.24.1 — 2026-06-30
 
 ### Fix
