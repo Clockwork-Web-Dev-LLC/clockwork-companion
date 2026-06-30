@@ -36,6 +36,28 @@ class BackupsPage
         Layout::render('backups', [self::class, 'renderBody']);
     }
 
+    /**
+     * Compact status for the wp-admin dashboard widget.
+     *
+     * @return array{active: bool, lastRunLabel: ?string, hasReport: bool}
+     */
+    public static function summary(): array
+    {
+        $report = get_option(self::OPTION, null);
+        $report = is_array($report) ? $report : null;
+
+        if ($report === null) {
+            return ['active' => false, 'lastRunLabel' => null, 'hasReport' => false];
+        }
+
+        $config = $report['config'] ?? [];
+        $active = (bool) ($config['files'] ?? false) || (bool) ($config['database'] ?? false);
+        $history = is_array($report['history'] ?? null) ? $report['history'] : [];
+        $lastRunLabel = isset($history[0]['date']) ? self::formatTimestamp($history[0]['date']) : null;
+
+        return ['active' => $active, 'lastRunLabel' => $lastRunLabel, 'hasReport' => true];
+    }
+
     public static function renderBody(): void
     {
         $report = get_option(self::OPTION, null);

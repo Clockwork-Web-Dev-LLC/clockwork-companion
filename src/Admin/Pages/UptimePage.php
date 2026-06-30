@@ -33,6 +33,26 @@ class UptimePage
         Layout::render('uptime', [self::class, 'renderBody']);
     }
 
+    /**
+     * Compact status for the wp-admin dashboard widget — current up/down
+     * state plus 30-day uptime %. Reuses the same algorithm as the Uptime
+     * Activity page so the numbers never disagree with the full page.
+     *
+     * @return array{state: string, pct30: ?float, hasHistory: bool}
+     */
+    public static function summary(): array
+    {
+        $events = Repository::findByActionType(self::ACTION_TYPE, 500);
+        $eventsAsc = array_reverse($events);
+        $now = time();
+
+        return [
+            'state' => self::deriveCurrentState($events[0] ?? null),
+            'pct30' => self::uptimePercent($eventsAsc, $now - (86400 * 30), $now),
+            'hasHistory' => $events !== [],
+        ];
+    }
+
     public static function renderBody(): void
     {
         Layout::pageHeader(
