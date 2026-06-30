@@ -25,6 +25,36 @@ class PerformancePage
         Layout::render('performance', [self::class, 'renderBody']);
     }
 
+    /**
+     * Compact status for the wp-admin dashboard widget — latest mobile
+     * Lighthouse score, reusing the same grading helpers as the full page.
+     *
+     * @return array{hasScore: bool, score: ?int, grade: string, variant: string}
+     */
+    public static function summary(): array
+    {
+        $latest = Repository::latestByActionTypeAndTarget('performance_scan', 'mobile');
+        if ($latest === null || empty($latest['ok'])) {
+            return ['hasScore' => false, 'score' => null, 'grade' => '—', 'variant' => 'muted'];
+        }
+
+        $details = self::decodeDetails($latest['details'] ?? null);
+        $score = isset($details['performance_score']) ? (int) $details['performance_score'] : null;
+        $variant = match (self::scoreColorClass($score)) {
+            'green' => 'green',
+            'orange' => 'warn',
+            'red' => 'red',
+            default => 'muted',
+        };
+
+        return [
+            'hasScore' => $score !== null,
+            'score' => $score,
+            'grade' => self::letterGradeFor($score),
+            'variant' => $variant,
+        ];
+    }
+
     public static function renderBody(): void
     {
         $onCarePlan = Repository::latestCarePlanFlag();
@@ -463,7 +493,7 @@ class PerformancePage
             font-size: 13px;
         }
         .clockwork-perf-hero__improve-note {
-            margin: 0;
+            margin: 16px 0 0;
             padding: 10px 12px;
             background: #f3f4f6;
             border-radius: 6px;

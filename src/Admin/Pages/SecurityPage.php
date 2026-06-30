@@ -38,6 +38,57 @@ class SecurityPage
         Layout::render('security', [self::class, 'renderBody']);
     }
 
+    /**
+     * Compact status for the wp-admin dashboard widget. Walks the same three
+     * scan targets the page cards show and reuses cardState()/statusPill()
+     * so the badge always agrees with what the Security page would render.
+     *
+     * @return array{variant: string, label: string}
+     */
+    public static function summary(): array
+    {
+        $onCarePlan = Repository::latestCarePlanFlag();
+        $checksumsRunnable = ChecksumsRunner::isAvailable();
+
+        $targets = [
+            'blacklist' => 'hosting',
+            'sitecheck' => 'care-plan',
+            'core_checksums' => 'care-plan',
+        ];
+        $rank = ['muted' => 0, 'green' => 1, 'warn' => 2, 'red' => 3];
+
+        $worstVariant = null;
+        $anyScanned = false;
+
+        foreach ($targets as $target => $tier) {
+            $available = $target === 'core_checksums' ? $checksumsRunnable : true;
+            $state = self::cardState($tier, $onCarePlan, $available);
+            if ($state !== 'active') {
+                continue;
+            }
+            $latest = Repository::latestByActionLog($target);
+            if ($latest === null) {
+                continue;
+            }
+            $anyScanned = true;
+            $details = self::decodeDetails($latest['details'] ?? null);
+            $pill = self::statusPill($latest, $details, $state, $target);
+            if ($worstVariant === null || ($rank[$pill['variant']] ?? 0) > ($rank[$worstVariant] ?? 0)) {
+                $worstVariant = $pill['variant'];
+            }
+        }
+
+        if (! $anyScanned) {
+            return ['variant' => 'muted', 'label' => 'Scanning soon'];
+        }
+
+        return match ($worstVariant) {
+            'red' => ['variant' => 'red', 'label' => 'Issues found'],
+            'warn' => ['variant' => 'warn', 'label' => 'Needs review'],
+            default => ['variant' => 'green', 'label' => 'All clear'],
+        };
+    }
+
     public static function renderBody(): void
     {
         $onCarePlan = Repository::latestCarePlanFlag();

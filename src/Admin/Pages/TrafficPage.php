@@ -32,6 +32,24 @@ class TrafficPage
         Layout::render('traffic', [self::class, 'renderBody']);
     }
 
+    /**
+     * Compact status for the wp-admin dashboard widget — 30-day visit total.
+     *
+     * @return array{hasReport: bool, visits30dLabel: ?string}
+     */
+    public static function summary(): array
+    {
+        $report = get_option(self::OPTION, null);
+        $report = is_array($report) ? $report : null;
+        $totals = is_array($report['totals'] ?? null) ? $report['totals'] : [];
+        $visits = isset($totals['month_30d']) ? (int) $totals['month_30d'] : null;
+
+        return [
+            'hasReport' => $report !== null && $totals !== [],
+            'visits30dLabel' => $visits !== null ? self::shortNumber($visits) : null,
+        ];
+    }
+
     public static function renderBody(): void
     {
         $report = get_option(self::OPTION, null);
