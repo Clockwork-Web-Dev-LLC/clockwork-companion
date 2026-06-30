@@ -64,7 +64,7 @@ class PerformancePage
 
         Layout::pageHeader(
             'Performance',
-            'Daily Lighthouse scan from Google PageSpeed Insights — same engine Google uses to grade sites for SEO. Google prioritizes mobile performance for ranking, but desktop scores matter too — both are shown here.'
+            'Daily Lighthouse scan via GTmetrix — Chrome\'s Lighthouse audit (the same engine Google uses to grade sites for SEO) run from a fixed test location with stable hardware. Pinned conditions mean day-over-day changes here reflect real shifts in your site, not testing noise.'
         );
 
         self::renderCarePlanBanner($onCarePlan);
@@ -90,8 +90,9 @@ class PerformancePage
             <div class="clockwork-card" style="border-left: 4px solid #f59e0b;">
                 <div class="clockwork-card__body">
                     <strong>Add a care plan to unlock daily speed checks.</strong>
-                    With a care plan, Clockwork Web Dev runs a Lighthouse scan every day — the same engine
-                    Google uses to evaluate site performance. You'd see your <strong>Performance score</strong>,
+                    With a care plan, Clockwork Web Dev runs a daily Lighthouse scan via GTmetrix — the
+                    same engine Google uses to evaluate site performance, from a pinned test location with
+                    consistent hardware. You'd see your <strong>Performance score</strong>,
                     <strong>Largest Contentful Paint</strong>, <strong>Cumulative Layout Shift</strong>, and
                     <strong>page weight</strong> trended over time, so a slow regression doesn't sneak past you.
                     <button type="button" class="cwk-support-trigger cwk-link-btn">Talk to Clockwork Web Dev</button> about adding a care plan.

@@ -2,6 +2,12 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.25.1 — 2026-06-30
+
+### Fix
+
+- **Performance page copy updated to credit GTmetrix instead of Google PageSpeed Insights.** The data pipeline became engine-agnostic when the monitoring app cut over to GTmetrix as the primary performance-scan engine on 2026-06-27, but two intro strings on `PerformancePage` still named PSI. Clients reading the page now see accurate attribution + a brief explanation of why pinned-location testing produces less day-over-day noise than the previous PSI-driven scans. The intro also dropped the "mobile + desktop are both shown" line since the scheduler now runs a single nightly scan (GTmetrix doesn't expose mobile device emulation on the current paid tier; if it does later, the line can come back). No data-shape changes — `PerformancePage` was already reading engine-neutral fields out of `wp_clockwork_action_log.details` (performance_score, lcp_ms, fcp_ms, tbt_ms, cls_x1000, page_weight_bytes, si_ms, strategy), so existing rows render unchanged.
+
 ## 1.25.0 — 2026-06-30
 
 ### Added
