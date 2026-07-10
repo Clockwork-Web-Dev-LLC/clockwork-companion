@@ -2,6 +2,12 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.25.2 — 2026-07-10
+
+### Fix
+
+- **Backups page now shows the correct care-plan retention banner.** `BackupsReportRoute` stored only a whitelisted subset of the pushed report (`source`, `fetched_at`, `config`, `history`) and dropped `care_plan_enabled` + `retention_days` — so `BackupsPage` rendered the off-plan "30 days, talk to us about a care plan" upsell on every site, including care-plan sites whose history was already filtered to 90 days. The route now stores both fields (plus `schedules`, which Clockwork already pushes, for forward-compat). Requires a fresh `/backups-report` push after upgrading — the banner stays wrong until the next daily 06:30 UTC push or a manual `clockwork:push-companion-backups --site=X`.
+
 ## 1.25.1 — 2026-06-30
 
 ### Fix

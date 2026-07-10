@@ -27,7 +27,11 @@ use WP_REST_Response;
  *       "next_run_time": "2026-05-03T07:00:00+00:00",
  *       "paths_to_exclude": null,
  *       "storage_provider": {"region": "nyc3", "bucket": "clkwrk01"}
- *     }
+ *     },
+ *     "schedules": [...],
+ *     "history": [...],
+ *     "care_plan_enabled": true,
+ *     "retention_days": 90
  *   }
  *
  * Response: { "ok": true }
@@ -68,7 +72,13 @@ class BackupsReportRoute
             'source' => isset($payload['source']) ? (string) $payload['source'] : 'agency',
             'fetched_at' => isset($payload['fetched_at']) ? (string) $payload['fetched_at'] : gmdate('c'),
             'config' => $payload['config'],
+            'schedules' => isset($payload['schedules']) && is_array($payload['schedules']) ? $payload['schedules'] : [],
             'history' => isset($payload['history']) && is_array($payload['history']) ? $payload['history'] : [],
+            // Care-plan retention fields drive BackupsPage's banner + pill.
+            // Dropping them here made every site render the off-plan 30-day
+            // upsell copy no matter what Clockwork pushed.
+            'care_plan_enabled' => ! empty($payload['care_plan_enabled']),
+            'retention_days' => isset($payload['retention_days']) ? (int) $payload['retention_days'] : 30,
         ];
 
         update_option(BackupsPage::OPTION, $stored, false);
