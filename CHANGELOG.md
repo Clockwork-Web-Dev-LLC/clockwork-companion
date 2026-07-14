@@ -2,6 +2,19 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.26.1 — 2026-07-14
+
+### Changed
+
+- **Performance page copy says "weekly" instead of "daily at 03:30 UTC".** The monitoring app moved to a weekly-per-site rotation on 2026-07-14 (nightly run at 04:45 UTC scans 1/7th of the fleet) so every scan lands on GTmetrix instead of exhausting the 10-credit daily API budget and falling back to PSI. Header, care-plan banner, upsell banner, and empty-state copy updated to match.
+
+## 1.26.0 — 2026-07-14
+
+### Changed
+
+- **Performance page shows a single "Latest Scan" card instead of the Mobile/Desktop pair.** Only one scan runs per night since the 2026-06-27 GTmetrix cutover, so the Desktop card had been frozen at its last pre-cutover result (weeks stale) while the Mobile card updated daily — reading as two current-but-wildly-different scores. The single card is keyed off the latest `performance_scan` row regardless of target, and its subtitle now names the engine and test conditions (`GTmetrix (desktop Chrome, pinned location)` vs `Google PageSpeed (simulated mobile phone)`), because the monitoring app silently falls back to PSI when GTmetrix fails and the two engines score very differently. The dashboard-widget `summary()` follows the same latest-row lookup instead of latest-mobile.
+- **Scan History "Strategy" column replaced with "Engine".** The stored strategy label no longer describes the test (GTmetrix runs desktop Chrome regardless of the strategy the scheduler passes); the engine is what actually determines the score's meaning. Rows without an `engine` key (pre-cutover) render as PageSpeed with their historical strategy. When the visible history mixes engines, a footnote warns that scores are only comparable within one engine.
+
 ## 1.25.2 — 2026-07-10
 
 ### Fix

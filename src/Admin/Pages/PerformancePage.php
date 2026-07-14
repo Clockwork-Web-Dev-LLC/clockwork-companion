@@ -9,7 +9,7 @@ use ClockworkCompanion\Admin\Layout;
  * Tools → Clockwork → Performance admin page.
  *
  * Shows the latest Lighthouse score, Core Web Vitals (LCP, CLS, TBT, FCP, SI),
- * and a daily history table — care-plan-only.
+ * and a scan-history table — care-plan-only.
  *
  * Off-plan customers see a greyed page with an upsell explaining what the
  * care plan adds. We deliberately don't surface historical scan rows when the
@@ -26,14 +26,14 @@ class PerformancePage
     }
 
     /**
-     * Compact status for the wp-admin dashboard widget — latest mobile
-     * Lighthouse score, reusing the same grading helpers as the full page.
+     * Compact status for the wp-admin dashboard widget — latest Lighthouse
+     * score, reusing the same grading helpers as the full page.
      *
      * @return array{hasScore: bool, score: ?int, grade: string, variant: string}
      */
     public static function summary(): array
     {
-        $latest = Repository::latestByActionTypeAndTarget('performance_scan', 'mobile');
+        $latest = Repository::latestByActionType('performance_scan');
         if ($latest === null || empty($latest['ok'])) {
             return ['hasScore' => false, 'score' => null, 'grade' => '—', 'variant' => 'muted'];
         }
@@ -58,17 +58,16 @@ class PerformancePage
     public static function renderBody(): void
     {
         $onCarePlan = Repository::latestCarePlanFlag();
-        $latestMobile = Repository::latestByActionTypeAndTarget('performance_scan', 'mobile');
-        $latestDesktop = Repository::latestByActionTypeAndTarget('performance_scan', 'desktop');
+        $latest = Repository::latestByActionType('performance_scan');
         $history = $onCarePlan ? Repository::findByActionType('performance_scan', 100) : [];
 
         Layout::pageHeader(
             'Performance',
-            'Daily Lighthouse scan via GTmetrix — Chrome\'s Lighthouse audit (the same engine Google uses to grade sites for SEO) run from a fixed test location with stable hardware. Pinned conditions mean day-over-day changes here reflect real shifts in your site, not testing noise.'
+            'Weekly Lighthouse scan via GTmetrix — Chrome\'s Lighthouse audit (the same engine Google uses to grade sites for SEO) run from a fixed test location with stable hardware. Pinned conditions mean week-over-week changes here reflect real shifts in your site, not testing noise.'
         );
 
         self::renderCarePlanBanner($onCarePlan);
-        self::renderHeroPair($onCarePlan, $latestMobile, $latestDesktop);
+        self::renderLatestHero($onCarePlan, $latest);
         self::renderHistorySection($onCarePlan, $history);
         self::renderInlineStyles();
     }
@@ -79,8 +78,8 @@ class PerformancePage
             ?>
             <div class="clockwork-card" style="border-left: 4px solid #65a30d;">
                 <div class="clockwork-card__body">
-                    <strong>Daily speed checks are part of your care plan.</strong>
-                    Clockwork Web Dev runs a Lighthouse scan against your homepage every day at 03:30 UTC and
+                    <strong>Weekly speed checks are part of your care plan.</strong>
+                    Clockwork Web Dev runs a Lighthouse scan against your homepage every week and
                     flags regressions in your performance score.
                 </div>
             </div>
@@ -89,8 +88,8 @@ class PerformancePage
             ?>
             <div class="clockwork-card" style="border-left: 4px solid #f59e0b;">
                 <div class="clockwork-card__body">
-                    <strong>Add a care plan to unlock daily speed checks.</strong>
-                    With a care plan, Clockwork Web Dev runs a daily Lighthouse scan via GTmetrix — the
+                    <strong>Add a care plan to unlock weekly speed checks.</strong>
+                    With a care plan, Clockwork Web Dev runs a weekly Lighthouse scan via GTmetrix — the
                     same engine Google uses to evaluate site performance, from a pinned test location with
                     consistent hardware. You'd see your <strong>Performance score</strong>,
                     <strong>Largest Contentful Paint</strong>, <strong>Cumulative Layout Shift</strong>, and
@@ -103,63 +102,28 @@ class PerformancePage
     }
 
     /**
-     * Renders the mobile and desktop "latest scan" cards side by side. Off
-     * care-plan? Render nothing — the upsell banner above carries the message
-     * and the empty cards would just be visual clutter.
+     * Renders the single "latest scan" card. One nightly scan runs per site
+     * (04:45 UTC, weekly rotation), so there is exactly one current result — the old
+     * mobile/desktop card pair dates from the PSI era, when two strategies
+     * ran per night, and just showed a stale desktop card after the GTmetrix
+     * cutover. Off care-plan? Render nothing — the upsell banner above
+     * carries the message and an empty card would just be visual clutter.
      *
-     * @param  array<string, mixed>|null  $mobile
-     * @param  array<string, mixed>|null  $desktop
+     * @param  array<string, mixed>|null  $latest
      */
-    private static function renderHeroPair(bool $onCarePlan, ?array $mobile, ?array $desktop): void
+    private static function renderLatestHero(bool $onCarePlan, ?array $latest): void
     {
         if (! $onCarePlan) {
             return;
         }
 
-        if ($mobile === null && $desktop === null) {
+        if ($latest === null) {
             ?>
             <div class="clockwork-card" style="margin-top: 16px;">
                 <div class="clockwork-card__body">
                     <strong>No scans recorded yet.</strong>
-                    Mobile runs daily at <strong>03:30 UTC</strong>, desktop at <strong>04:30 UTC</strong>. Results
-                    will populate here within 24 hours.
+                    Scans run weekly. Results will populate here within the next few days.
                 </div>
-            </div>
-            <?php
-            return;
-        }
-
-        ?>
-        <div class="clockwork-perf-hero-grid" style="margin-top: 16px;">
-            <?php
-            self::renderHero('mobile', $mobile);
-            self::renderHero('desktop', $desktop);
-            ?>
-        </div>
-        <?php
-    }
-
-    /**
-     * @param  array<string, mixed>|null  $latest
-     */
-    private static function renderHero(string $strategy, ?array $latest): void
-    {
-        $label = ucfirst($strategy);
-
-        if ($latest === null) {
-            ?>
-            <div class="clockwork-perf-hero">
-                <div class="clockwork-perf-hero__head">
-                    <div>
-                        <h2 class="clockwork-perf-hero__title"><?php echo esc_html($label); ?></h2>
-                        <p class="clockwork-perf-hero__sub">No <?php echo esc_html(strtolower($label)); ?> scan yet.</p>
-                    </div>
-                    <span class="clockwork-pill clockwork-pill--muted">Pending</span>
-                </div>
-                <p class="clockwork-perf-hero__pending">
-                    The next <?php echo esc_html(strtolower($label)); ?> run is scheduled for
-                    <strong><?php echo esc_html($strategy === 'mobile' ? '03:30 UTC' : '04:30 UTC'); ?></strong>.
-                </p>
             </div>
             <?php
             return;
@@ -173,12 +137,13 @@ class PerformancePage
         $ok = ! empty($latest['ok']);
 
         ?>
-        <div class="clockwork-perf-hero">
+        <div class="clockwork-perf-hero" style="margin-top: 16px;">
             <div class="clockwork-perf-hero__head">
                 <div>
-                    <h2 class="clockwork-perf-hero__title"><?php echo esc_html($label); ?></h2>
+                    <h2 class="clockwork-perf-hero__title">Latest Scan</h2>
                     <p class="clockwork-perf-hero__sub">
                         <?php echo esc_html(self::humanTimeAgo($ranAt)); ?>
+                        · <?php echo esc_html(self::engineConditionsLabel($details)); ?>
                     </p>
                 </div>
                 <?php if ($ok && $score !== null) : ?>
@@ -244,15 +209,16 @@ class PerformancePage
                 <?php elseif ($total === 0) : ?>
                     <div style="padding: 20px;">
                         <div class="clockwork-notice clockwork-notice--muted">
-                            No scans recorded yet. Once the daily run completes, history will populate here.
+                            No scans recorded yet. Once the next weekly scan completes, history will populate here.
                         </div>
                     </div>
                 <?php else : ?>
+                    <?php $enginesSeen = []; ?>
                     <table class="clockwork-table">
                         <thead>
                             <tr>
                                 <th>When</th>
-                                <th>Strategy</th>
+                                <th>Engine</th>
                                 <th>Score</th>
                                 <th>LCP</th>
                                 <th>CLS</th>
@@ -267,7 +233,8 @@ class PerformancePage
                                 }
                                 $details = self::decodeDetails($row['details'] ?? null);
                                 $score = isset($details['performance_score']) ? (int) $details['performance_score'] : null;
-                                $strategy = ucfirst((string) ($details['strategy'] ?? '—'));
+                                $engineLabel = self::engineShortLabel($details);
+                                $enginesSeen[$engineLabel] = true;
                                 $ok = ! empty($row['ok']);
                                 ?>
                                 <tr>
@@ -277,7 +244,7 @@ class PerformancePage
                                             <?php echo esc_html(self::formatTimestampUtc((string) ($row['ran_at'] ?? '')) ?: ''); ?>
                                         </div>
                                     </td>
-                                    <td><?php echo esc_html($strategy); ?></td>
+                                    <td><?php echo esc_html($engineLabel); ?></td>
                                     <td>
                                         <?php if ($ok && $score !== null) : ?>
                                             <span class="clockwork-perf-pill clockwork-perf-pill--<?php echo esc_attr(self::scoreColorClass($score)); ?>">
@@ -294,6 +261,16 @@ class PerformancePage
                             <?php endforeach; ?>
                         </tbody>
                     </table>
+                    <?php if (count($enginesSeen) > 1) : ?>
+                        <div style="padding: 12px 20px;">
+                            <div class="clockwork-notice clockwork-notice--muted">
+                                This history includes scans from more than one test engine. GTmetrix tests
+                                with desktop Chrome from a pinned location; PageSpeed simulates a mobile
+                                phone on a throttled connection, so its scores read much lower. Compare
+                                scores only against scans from the same engine.
+                            </div>
+                        </div>
+                    <?php endif; ?>
                 <?php endif; ?>
             </div>
         </div>
@@ -311,6 +288,41 @@ class PerformancePage
             <?php endif; ?>
         </div>
         <?php
+    }
+
+    /**
+     * Human label for the engine + test conditions of a scan, from the
+     * action-log details payload. Rows written before the 2026-06-27 GTmetrix
+     * cutover have no `engine` key — PSI was the only engine then, so the
+     * PSI branch is the correct fallback.
+     *
+     * @param  array<string, mixed>  $details
+     */
+    private static function engineConditionsLabel(array $details): string
+    {
+        if (($details['engine'] ?? '') === 'gtmetrix') {
+            return 'GTmetrix (desktop Chrome, pinned location)';
+        }
+
+        $strategy = (string) ($details['strategy'] ?? 'mobile');
+
+        return 'Google PageSpeed ('.($strategy === 'desktop' ? 'desktop' : 'simulated mobile phone').')';
+    }
+
+    /**
+     * Compact engine label for the history table.
+     *
+     * @param  array<string, mixed>  $details
+     */
+    private static function engineShortLabel(array $details): string
+    {
+        if (($details['engine'] ?? '') === 'gtmetrix') {
+            return 'GTmetrix';
+        }
+
+        $strategy = (string) ($details['strategy'] ?? '');
+
+        return 'PageSpeed'.($strategy !== '' ? ' · '.$strategy : '');
     }
 
     private static function letterGradeFor(?int $score): string
@@ -448,24 +460,11 @@ class PerformancePage
     {
         ?>
         <style>
-        .clockwork-perf-hero-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
-            gap: 16px;
-        }
         .clockwork-perf-hero {
             background: #fff;
             border: 1px solid #e5e7eb;
             border-radius: 8px;
             padding: 20px;
-        }
-        .clockwork-perf-hero__pending {
-            margin: 0;
-            padding: 10px 12px;
-            background: #f3f4f6;
-            border-radius: 6px;
-            color: #4b5563;
-            font-size: 13px;
         }
         .clockwork-perf-hero__head {
             display: flex;
