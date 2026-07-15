@@ -310,10 +310,16 @@ class TrafficPage
                                     $barX, $cursorY, $barW, $segH, $colors[$seg['key']]
                                 );
                             }
-                            // Date tick labels — every ~5 days to avoid crowding
+                            // Date tick labels — every ~5 days to avoid crowding.
+                            // NB: format the x coord WITHOUT a thousands
+                            // separator — number_format()'s default comma turns
+                            // x="1014.80" into x="1,014.80", which SVG parses as
+                            // x="1" and slams the label to the far left. This
+                            // silently mangled the last two labels on every
+                            // 30-day chart (their centers exceed x=1000).
                             if ($i % 5 === 0 || $i === $colCount - 1) {
                                 $label = strlen($date) >= 10 ? substr($date, 5) : $date;
-                                echo '<text x="'.number_format($colCenter, 2).'" y="'.($baselineY + 14).'" text-anchor="middle" font-size="10" fill="#6b7280">'.esc_html($label).'</text>';
+                                echo '<text x="'.number_format($colCenter, 2, '.', '').'" y="'.($baselineY + 14).'" text-anchor="middle" font-size="10" fill="#6b7280">'.esc_html($label).'</text>';
                             }
                             echo '</g>';
                             $i++;
@@ -330,7 +336,7 @@ class TrafficPage
                                     (float) $padLeft, (float) ($padLeft + $plotW), $tickY, $tickY
                                 );
                             }
-                            echo '<text x="'.($padLeft - 6).'" y="'.number_format($tickY + 4, 2).'" text-anchor="end" font-size="10" fill="#6b7280">'.esc_html($tickValue === 0 ? '0' : self::shortNumber($tickValue)).'</text>';
+                            echo '<text x="'.($padLeft - 6).'" y="'.number_format($tickY + 4, 2, '.', '').'" text-anchor="end" font-size="10" fill="#6b7280">'.esc_html($tickValue === 0 ? '0' : self::shortNumber($tickValue)).'</text>';
                         }
                         ?>
                     </svg>

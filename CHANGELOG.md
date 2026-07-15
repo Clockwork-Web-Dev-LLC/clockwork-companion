@@ -2,6 +2,12 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.26.7 — 2026-07-15
+
+### Fix
+
+- **Traffic chart date labels past x=1000 no longer jump to the far left.** The SVG `<text>` x-coordinate for date labels was formatted with `number_format($colCenter, 2)`, whose default thousands separator turned `x="1014.80"` into `x="1,014.80"` — which SVG parses as `x="1"`, slamming the label to the left edge. On every 30-day chart the last two date labels (centers ~1015 and ~1165) were affected, so e.g. `07-11` and the final day rendered stacked at the far left instead of on the right. Both the date-label x and the y-tick y now format with an explicit empty thousands separator. (Bar rects were already fine — they used `printf('%.2f')`.) Surfaced on one high-traffic client site, but it affected all sites' charts.
+
 ## 1.26.6 — 2026-07-15
 
 ### Fix
