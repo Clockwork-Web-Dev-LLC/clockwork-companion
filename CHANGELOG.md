@@ -2,6 +2,12 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.26.6 — 2026-07-15
+
+### Fix
+
+- **Traffic chart y-axis labels no longer clip on high-traffic sites.** Labels were drawn 6px inside a 32px left gutter, so six-figure ticks ("100.0k", "300.0k" — one high-traffic client site serves ~200k/week) ran off the left edge of the SVG viewBox and rendered as "00.0k". The gutter is now 56px (right gutter narrowed to 16px to compensate, keeping the plot width about the same), and `shortNumber()` drops the trailing ".0" on round values so ticks read "300k" / "1.5M" instead of "300.0k" / "1.5M" — narrower and cleaner. The dashboard-widget 30-day total uses the same helper, so it benefits too.
+
 ## 1.26.5 — 2026-07-15
 
 ### Fix

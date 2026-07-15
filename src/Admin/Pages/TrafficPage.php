@@ -220,10 +220,17 @@ class TrafficPage
         // without becoming absurdly tall on ultra-wide screens.
         $width = 1200;
         $height = 200;
-        $padX = 32;
+        // Left gutter holds the y-axis labels. High-traffic sites tick into
+        // the hundreds of thousands ("300k") or millions ("1.5M"); at the old
+        // 32px the labels drew off the left edge of the viewBox and rendered
+        // as clipped "00.0k". 56px fits the widest short-number label with
+        // margin. Right gutter only needs enough to keep the last bar off the
+        // edge, so it stays narrow rather than mirroring the left.
+        $padLeft = 56;
+        $padRight = 16;
         $padTop = 12;
         $padBottom = 24;
-        $plotW = $width - ($padX * 2);
+        $plotW = $width - $padLeft - $padRight;
         $plotH = $height - $padTop - $padBottom;
         $colCount = max(count($rows), 1);
         $colW = $plotW / $colCount;
@@ -254,7 +261,7 @@ class TrafficPage
                         <?php
                         // Y-axis baseline
                         $baselineY = $padTop + $plotH;
-                        echo '<line x1="'.$padX.'" x2="'.($padX + $plotW).'" y1="'.$baselineY.'" y2="'.$baselineY.'" stroke="#d1d5db" stroke-width="1" />';
+                        echo '<line x1="'.$padLeft.'" x2="'.($padLeft + $plotW).'" y1="'.$baselineY.'" y2="'.$baselineY.'" stroke="#d1d5db" stroke-width="1" />';
 
                         $i = 0;
                         foreach ($rows as $r) {
@@ -269,7 +276,7 @@ class TrafficPage
                             $s5 = max(0, (int) ($r['status_5xx'] ?? 0));
                             $totalReq = max(0, (int) ($r['requests'] ?? ($s2 + $s3 + $s4 + $s5)));
 
-                            $colCenter = $padX + ($colW * ($i + 0.5));
+                            $colCenter = $padLeft + ($colW * ($i + 0.5));
                             $barX = $colCenter - ($barW / 2);
 
                             // Stacked heights, bottom-up: 2xx, 3xx, 4xx, 5xx
@@ -320,10 +327,10 @@ class TrafficPage
                             if ($tickValue > 0) {
                                 printf(
                                     '<line x1="%.2f" x2="%.2f" y1="%.2f" y2="%.2f" stroke="#e5e7eb" stroke-width="1" stroke-dasharray="2,3" />',
-                                    (float) $padX, (float) ($padX + $plotW), $tickY, $tickY
+                                    (float) $padLeft, (float) ($padLeft + $plotW), $tickY, $tickY
                                 );
                             }
-                            echo '<text x="'.($padX - 6).'" y="'.number_format($tickY + 4, 2).'" text-anchor="end" font-size="10" fill="#6b7280">'.esc_html($tickValue === 0 ? '0' : self::shortNumber($tickValue)).'</text>';
+                            echo '<text x="'.($padLeft - 6).'" y="'.number_format($tickY + 4, 2).'" text-anchor="end" font-size="10" fill="#6b7280">'.esc_html($tickValue === 0 ? '0' : self::shortNumber($tickValue)).'</text>';
                         }
                         ?>
                     </svg>
@@ -495,12 +502,22 @@ class TrafficPage
     private static function shortNumber(int $n): string
     {
         if ($n >= 1_000_000) {
-            return number_format($n / 1_000_000, 1).'M';
+            return self::trimZero(number_format($n / 1_000_000, 1)).'M';
         }
         if ($n >= 1_000) {
-            return number_format($n / 1_000, 1).'k';
+            return self::trimZero(number_format($n / 1_000, 1)).'k';
         }
         return (string) $n;
+    }
+
+    /**
+     * Drop a trailing ".0" so round values read "300k" / "2M" instead of
+     * "300.0k" / "2.0M" — keeps y-axis labels narrow. Non-round values
+     * ("1.5k") keep their decimal.
+     */
+    private static function trimZero(string $formatted): string
+    {
+        return str_ends_with($formatted, '.0') ? substr($formatted, 0, -2) : $formatted;
     }
 
     private static function formatTimestamp(mixed $value): ?string
