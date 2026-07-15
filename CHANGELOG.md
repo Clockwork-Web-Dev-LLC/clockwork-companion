@@ -2,6 +2,12 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.26.5 — 2026-07-15
+
+### Fix
+
+- **`php_in_uploads` accepts comment-only guard stubs.** Following the die()/exit() fix in 1.26.4, a `<?php // Nothing to show here` stub (dropped by the debug-log-manager plugin, seen on a client site) still flagged. `isHarmlessIndexStub()` now also accepts an opening tag followed solely by a single line (`//`, `#`) or block (`/* */`) comment — inert by definition, still under the 60-byte cap, and any statement after the comment still flags.
+
 ## 1.26.4 — 2026-07-15
 
 ### Fix
