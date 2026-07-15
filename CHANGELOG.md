@@ -2,6 +2,13 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.26.4 — 2026-07-15
+
+### Fix
+
+- **Malware scanner no longer self-flags stray copies of the Companion.** The signature-scan exclusion matched only `/wp-content/mu-plugins/clockwork-companion/`, so a botched historical install left at `wp-content/plugins/clockwork-companion/` (one client site — flat files with literal backslashes in the names, from a pre-fix tarball) produced 8 shell/eval "findings" that were the scanner reading its own signature list. The exclusion now matches any `/clockwork-companion/` path segment; the `php_in_uploads` check intentionally keeps no such exclusion, so PHP hidden in a same-named uploads directory still flags.
+- **`php_in_uploads` accepts bare die()/exit() guard stubs.** `isHarmlessIndexStub()` only recognized empty files and "Silence is golden" comments; a 15-byte `<?php die(); ?>` guard (one client site's `uploads/index.php`) was flagged as "never legitimate". A whole-file-anchored regex now accepts an opening tag followed only by die/exit (optional short string message), still under the 60-byte cap — trailing code of any kind keeps flagging.
+
 ## 1.26.3 — 2026-07-14
 
 ### Fix
