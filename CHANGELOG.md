@@ -2,6 +2,19 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.26.3 — 2026-07-14
+
+### Fix
+
+- **Failed GTmetrix scans no longer render on the Performance page.** 1.26.2's engine filter matched failed rows too, so a site whose scan errored (blocked test agent, Lighthouse timeout) showed a client-visible "Failed" hero card — worse than the empty state. `latestPerformanceScanFromEngine()` now requires `ok = 1` and the history filter drops failed rows. Scan failures are Clockwork's ops signal (visible in the monitoring app), not a client-facing result.
+
+## 1.26.2 — 2026-07-14
+
+### Changed
+
+- **Performance page shows GTmetrix scans only.** PSI fallback rows (and pre-cutover PSI-era rows) score under throttled mobile emulation — 30-60 on sites that grade 90+ on GTmetrix desktop — and made healthy sites look broken next to GTmetrix rows. The hero card, dashboard-widget summary, and scan history now filter to `engine=gtmetrix` (new `Repository::latestPerformanceScanFromEngine()`, matching on the details JSON, plus a PHP-side history filter). Sites with no GTmetrix row yet show the "first scan pending" empty state until their weekly rotation night. Raw PSI rows remain in the local table and the monitoring app's database — nothing is deleted. The mixed-engine history footnote (added in 1.26.0) is gone; it's unreachable now.
+- **Dropped the page-header intro paragraph** ("Weekly Lighthouse scan via GTmetrix — …"). The care-plan banner right below carries the same message.
+
 ## 1.26.1 — 2026-07-14
 
 ### Changed

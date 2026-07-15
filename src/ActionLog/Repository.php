@@ -143,6 +143,35 @@ class Repository
     }
 
     /**
+     * Most recent SUCCESSFUL performance_scan row produced by a specific
+     * engine, or null. Matches on the details JSON ("engine":"gtmetrix"
+     * etc.), so rows written before the engine field existed (pre-2026-06-27,
+     * PSI-only era) never match — which is the point: the Performance page
+     * shows only primary-engine scans and hides PSI fallback rows whose
+     * throttled mobile scores aren't comparable. Failed rows are excluded
+     * too — a scan-engine hiccup (quota, blocked test agent, Lighthouse
+     * timeout) is an ops problem for Clockwork, not a client-facing result.
+     *
+     * @return array<string, mixed>|null
+     */
+    public static function latestPerformanceScanFromEngine(string $engine): ?array
+    {
+        global $wpdb;
+        $table = Schema::tableName();
+        $needle = '%'.$wpdb->esc_like('"engine":"'.$engine.'"').'%';
+
+        $row = $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT * FROM {$table} WHERE action_type = 'performance_scan' AND ok = 1 AND details LIKE %s ORDER BY ran_at DESC LIMIT 1",
+                $needle
+            ),
+            ARRAY_A
+        );
+
+        return is_array($row) ? $row : null;
+    }
+
+    /**
      * Paged variant of findByActionType. Used by the Security admin page for
      * scan history.
      *

@@ -33,7 +33,7 @@ class PerformancePage
      */
     public static function summary(): array
     {
-        $latest = Repository::latestByActionType('performance_scan');
+        $latest = Repository::latestPerformanceScanFromEngine('gtmetrix');
         if ($latest === null || empty($latest['ok'])) {
             return ['hasScore' => false, 'score' => null, 'grade' => '—', 'variant' => 'muted'];
         }
@@ -57,14 +57,26 @@ class PerformancePage
 
     public static function renderBody(): void
     {
+        // Successful GTmetrix rows only, everywhere on this page. PSI
+        // fallback rows (and pre-cutover PSI-era rows) score under throttled
+        // mobile emulation — 30-60 on sites that grade 90+ on GTmetrix
+        // desktop — and failed rows describe scan-engine hiccups (quota,
+        // blocked test agent), which are Clockwork's ops problem, not a
+        // client-facing result. Showing either made healthy sites look
+        // broken, so clients never see them; the raw rows stay in the
+        // monitoring app's database for internal analysis.
         $onCarePlan = Repository::latestCarePlanFlag();
-        $latest = Repository::latestByActionType('performance_scan');
-        $history = $onCarePlan ? Repository::findByActionType('performance_scan', 100) : [];
+        $latest = Repository::latestPerformanceScanFromEngine('gtmetrix');
+        $history = $onCarePlan
+            ? array_values(array_filter(
+                Repository::findByActionType('performance_scan', 100),
+                fn ($row) => is_array($row)
+                    && ! empty($row['ok'])
+                    && (self::decodeDetails($row['details'] ?? null)['engine'] ?? '') === 'gtmetrix'
+            ))
+            : [];
 
-        Layout::pageHeader(
-            'Performance',
-            'Weekly Lighthouse scan via GTmetrix — Chrome\'s Lighthouse audit (the same engine Google uses to grade sites for SEO) run from a fixed test location with stable hardware. Pinned conditions mean week-over-week changes here reflect real shifts in your site, not testing noise.'
-        );
+        Layout::pageHeader('Performance');
 
         self::renderCarePlanBanner($onCarePlan);
         self::renderLatestHero($onCarePlan, $latest);
@@ -213,7 +225,6 @@ class PerformancePage
                         </div>
                     </div>
                 <?php else : ?>
-                    <?php $enginesSeen = []; ?>
                     <table class="clockwork-table">
                         <thead>
                             <tr>
@@ -234,7 +245,6 @@ class PerformancePage
                                 $details = self::decodeDetails($row['details'] ?? null);
                                 $score = isset($details['performance_score']) ? (int) $details['performance_score'] : null;
                                 $engineLabel = self::engineShortLabel($details);
-                                $enginesSeen[$engineLabel] = true;
                                 $ok = ! empty($row['ok']);
                                 ?>
                                 <tr>
@@ -261,16 +271,6 @@ class PerformancePage
                             <?php endforeach; ?>
                         </tbody>
                     </table>
-                    <?php if (count($enginesSeen) > 1) : ?>
-                        <div style="padding: 12px 20px;">
-                            <div class="clockwork-notice clockwork-notice--muted">
-                                This history includes scans from more than one test engine. GTmetrix tests
-                                with desktop Chrome from a pinned location; PageSpeed simulates a mobile
-                                phone on a throttled connection, so its scores read much lower. Compare
-                                scores only against scans from the same engine.
-                            </div>
-                        </div>
-                    <?php endif; ?>
                 <?php endif; ?>
             </div>
         </div>
