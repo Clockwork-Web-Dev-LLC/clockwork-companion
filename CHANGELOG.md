@@ -2,6 +2,12 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.26.8 — 2026-07-15
+
+### Changed
+
+- **Traffic page now distinguishes visits from requests.** The hero stat trio (Today / 7d / 30d) and the chart below measure different things — visitors vs total HTTP requests — but nothing said so, and on bot-heavy sites the chart's request bars dwarf the visitor numbers, reading as a contradiction (e.g. one client site: ~2,400 visits/30d vs ~500k requests). The hero card now carries a "Visitors" heading and a one-line definition (de-duplicated by IP, bots and static files excluded), the "Today" box labels its number as visits, and the chart body opens with a note that it counts every request — page views, assets, API calls, and crawlers — so it measures server workload, not people.
+
 ## 1.26.7 — 2026-07-15
 
 ### Fix

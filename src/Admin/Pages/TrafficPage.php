@@ -117,13 +117,16 @@ class TrafficPage
         ?>
         <div class="clockwork-card">
             <div class="clockwork-card__body">
+                <div style="font-size: 13px; font-weight: 600; color: #111; margin-bottom: 2px;">Visitors</div>
+                <div style="font-size: 12px; color: #6b7280; margin-bottom: 16px;">
+                    Estimated unique visitors — de-duplicated by IP, with bots and static files (images, CSS, JS) excluded.
+                    This is a smaller, more human number than the request counts in the chart below.
+                </div>
                 <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px;">
                     <div>
                         <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280; margin-bottom: 6px;">Today</div>
                         <div style="font-size: 28px; font-weight: 600; color: #111;"><?php echo number_format($today); ?></div>
-                        <?php if ($todayPartial) : ?>
-                            <div style="font-size: 11px; color: #6b7280; margin-top: 4px;">partial — updates again overnight</div>
-                        <?php endif; ?>
+                        <div style="font-size: 11px; color: #6b7280; margin-top: 4px;"><?php echo $todayPartial ? 'visits so far — updates again overnight' : 'visits'; ?></div>
                     </div>
                     <div>
                         <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280; margin-bottom: 6px;">Last 7 days</div>
@@ -253,6 +256,11 @@ class TrafficPage
                 <span style="font-size: 12px; color: #6b7280;">requests/day, stacked by status</span>
             </div>
             <div class="clockwork-card__body">
+                <div style="font-size: 12px; color: #6b7280; margin-bottom: 12px;">
+                    Every HTTP request the server answered — page views, images, scripts, API calls, and bot/crawler
+                    traffic all included. That's why these totals run far higher than the visitor counts above; they
+                    measure server workload, not people.
+                </div>
                 <div style="overflow-x: auto;">
                     <svg viewBox="0 0 <?php echo (int) $width; ?> <?php echo (int) $height; ?>"
                          preserveAspectRatio="xMidYMid meet"
