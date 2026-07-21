@@ -389,21 +389,27 @@ class ActivityPage
             font-size: 13px;
             font-weight: 500;
             text-decoration: none;
-            border: 1.5px solid #4f46e5;
-            color: #4f46e5;
+            border: 1.5px solid var(--cwk-primary, #6953C4);
+            color: var(--cwk-primary, #6953C4);
             background: #fff;
             line-height: 1;
             cursor: pointer;
         }
         .cwk-month-btn--active {
-            background: #4f46e5;
+            background: var(--cwk-primary, #6953C4);
             color: #fff;
         }
         .cwk-month-btn:hover {
             text-decoration: none;
+            color: var(--cwk-primary-dark, #2D2062);
         }
         .cwk-month-btn:hover:not(.cwk-month-btn--active) {
-            background: #eef2ff;
+            background: var(--cwk-primary-soft, #D1C9F4);
+            border-color: var(--cwk-primary-dark, #2D2062);
+        }
+        .cwk-month-btn--active:hover {
+            background: var(--cwk-primary-dark, #2D2062);
+            color: #fff;
         }
 
         /* ── Care plan banner ─────────────────────────────────────── */
@@ -415,7 +421,7 @@ class ActivityPage
             border-radius: 12px;
             margin-bottom: 16px;
         }
-        .cwk-plan-banner--on  { background: #f0fdf4; }
+        .cwk-plan-banner--on  { background: var(--cwk-primary-soft, #D1C9F4); }
         .cwk-plan-banner--off { background: #fffbeb; }
 
         .cwk-plan-banner__icon-wrap {
@@ -429,12 +435,12 @@ class ActivityPage
             justify-content: center;
         }
         .cwk-plan-banner__icon-wrap svg { width: 24px; height: 24px; }
-        .cwk-plan-banner--on  .cwk-plan-banner__icon-wrap { color: #16a34a; }
+        .cwk-plan-banner--on  .cwk-plan-banner__icon-wrap { color: var(--cwk-primary, #6953C4); }
         .cwk-plan-banner--off .cwk-plan-banner__icon-wrap { color: #d97706; }
 
         .cwk-plan-banner__text { display: flex; flex-direction: column; gap: 4px; }
         .cwk-plan-banner__title { font-size: 16px; font-weight: 700; }
-        .cwk-plan-banner--on  .cwk-plan-banner__title { color: #15803d; }
+        .cwk-plan-banner--on  .cwk-plan-banner__title { color: var(--cwk-text, #212025); }
         .cwk-plan-banner--off .cwk-plan-banner__title { color: #92400e; }
         .cwk-plan-banner__sub { font-size: 14px; color: #4b5563; font-weight: 400; }
 
@@ -476,7 +482,7 @@ class ActivityPage
         }
         .cwk-summary-card__note {
             font-size: 13px;
-            color: #16a34a;
+            color: var(--cwk-primary, #6953C4);
             margin-bottom: 24px;
             display: flex;
             align-items: center;
@@ -527,8 +533,8 @@ class ActivityPage
         }
         .cwk-action-tile__count {
             flex-shrink: 0;
-            background: #dcfce7;
-            color: #15803d;
+            background: #ede9fe;
+            color: #4c1d95;
             font-size: 13px;
             font-weight: 700;
             padding: 3px 10px;

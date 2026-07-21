@@ -2,6 +2,12 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.26.9 — 2026-07-21
+
+### Changed
+
+- **Admin chrome design pass, per design-team review.** The page background dropped its pale-purple tint in favor of white, and the 4px lime-green rule under the header is gone. The header logo shrunk from 36px to 24px tall. The Activity page's "You're on a care plan" banner switched from a green success card to a light-purple one with a purple icon and dark-grey title text. The month-filter buttons on the Activity page now use the actual brand purple (`--cwk-primary` / `--cwk-primary-dark`) instead of a mismatched indigo, and their hover state is a legible light-purple fill instead of a low-contrast blue tint. The Activity page's stat-count pills and "Run automatically" note also moved from green to purple, matching the icon tiles already on that card.
+
 ## 1.26.8 — 2026-07-15
 
 ### Changed

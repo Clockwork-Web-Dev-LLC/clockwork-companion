@@ -13,7 +13,7 @@
     --cwk-primary: #6953C4;
     --cwk-primary-dark: #2D2062;
     --cwk-primary-soft: #D1C9F4;
-    --cwk-page-bg: #F1EEFF;
+    --cwk-page-bg: #ffffff;
     --cwk-accent: #7EFF83;
     --cwk-accent-bg: #DCFFDD;
     --cwk-text: #212025;
@@ -69,7 +69,6 @@ body.wp-admin {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    border-bottom: 4px solid var(--cwk-accent);
 }
 .clockwork-admin__brand {
     display: flex;
@@ -77,7 +76,7 @@ body.wp-admin {
     gap: 14px;
 }
 .clockwork-admin__brand img {
-    height: 36px;
+    height: 24px;
     width: auto;
     display: block;
 }
