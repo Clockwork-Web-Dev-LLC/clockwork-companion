@@ -2,6 +2,12 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.26.10 — 2026-07-21
+
+### Fix
+
+- **Activity page "Uptime" tile showed a plain circle instead of an icon.** The tile grid's `typeConfig()` only mapped the `uptime_check` action type, but `UptimePage::ACTION_TYPE` actually logs rows as `uptime_transition`, so those rows fell through to the generic circle icon and an ungainly "Uptime Transition" label. Added the `uptime_transition` mapping (label "Uptime checks", same `pulse` icon) and swapped the `pulse` icon itself for a cleaner heartbeat/waveform glyph.
+
 ## 1.26.9 — 2026-07-21
 
 ### Changed
