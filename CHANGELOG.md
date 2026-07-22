@@ -2,6 +2,12 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.29.1 — 2026-07-22
+
+### Fix
+
+- **Login broken for users migrated from WFLS to Companion 2FA.** Migration was leaving the user's row in `wfls_2fa_secrets` for rollback purposes, but WFLS is still active on the site. WFLS's `authenticate` hook (priority 25) would see that row, try to issue its own 2FA challenge, and produce "An error was encountered while trying to authenticate" — Companion's gate at `PHP_INT_MAX` never ran. Fix: `migrate()` now deletes the user's WFLS row immediately after the secret is safely written to Companion user meta. The underlying binary key is identical in both systems, so the user's authenticator-app entry keeps producing valid codes.
+
 ## 1.29.0 — 2026-07-22
 
 ### Added
