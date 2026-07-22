@@ -37,6 +37,7 @@ use ClockworkCompanion\Rest\WordfenceBlocksRoute;
 use ClockworkCompanion\Resource\Sampler as ResourceSampler;
 use ClockworkCompanion\Resource\Schema as ResourceSchema;
 use ClockworkCompanion\Sso\Interceptor as SsoInterceptor;
+use ClockworkCompanion\TwoFactor\LoginInterceptor as TwoFactorLoginInterceptor;
 
 class Plugin
 {
@@ -170,5 +171,11 @@ class Plugin
         // ?clockwork_sso=<nonce> query param. Bound to `init` priority 1
         // inside register(), so output buffering is still safe.
         (new SsoInterceptor())->register();
+
+        // 2FA login gate — sits at the end of the `authenticate` chain and
+        // withholds the auth cookie until a TOTP/backup code verifies.
+        // No-op for users without 2FA enabled; rescue hatch via the
+        // CLOCKWORK_2FA_DISABLE constant.
+        (new TwoFactorLoginInterceptor())->register();
     }
 }
