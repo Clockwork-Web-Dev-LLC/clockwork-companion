@@ -2,6 +2,12 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.29.3 — 2026-07-22
+
+### Change
+
+- **Rename "Login Security" tab to "2FA"** to keep the nav compact.
+
 ## 1.29.2 — 2026-07-22
 
 ### Fix
