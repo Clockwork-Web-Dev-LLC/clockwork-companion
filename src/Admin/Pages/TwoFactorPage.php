@@ -62,6 +62,7 @@ class TwoFactorPage
 
         self::renderFreshBackupCodes();
         self::renderSelfCard();
+        self::renderWflsCleanupCard();
         self::renderTeamCard();
     }
 
@@ -216,6 +217,34 @@ class TwoFactorPage
     }
 
     /**
+     * Shown only when the WFLS plugin is still installed but no existing
+     * user's 2FA depends on it anymore — every setup either migrated or
+     * was never there. That's the moment removing it is pure win: it's
+     * deprecated, and a second authenticate-chain gate is one more thing
+     * to reason about.
+     */
+    private static function renderWflsCleanupCard(): void
+    {
+        if (! WflsMigrator::readyToRemove()) {
+            return;
+        }
+        ?>
+        <div class="cwk-card" style="border-left:4px solid #00753d;margin-bottom:16px;">
+            <h2 style="margin-top:0;">Wordfence Login Security can now be removed</h2>
+            <p style="color:#50575e;">Every account that had two-factor in Wordfence Login Security has been
+               migrated to Clockwork — nothing depends on it anymore. Wordfence is discontinuing the plugin,
+               so this is the moment to remove it<?php echo WflsMigrator::isWflsActive() ? '' : ' (it is already deactivated; only the files remain)'; ?>.</p>
+            <?php self::actionForm(
+                'remove_wfls',
+                'Deactivate & remove Wordfence Login Security',
+                'button button-primary',
+                'Remove the Wordfence Login Security plugin? All two-factor setups have been migrated to Clockwork, so no account loses protection. This also runs the plugin\'s uninstall cleanup.'
+            ); ?>
+        </div>
+        <?php
+    }
+
+    /**
      * Roll-call of accounts that can change content or configuration.
      * Enrollment state per user: Clockwork 2FA / still on WFLS / none.
      */
@@ -255,11 +284,13 @@ class TwoFactorPage
                 <?php endforeach; ?>
                 </tbody>
             </table>
-            <?php if (WflsMigrator::isWflsActive()) : ?>
+            <?php if (WflsMigrator::isWflsActive() && ! WflsMigrator::readyToRemove()) : ?>
                 <p style="color:#787c82;font-size:12px;margin-top:10px;">
-                    Once every account above shows <strong>Clockwork 2FA</strong>, deactivate the
-                    Wordfence Login Security plugin — deactivating it earlier would silently remove
-                    two-factor for anyone still on it.
+                    <?php $remaining = WflsMigrator::remainingUnmigratedCount(); ?>
+                    <?php echo (int) $remaining; ?> account<?php echo $remaining === 1 ? '' : 's'; ?> still
+                    rely on Wordfence Login Security for two-factor. Once everyone has migrated, a
+                    removal button will appear here — deactivating WFLS earlier would silently remove
+                    their protection.
                 </p>
             <?php endif; ?>
         </div>

@@ -99,6 +99,11 @@ class TwoFactorStatusRoute
             'gate_disabled' => LoginInterceptor::isDisabled(),
             'wfls_present' => WflsMigrator::isWflsPresent(),
             'wfls_active' => WflsMigrator::isWflsActive(),
+            // All-roles view of the migration (counts.wfls_only above is
+            // admins/editors only): how many existing users still depend on
+            // WFLS, and whether the plugin is now safe to remove.
+            'wfls_unmigrated_total' => WflsMigrator::remainingUnmigratedCount(),
+            'wfls_ready_to_remove' => WflsMigrator::readyToRemove(),
             'users' => $rows,
             'counts' => $counts,
         ];

@@ -32,6 +32,8 @@ class WflsMigrator
 {
     public const VERSION_OPTION = 'wordfence_ls_version';
 
+    public const PLUGIN_FILE = 'wordfence-login-security/wordfence-login-security.php';
+
     /**
      * True when WFLS is or was installed here: version option survives
      * deactivation, and the secrets table survives even plugin deletion.
@@ -59,7 +61,7 @@ class WflsMigrator
             require_once ABSPATH.'wp-admin/includes/plugin.php';
         }
 
-        return is_plugin_active('wordfence-login-security/wordfence-login-security.php');
+        return is_plugin_active(self::PLUGIN_FILE);
     }
 
     /**
@@ -110,6 +112,105 @@ class WflsMigrator
         ]);
 
         return $codes;
+    }
+
+    /**
+     * How many EXISTING users still depend on WFLS for their 2FA — i.e.
+     * have a WFLS secret but no Companion enrollment. All roles, not just
+     * admins/editors: deactivating WFLS kills the gate for every one of
+     * them, so every one of them blocks removal. Orphan rows for deleted
+     * users don't count.
+     */
+    public static function remainingUnmigratedCount(): int
+    {
+        global $wpdb;
+
+        if (! self::tableExists()) {
+            return 0;
+        }
+
+        $userIds = $wpdb->get_col(
+            'SELECT DISTINCT s.user_id FROM '.self::tableName().' s'
+            ." INNER JOIN {$wpdb->users} u ON u.ID = s.user_id"
+            ." WHERE s.mode = 'authenticator'"
+        );
+
+        $count = 0;
+        foreach ($userIds as $uid) {
+            if (! UserSettings::isEnabled((int) $uid)) {
+                $count++;
+            }
+        }
+
+        return $count;
+    }
+
+    /**
+     * True when the WFLS plugin is installed (files on disk) and nobody's
+     * 2FA depends on it anymore — the moment to suggest removing it.
+     */
+    public static function readyToRemove(): bool
+    {
+        return self::pluginInstalled() && self::remainingUnmigratedCount() === 0;
+    }
+
+    public static function pluginInstalled(): bool
+    {
+        return is_file(WP_PLUGIN_DIR.'/'.self::PLUGIN_FILE);
+    }
+
+    /**
+     * Deactivate and delete the WFLS plugin. Guarded: refuses while any
+     * existing user still depends on WFLS for 2FA.
+     *
+     * Deactivation always succeeds; deletion (WP_Filesystem) can fail on
+     * exotic hosts, in which case we report partial success — a
+     * deactivated WFLS is already harmless, the files are just clutter.
+     * Note delete_plugins() runs the plugin's uninstall routine, which may
+     * drop the wfls_* tables — fine, since nobody depends on them by the
+     * time this runs.
+     *
+     * @return array{ok: bool, message: string}
+     */
+    public static function removeWfls(): array
+    {
+        if (! self::pluginInstalled()) {
+            return ['ok' => false, 'message' => 'Wordfence Login Security is not installed.'];
+        }
+        if (self::remainingUnmigratedCount() > 0) {
+            return ['ok' => false, 'message' => 'Refusing to remove — users still depend on Wordfence Login Security for two-factor.'];
+        }
+
+        if (! function_exists('deactivate_plugins')) {
+            require_once ABSPATH.'wp-admin/includes/plugin.php';
+        }
+        deactivate_plugins(self::PLUGIN_FILE, true);
+
+        $deleted = false;
+        try {
+            if (! function_exists('delete_plugins')) {
+                require_once ABSPATH.'wp-admin/includes/plugin.php';
+            }
+            require_once ABSPATH.'wp-admin/includes/file.php';
+            $result = delete_plugins([self::PLUGIN_FILE]);
+            $deleted = $result === true;
+        } catch (\Throwable $e) {
+            $deleted = false;
+        }
+
+        $message = $deleted
+            ? 'Wordfence Login Security deactivated and removed.'
+            : 'Wordfence Login Security deactivated. The plugin files could not be deleted automatically — remove them from the Plugins screen.';
+
+        ActionLogRepository::insert([
+            'action_type' => '2fa_wfls_removed',
+            'target' => self::PLUGIN_FILE,
+            'summary' => $message,
+            'ok' => true,
+            'actor' => 'manual',
+        ]);
+
+        return ['ok' => true, 'message' => $message];
     }
 
     /**
