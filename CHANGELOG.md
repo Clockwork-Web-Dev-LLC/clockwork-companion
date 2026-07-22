@@ -2,6 +2,12 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.29.5 — 2026-07-22
+
+### Change
+
+- **Migrate button shows a loading spinner.** Clicking "Migrate my two-factor setup" now immediately disables the button, shows a spinning circle, and changes the label to "Migrating…" so the page doesn't appear frozen while the migration POST processes.
+
 ## 1.29.4 — 2026-07-22
 
 ### Security
