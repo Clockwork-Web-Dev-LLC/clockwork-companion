@@ -2,6 +2,13 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.28.0 — 2026-07-22
+
+### Added
+
+- **Login Security admin page (Clockwork → Login Security).** Self-service 2FA enrollment: scan a QR code (rendered locally by a bundled MIT qrcode.js — the secret never leaves the page), confirm with a live code, get one-time backup codes. Enrolled users can regenerate codes or disable. A Team Status card lists every admin/editor and whether they're on Clockwork 2FA, still on Wordfence Login Security, or unprotected. When WFLS is detected, the enrollment card becomes a migration banner — one click ports the existing authenticator-app secret; urgent red styling when WFLS's data is present but the plugin is inactive (those users' gate is already off). Backup codes hand off from the action handler to the page via a 60-second single-read transient, never a URL.
+- **`/two-factor` REST endpoint + `two_factor` snapshot block + `two-factor` capability.** Per-admin/editor enrollment state (`clockwork` / `wfls` / `none`), site-level WFLS presence/activity, and the gate-disabled hatch flag — embedded in `/snapshot` so Clockwork's nightly fleet refresh picks it up with zero extra round trips. Feeds the monitoring app's "Two-factor at risk" issue section.
+
 ## 1.27.0 — 2026-07-22
 
 ### Added

@@ -8,6 +8,7 @@ use ClockworkCompanion\Admin\Pages\FormsPage;
 use ClockworkCompanion\Admin\Pages\PerformancePage;
 use ClockworkCompanion\Admin\Pages\SecurityPage;
 use ClockworkCompanion\Admin\Pages\TrafficPage;
+use ClockworkCompanion\Admin\Pages\TwoFactorPage;
 use ClockworkCompanion\Admin\Pages\UnlockPage;
 use ClockworkCompanion\Admin\Pages\UptimePage;
 
@@ -173,6 +174,16 @@ class Menu
             [SecurityPage::class, 'render']
         );
 
+        // Login Security sits right after Security — same mental bucket.
+        add_submenu_page(
+            self::SLUG,
+            'Login Security',
+            'Login Security',
+            self::CAPABILITY,
+            TwoFactorPage::SLUG,
+            [TwoFactorPage::class, 'render']
+        );
+
         add_submenu_page(
             self::SLUG,
             'Performance',
@@ -238,6 +249,18 @@ class Menu
             [],
             CLOCKWORK_COMPANION_VERSION
         );
+
+        // QR encoder (bundled, MIT) — only the Login Security page renders
+        // an enrollment QR, so only it pays the script weight.
+        if (str_contains($hookSuffix, TwoFactorPage::SLUG)) {
+            wp_enqueue_script(
+                'clockwork-companion-qrcode',
+                plugins_url('assets/qrcode.js', CLOCKWORK_COMPANION_DIR . '/clockwork-companion.php'),
+                [],
+                CLOCKWORK_COMPANION_VERSION,
+                false
+            );
+        }
     }
 
 }
