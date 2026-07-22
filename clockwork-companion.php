@@ -15,7 +15,7 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-define('CLOCKWORK_COMPANION_VERSION', '1.29.0');
+define('CLOCKWORK_COMPANION_VERSION', '1.29.1');
 define('CLOCKWORK_COMPANION_DIR', __DIR__ . '/clockwork-companion');
 define('CLOCKWORK_COMPANION_NAMESPACE', 'clockwork/v1');
 
