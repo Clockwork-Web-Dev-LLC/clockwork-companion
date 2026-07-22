@@ -2,6 +2,17 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.29.4 — 2026-07-22
+
+### Security
+
+- **TOTP replay prevention.** `Totp::verify()` now returns `int|false` — the winning step counter on success, false on failure. `LoginInterceptor` records the last accepted step in `_clockwork_2fa_last_step` user meta and passes it as `$minStep` on every subsequent verify call. Any code at or below the already-used step is rejected, closing the 90-second reuse window (RFC 6238 §5.2).
+- **Lock out after 5th bad code (not 6th).** After the 5th wrong TOTP or backup code the transient is immediately deleted and the user is bounced back to the login page with the "verification window expired" notice, instead of rendering the challenge form one more time with "0 attempts left." The existing `> MAX_ATTEMPTS` guard (which would have caught request 6) is now defense-in-depth for concurrent races only.
+
+### Change
+
+- **Attempt counter non-atomicity documented.** Added a comment explaining that the get-transient → increment → set-transient sequence is not atomic under Redis/Memcached, and why it's acceptable here (races allow at most ~2× the attempt cap, which is well within brute-force infeasibility for a 6-digit TOTP).
+
 ## 1.29.3 — 2026-07-22
 
 ### Change

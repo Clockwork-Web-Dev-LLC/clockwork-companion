@@ -44,8 +44,15 @@ class Totp
     /**
      * Verify a user-supplied code against the secret, tolerating
      * WINDOW steps of clock drift. Constant-time comparison per step.
+     *
+     * Returns the winning step counter (intdiv(timestamp, PERIOD)) on
+     * success, false on failure. Callers that need replay prevention
+     * should pass the last accepted step as $minStep — any winning step
+     * at or below that value is rejected (RFC 6238 §5.2).
+     *
+     * @return int|false
      */
-    public static function verify(string $base32Secret, string $code, ?int $now = null): bool
+    public static function verify(string $base32Secret, string $code, ?int $now = null, int $minStep = -1)
     {
         $binary = self::base32Decode($base32Secret);
         if ($binary === false || $binary === '') {
@@ -59,9 +66,13 @@ class Totp
 
         $now = $now ?? time();
         for ($offset = -self::WINDOW; $offset <= self::WINDOW; $offset++) {
+            $step = intdiv($now + ($offset * self::PERIOD), self::PERIOD);
+            if ($step <= $minStep) {
+                continue;
+            }
             $expected = self::code($binary, $now + ($offset * self::PERIOD));
             if (hash_equals($expected, $code)) {
-                return true;
+                return $step;
             }
         }
 

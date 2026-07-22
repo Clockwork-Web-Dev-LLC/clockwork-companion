@@ -105,6 +105,9 @@ class LoginInterceptor
             exit;
         }
 
+        // get_transient → increment → set_transient is not atomic under Redis/Memcached.
+        // Acceptable: races here allow at most ~2× the attempt cap under concurrent
+        // burst, which is well within brute-force infeasibility for 6-digit TOTP.
         $state['attempts']++;
         if ($state['attempts'] > self::MAX_ATTEMPTS) {
             delete_transient($key);
@@ -122,9 +125,20 @@ class LoginInterceptor
         $code = (string) ($_POST['clockwork_2fa_code'] ?? '');
         $normalized = preg_replace('/\s+/', '', $code);
 
-        $valid = preg_match('/^\d{6}$/', $normalized)
-            ? Totp::verify(UserSettings::secret($userId), $normalized)
-            : UserSettings::useBackupCode($userId, $normalized);
+        if (preg_match('/^\d{6}$/', $normalized)) {
+            $stepResult = Totp::verify(
+                UserSettings::secret($userId),
+                $normalized,
+                null,
+                UserSettings::lastAcceptedStep($userId)
+            );
+            $valid = $stepResult !== false;
+            if ($valid) {
+                UserSettings::recordStep($userId, $stepResult);
+            }
+        } else {
+            $valid = UserSettings::useBackupCode($userId, $normalized);
+        }
 
         if (! $valid) {
             AuthAuditRepository::insert([
@@ -134,6 +148,10 @@ class LoginInterceptor
                 'request_method' => 'POST',
             ]);
             $remaining = self::MAX_ATTEMPTS - $state['attempts'];
+            if ($remaining <= 0) {
+                delete_transient($key);
+                $this->bounceToLogin();
+            }
             $this->renderChallenge($token, sprintf(
                 'That code didn&rsquo;t work. %d attempt%s left.',
                 $remaining,
