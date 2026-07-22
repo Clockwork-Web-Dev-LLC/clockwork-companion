@@ -2,6 +2,12 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.29.0 — 2026-07-22
+
+### Added
+
+- **"Wordfence Login Security can now be removed" card.** Appears on the Login Security page the moment no existing user's 2FA depends on WFLS anymore (all roles counted, not just admins/editors — deactivating WFLS kills the gate for everyone on it). One click deactivates and deletes the plugin, running its uninstall cleanup; if file deletion fails the plugin is still left safely deactivated. `removeWfls()` refuses while anyone remains unmigrated. While accounts remain, the Team Status card shows how many are left instead. `/two-factor` (and the snapshot block) gain `wfls_unmigrated_total` and `wfls_ready_to_remove` so the monitoring app can show "migrated — remove WFLS" fleet-wide.
+
 ## 1.28.0 — 2026-07-22
 
 ### Added

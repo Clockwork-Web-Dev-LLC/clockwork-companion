@@ -90,6 +90,12 @@ class TwoFactorActions
                     'codes' => $this->stashCodes($userId, $codes),
                 ]);
 
+            case 'remove_wfls':
+                $result = WflsMigrator::removeWfls();
+                $this->redirect($result['ok']
+                    ? ['flash' => $result['message']]
+                    : ['flash_error' => $result['message']]);
+
             default:
                 wp_die('Unknown operation.', 400);
         }
