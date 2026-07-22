@@ -2,6 +2,13 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.27.0 — 2026-07-22
+
+### Added
+
+- **Two-factor authentication (TOTP), replacing Wordfence Login Security.** Wordfence is discontinuing the standalone WFLS plugin; Companion now carries the same core capability: RFC 6238 authenticator-app codes (Google Authenticator / Authy / 1Password), hashed single-use backup codes, and a login gate that withholds the auth cookie until a valid code is entered (never a set-then-destroy window). Enrollment is two-phase — the secret only activates after the user proves their app produces a valid code — so self-lockout via an unscanned QR is impossible. Challenge attempts cap at 5 per pending login and failures land in the auth-failures audit table. Fleet rescue hatch: `wp config set CLOCKWORK_2FA_DISABLE true --raw` turns the gate off instantly over SSH. XML-RPC/REST requests bypass the challenge (application passwords keep working; xmlrpc stays blocked at the edge as before).
+- **Wordfence Login Security migrator.** Detects WFLS installs (including deactivated-but-data-present ones) and copies a user's TOTP secret into Companion 2FA — the same authenticator-app entry keeps working, no re-scan needed. Schema verified against a live WFLS 1.1.16 install: the secret is a raw 20-byte binary tinyblob, and enrollment-state is row-existence in `wfls_2fa_secrets`. WFLS rows are left untouched for rollback; fresh hashed backup codes are issued instead of porting WFLS's unhashed recovery blob. No admin UI yet — this release is the engine + gate + migrator, deployed to a canary for soak testing; enrollment/migration UI follows.
+
 ## 1.26.10 — 2026-07-21
 
 ### Fix
