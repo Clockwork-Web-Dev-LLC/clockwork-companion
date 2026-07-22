@@ -51,6 +51,7 @@ class SnapshotRoute
             'admins'           => (new AdminsRoute())->payload(),
             'wp_cron'          => (new CronRoute())->payload(),
             'comments_summary' => (new CommentsSummaryRoute())->payload(),
+            'two_factor'       => (new TwoFactorStatusRoute())->payload(),
         ]);
     }
 

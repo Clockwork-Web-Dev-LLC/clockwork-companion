@@ -95,6 +95,11 @@ class Plugin
         // that went inactive and restores the theme if it changed, then
         // returns a repairs list that Clockwork persists to plugin_update_jobs.
         'post-update-verify',
+        // TOTP two-factor auth (1.28.0+): login gate, enrollment UI, WFLS
+        // migrator, and the /two-factor status endpoint (also embedded in
+        // /snapshot as two_factor). Replaces the discontinued Wordfence
+        // Login Security plugin.
+        'two-factor',
     ];
 
     public function boot(): void
@@ -141,6 +146,7 @@ class Plugin
             (new ResourceSamplerConfigRoute())->register();
             (new FormSubscriptionsRoute())->register();
             (new PostUpdateVerifyRoute())->register();
+            (new \ClockworkCompanion\Rest\TwoFactorStatusRoute())->register();
         });
 
         // Self-service Forms tab AJAX. Capability + nonce gated; distinct
