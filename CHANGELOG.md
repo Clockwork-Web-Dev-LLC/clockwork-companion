@@ -2,6 +2,12 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.29.2 — 2026-07-22
+
+### Fix
+
+- **Login Security page cards unstyled.** All four cards were using `cwk-card` (an undefined class), leaving content with no padding, shadow, or radius — most visibly the backup-codes alert card had no spacing between the red left border and the text, and no background tint. Switched to `clockwork-card` + `clockwork-card__body` throughout. Backup codes card gets a `#fef2f2` red tint; WFLS removal card gets a `#f0fdf4` green tint.
+
 ## 1.29.1 — 2026-07-22
 
 ### Fix
