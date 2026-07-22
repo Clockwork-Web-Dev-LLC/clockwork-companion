@@ -2,6 +2,12 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.30.0 — 2026-07-22
+
+### Added
+
+- **Elementor cache-race fix (`ElementorCacheGuard`).** Elementor deletes a post's compiled CSS mid-save but only regenerates it lazily on the next page load; hosts purge their page cache earlier in that same save request (SpinupWP on `transition_post_status`, WP Engine on `save_post`), so whichever request lands in the gap can get an unstyled page baked into the cache — a years-old upstream Elementor defect (GitHub #27735), not host-specific. Hooking `elementor/document/after_save`, Companion now forces the CSS rebuild synchronously in the save request, then re-purges the page cache (SpinupWP or WP Engine Varnish, whichever is present) only once the CSS is confirmed back on disk. No-op on non-Elementor sites; the callback is additionally guarded with class/method checks and a try/catch against future Elementor internals changes. Replaces the per-site `elementor-cache-race-fix.php` mu-plugin piloted on AEX and xqstaging.
+
 ## 1.29.0 — 2026-07-22
 
 ### Added
