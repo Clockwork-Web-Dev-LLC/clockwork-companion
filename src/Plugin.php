@@ -167,6 +167,10 @@ class Plugin
         // Nonce + manage_options gated; unrelated to the HMAC REST routes above.
         (new RunSecurityScanAction())->register();
 
+        // admin-post.php handler for the Login Security page (2FA enroll /
+        // confirm / disable / migrate). Current-user-only operations.
+        (new \ClockworkCompanion\Admin\Actions\TwoFactorActions())->register();
+
         // SSO interceptor — runs on every front-end request to check for the
         // ?clockwork_sso=<nonce> query param. Bound to `init` priority 1
         // inside register(), so output buffering is still safe.
