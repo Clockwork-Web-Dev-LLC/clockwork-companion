@@ -2,6 +2,12 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.30.1 — 2026-07-23
+
+### Fix
+
+- **`ElementorCacheGuard` could hang PHP-FPM (504 Gateway Timeout) editing a brand-new Elementor document.** Reproduced live on AEX: opening a never-saved JetEngine listing item (posts 1928/1918) in the Elementor editor times out. Elementor's `get_elements_data()` bootstraps an empty document via `convert_to_elementor()` → `save([])`, which fires `elementor/document/after_save` — the hook our 1.30.0 fix listens on. Rebuilding CSS for that empty document calls `get_elements_data()` again, sees the document still empty (the bootstrap save never persists real `_elementor_data`), and re-enters `convert_to_elementor()` → `save([])` → `after_save` → us again: infinite recursion, confirmed via a captured backtrace. Fixed by skipping the hook entirely when `_elementor_data` is empty (nothing to rebuild CSS for anyway), plus a re-entrancy lock as a second line of defense. Verified against the exact hang, plus a regression check that the original fix still rebuilds CSS and re-purges correctly for real saves.
+
 ## 1.30.0 — 2026-07-22
 
 ### Added

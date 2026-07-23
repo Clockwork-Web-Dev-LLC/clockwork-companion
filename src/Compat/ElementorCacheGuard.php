@@ -22,16 +22,37 @@ namespace ClockworkCompanion\Compat;
  * so on non-Elementor sites this simply never runs. The callback body is
  * additionally defensive (class/method existence checks + try/catch)
  * against a future Elementor release changing these internals.
+ *
+ * Brand-new documents (no `_elementor_data` yet) are skipped entirely.
+ * Elementor's own get_elements_data() bootstraps an empty document via
+ * convert_to_elementor() -> save([]), which fires this same after_save
+ * hook. Rebuilding CSS for that empty document calls get_elements_data()
+ * again, which sees the document still empty (the bootstrap save never
+ * persists real data) and re-triggers convert_to_elementor() -> save([])
+ * -> after_save -> us again — an infinite recursion that hangs PHP-FPM
+ * until the request times out (504). Reproduced live on AEX against a
+ * never-opened JetEngine listing item (posts 1928/1918); a re-entrancy
+ * lock is kept as a second line of defense in case any other Elementor
+ * code path re-enters after_save mid-callback.
  */
 class ElementorCacheGuard
 {
+    private static bool $running = false;
+
     public static function register(): void
     {
         add_action('elementor/document/after_save', static function ($document): void {
+            if (self::$running) {
+                return;
+            }
+
+            self::$running = true;
             try {
                 self::regenerateAndRepurge($document);
             } catch (\Throwable $e) {
                 error_log('[clockwork-companion] ElementorCacheGuard: ' . $e->getMessage());
+            } finally {
+                self::$running = false;
             }
         }, 20, 1);
     }
@@ -44,6 +65,13 @@ class ElementorCacheGuard
 
         $post_id = $document->get_main_id();
         if (! $post_id) {
+            return;
+        }
+
+        // Nothing to rebuild CSS for yet — and rebuilding here is what
+        // triggers the bootstrap-save recursion described above.
+        $elementor_data = get_post_meta($post_id, '_elementor_data', true);
+        if (empty($elementor_data) || $elementor_data === '[]') {
             return;
         }
 
