@@ -147,6 +147,7 @@ class Plugin
             (new FormSubscriptionsRoute())->register();
             (new PostUpdateVerifyRoute())->register();
             (new \ClockworkCompanion\Rest\TwoFactorStatusRoute())->register();
+            (new \ClockworkCompanion\Rest\TwoFactorMigrateRoute())->register();
         });
 
         // Self-service Forms tab AJAX. Capability + nonce gated; distinct

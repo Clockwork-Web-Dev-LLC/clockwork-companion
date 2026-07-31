@@ -2,6 +2,12 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.29.6 — 2026-07-31
+
+### Added
+
+- **`POST /wp-json/clockwork/v1/two-factor/migrate`** — HMAC-authenticated endpoint that triggers a WFLS → Companion migration for a given `user_id` without requiring the user to click through the admin UI. Intended for monitoring-app-driven fleet migrations.
+
 ## 1.29.5 — 2026-07-22
 
 ### Change
