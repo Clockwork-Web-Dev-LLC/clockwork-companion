@@ -114,6 +114,7 @@ class Plugin
         // auth layer runs. Each shim is unconditional + no-ops cleanly on
         // sites that don't have the targeted plugin active.
         \ClockworkCompanion\Compat\PerfmattersCompat::register();
+        \ClockworkCompanion\Compat\ElementorCacheGuard::register();
 
         // Register the per-request CPU/memory sampler IMMEDIATELY (not on a
         // hook). The sampler snapshots getrusage() at construction time and

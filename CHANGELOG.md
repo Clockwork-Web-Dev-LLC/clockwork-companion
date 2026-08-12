@@ -2,6 +2,10 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.30.2 — 2026-08-12
+
+Merge of 1.29.x 2FA branch (1.29.1–1.29.6) with 1.30.x Elementor branch (1.30.0–1.30.1). No new logic beyond resolving the divergence; both lines of development are fully included.
+
 ## 1.29.6 — 2026-07-31
 
 ### Added
@@ -43,6 +47,17 @@ Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earli
 
 - **Login broken for users migrated from WFLS to Companion 2FA.** Migration was leaving the user's row in `wfls_2fa_secrets` for rollback purposes, but WFLS is still active on the site. WFLS's `authenticate` hook (priority 25) would see that row, try to issue its own 2FA challenge, and produce "An error was encountered while trying to authenticate" — Companion's gate at `PHP_INT_MAX` never ran. Fix: `migrate()` now deletes the user's WFLS row immediately after the secret is safely written to Companion user meta. The underlying binary key is identical in both systems, so the user's authenticator-app entry keeps producing valid codes.
 
+## 1.30.1 — 2026-07-23
+
+### Fix
+
+- **`ElementorCacheGuard` could hang PHP-FPM (504 Gateway Timeout) editing a brand-new Elementor document.** Reproduced live on AEX: opening a never-saved JetEngine listing item (posts 1928/1918) in the Elementor editor times out. Elementor's `get_elements_data()` bootstraps an empty document via `convert_to_elementor()` → `save([])`, which fires `elementor/document/after_save` — the hook our 1.30.0 fix listens on. Rebuilding CSS for that empty document calls `get_elements_data()` again, sees the document still empty (the bootstrap save never persists real `_elementor_data`), and re-enters `convert_to_elementor()` → `save([])` → `after_save` → us again: infinite recursion, confirmed via a captured backtrace. Fixed by skipping the hook entirely when `_elementor_data` is empty (nothing to rebuild CSS for anyway), plus a re-entrancy lock as a second line of defense. Verified against the exact hang, plus a regression check that the original fix still rebuilds CSS and re-purges correctly for real saves.
+
+## 1.30.0 — 2026-07-22
+
+### Added
+
+- **Elementor cache-race fix (`ElementorCacheGuard`).** Elementor deletes a post's compiled CSS mid-save but only regenerates it lazily on the next page load; hosts purge their page cache earlier in that same save request (SpinupWP on `transition_post_status`, WP Engine on `save_post`), so whichever request lands in the gap can get an unstyled page baked into the cache — a years-old upstream Elementor defect (GitHub #27735), not host-specific. Hooking `elementor/document/after_save`, Companion now forces the CSS rebuild synchronously in the save request, then re-purges the page cache (SpinupWP or WP Engine Varnish, whichever is present) only once the CSS is confirmed back on disk. No-op on non-Elementor sites; the callback is additionally guarded with class/method checks and a try/catch against future Elementor internals changes. Replaces the per-site `elementor-cache-race-fix.php` mu-plugin piloted on AEX and xqstaging.
 ## 1.29.0 — 2026-07-22
 
 ### Added
