@@ -85,13 +85,22 @@ class UserSettings
     public static function confirmEnrollment(int $userId, string $code)
     {
         $pending = self::pendingSecret($userId);
-        if ($pending === '' || Totp::verify($pending, $code) === false) {
+        if ($pending === '') {
+            return false;
+        }
+
+        $step = Totp::verify($pending, $code);
+        if ($step === false) {
             return false;
         }
 
         update_user_meta($userId, self::META_SECRET, $pending);
         update_user_meta($userId, self::META_ENABLED, '1');
         delete_user_meta($userId, self::META_PENDING_SECRET);
+        // Burn the enrollment step (RFC 6238 §5.2). Without this the code the
+        // user just entered to confirm enrollment stays valid for its full
+        // 30-90s window and could be replayed as the first login factor.
+        self::recordStep($userId, $step);
 
         return self::generateBackupCodes($userId);
     }
@@ -109,6 +118,9 @@ class UserSettings
         update_user_meta($userId, self::META_SECRET, $base32Secret);
         update_user_meta($userId, self::META_ENABLED, '1');
         delete_user_meta($userId, self::META_PENDING_SECRET);
+        // Reset replay state to a clean slate — a stale high last-step left
+        // over from a prior enrollment would reject otherwise-valid codes.
+        delete_user_meta($userId, self::META_LAST_STEP);
 
         return self::generateBackupCodes($userId);
     }

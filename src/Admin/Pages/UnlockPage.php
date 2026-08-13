@@ -76,6 +76,12 @@ class UnlockPage
             wp_send_json_error(['message' => 'No domain provided.'], 400);
         }
 
+        // Defense-in-depth: never fire a signed request at a non-public host,
+        // even if a legacy entry somehow stored one.
+        if (! self::isStorableDomain($domain)) {
+            wp_send_json_error(['message' => "Refusing to target non-public host {$domain}."], 400);
+        }
+
         $secret = '';
         foreach (self::getSites() as $site) {
             if ($site['domain'] === $domain) {
@@ -129,7 +135,7 @@ class UnlockPage
         // Strip protocol/trailing slash so admins can paste a full URL carelessly.
         $domain = preg_replace('#^https?://#i', '', rtrim($domain, '/'));
 
-        if ($domain === '' || $secret === '') {
+        if ($domain === '' || $secret === '' || ! self::isStorableDomain($domain)) {
             return;
         }
 
@@ -137,7 +143,7 @@ class UnlockPage
         foreach ($sites as &$site) {
             if ($site['domain'] === $domain) {
                 $site['secret'] = $secret;
-                update_option(self::OPTION_KEY, $sites);
+                self::persistSites($sites);
 
                 return;
             }
@@ -145,7 +151,7 @@ class UnlockPage
         unset($site);
 
         $sites[] = ['domain' => $domain, 'secret' => $secret];
-        update_option(self::OPTION_KEY, $sites);
+        self::persistSites($sites);
     }
 
     /**
@@ -188,7 +194,7 @@ class UnlockPage
 
             $domain = preg_replace('#^https?://#i', '', rtrim($domain, '/'));
 
-            if ($domain === '' || ! preg_match('/^[a-f0-9]{64}$/', $secret)) {
+            if ($domain === '' || ! self::isStorableDomain($domain) || ! preg_match('/^[a-f0-9]{64}$/', $secret)) {
                 $skipped++;
                 continue;
             }
@@ -205,7 +211,7 @@ class UnlockPage
             }
         }
 
-        update_option(self::OPTION_KEY, array_values($sites));
+        self::persistSites(array_values($sites));
 
         return ['added' => $added, 'updated' => $updated, 'skipped' => $skipped];
     }
@@ -218,17 +224,154 @@ class UnlockPage
         }
 
         $filtered = array_values(array_filter(self::getSites(), fn ($s) => $s['domain'] !== $domain));
-        update_option(self::OPTION_KEY, $filtered);
+        self::persistSites($filtered);
     }
 
     /**
+     * Read the configured sites, decrypting each stored secret. Legacy
+     * plaintext entries (written before at-rest encryption) are returned
+     * as-is and get upgraded to ciphertext the next time the list is saved.
+     *
      * @return array<int, array{domain: string, secret: string}>
      */
     private static function getSites(): array
     {
         $raw = get_option(self::OPTION_KEY, []);
+        if (! is_array($raw)) {
+            return [];
+        }
 
-        return is_array($raw) ? $raw : [];
+        $sites = [];
+        foreach ($raw as $entry) {
+            if (! is_array($entry) || ! isset($entry['domain'])) {
+                continue;
+            }
+            $sites[] = [
+                'domain' => (string) $entry['domain'],
+                'secret' => self::decryptSecret((string) ($entry['secret'] ?? '')),
+            ];
+        }
+
+        return $sites;
+    }
+
+    /**
+     * Persist the site list, encrypting every secret at rest. All write paths
+     * go through here so nothing lands in wp_options in plaintext.
+     *
+     * @param  array<int, array{domain: string, secret: string}>  $sites
+     */
+    private static function persistSites(array $sites): void
+    {
+        $out = [];
+        foreach ($sites as $site) {
+            if (! isset($site['domain'])) {
+                continue;
+            }
+            $out[] = [
+                'domain' => (string) $site['domain'],
+                'secret' => self::encryptSecret((string) ($site['secret'] ?? '')),
+            ];
+        }
+
+        update_option(self::OPTION_KEY, array_values($out));
+    }
+
+    private const ENC_PREFIX = 'cwenc:v1:';
+
+    /**
+     * Encryption key for the secret store. Prefer an explicit
+     * CLOCKWORK_UNLOCK_KEY constant; otherwise derive one from the site's
+     * wp-config salts. Either way the key material lives in wp-config.php,
+     * NOT in the database — so a DB dump alone (the threat here: this hub
+     * aggregates the fleet's HMAC secrets) can't decrypt the store.
+     *
+     * Note: if the derived key changes (salt rotation, or defining/removing
+     * the constant), existing ciphertext becomes unreadable and the affected
+     * sites must be re-imported — the secrets are also held authoritatively
+     * in Clockwork, so re-import is the recovery path.
+     */
+    private static function encryptionKey(): string
+    {
+        $material = '';
+        if (defined('CLOCKWORK_UNLOCK_KEY') && is_string(constant('CLOCKWORK_UNLOCK_KEY')) && constant('CLOCKWORK_UNLOCK_KEY') !== '') {
+            $material = (string) constant('CLOCKWORK_UNLOCK_KEY');
+        } else {
+            $authKey = defined('AUTH_KEY') ? (string) constant('AUTH_KEY') : '';
+            $secureAuthKey = defined('SECURE_AUTH_KEY') ? (string) constant('SECURE_AUTH_KEY') : '';
+            $material = $authKey.'|'.$secureAuthKey;
+        }
+
+        return sodium_crypto_generichash($material, 'clockwork-unlock-store', SODIUM_CRYPTO_SECRETBOX_KEYBYTES);
+    }
+
+    private static function encryptSecret(string $plaintext): string
+    {
+        if ($plaintext === '') {
+            return '';
+        }
+
+        // Already encrypted (idempotent re-save) — don't double-wrap.
+        if (str_starts_with($plaintext, self::ENC_PREFIX)) {
+            return $plaintext;
+        }
+
+        $nonce = random_bytes(SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);
+        $cipher = sodium_crypto_secretbox($plaintext, $nonce, self::encryptionKey());
+
+        return self::ENC_PREFIX.base64_encode($nonce.$cipher);
+    }
+
+    private static function decryptSecret(string $stored): string
+    {
+        if ($stored === '') {
+            return '';
+        }
+
+        // Legacy plaintext row — return unchanged (migrates on next save).
+        if (! str_starts_with($stored, self::ENC_PREFIX)) {
+            return $stored;
+        }
+
+        $blob = base64_decode(substr($stored, strlen(self::ENC_PREFIX)), true);
+        if ($blob === false || strlen($blob) <= SODIUM_CRYPTO_SECRETBOX_NONCEBYTES) {
+            return '';
+        }
+
+        $nonce = substr($blob, 0, SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);
+        $cipher = substr($blob, SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);
+        $plain = sodium_crypto_secretbox_open($cipher, $nonce, self::encryptionKey());
+
+        return $plain === false ? '' : $plain;
+    }
+
+    /**
+     * Reject anything that isn't a plausible public hostname before we store
+     * it (and, defensively, before we fire a signed request at it). Blocks the
+     * signed-DELETE proxy from being pointed at localhost / link-local /
+     * private-range hosts on the hub's own network.
+     */
+    private static function isStorableDomain(string $domain): bool
+    {
+        $domain = strtolower(trim($domain));
+        if ($domain === '' || strlen($domain) > 253 || str_contains($domain, '/')) {
+            return false;
+        }
+
+        // No bare IPs — Companion sites are addressed by hostname.
+        if (filter_var($domain, FILTER_VALIDATE_IP)) {
+            return false;
+        }
+
+        // Must be a dotted hostname and not an obvious internal name.
+        if (! str_contains($domain, '.') || str_ends_with($domain, '.local') || str_ends_with($domain, '.internal')) {
+            return false;
+        }
+        if (in_array($domain, ['localhost', 'localhost.localdomain'], true)) {
+            return false;
+        }
+
+        return (bool) preg_match('/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/', $domain);
     }
 
     /**

@@ -56,6 +56,13 @@ class SupportForm
 
     public function enqueueAssets(): void
     {
+        // Only administrators use the support form. Gating here keeps the
+        // localized nonce (cwkSupport.nonce) out of lower-privilege users'
+        // pages — otherwise it's emitted on every admin screen for everyone.
+        if (! current_user_can('manage_options')) {
+            return;
+        }
+
         wp_enqueue_script(
             'clockwork-support-form',
             plugins_url('assets/support-form.js', CLOCKWORK_COMPANION_DIR . '/clockwork-companion.php'),
@@ -79,6 +86,10 @@ class SupportForm
 
     public static function registerWidget(): void
     {
+        if (! current_user_can('manage_options')) {
+            return;
+        }
+
         wp_add_dashboard_widget(
             'clockwork_support_widget',
             'Clockwork Web Dev',
@@ -270,6 +281,9 @@ class SupportForm
 
     public static function renderModal(): void
     {
+        if (! current_user_can('manage_options')) {
+            return;
+        }
         ?>
         <div id="cwk-support-modal" role="dialog" aria-modal="true" aria-labelledby="cwk-modal-title" style="display:none;">
             <div class="cwk-modal-overlay"></div>
@@ -451,6 +465,15 @@ class SupportForm
     public static function handleSubmit(): void
     {
         check_ajax_referer('cwk_support_submit', 'nonce');
+
+        // Authorization gate. The nonce is CSRF protection, not an authZ
+        // control — without this check any logged-in user (including a
+        // subscriber who lifted the nonce off an admin page) could drive the
+        // handler, which proxies to the agency's Gravity Forms endpoint using
+        // the shared GF API credentials. Restrict to site administrators.
+        if (! current_user_can('manage_options')) {
+            wp_send_json_error(['message' => 'Insufficient permissions.'], 403);
+        }
 
         $firstName = sanitize_text_field((string) ($_POST['first_name'] ?? ''));
         $lastName  = sanitize_text_field((string) ($_POST['last_name'] ?? ''));

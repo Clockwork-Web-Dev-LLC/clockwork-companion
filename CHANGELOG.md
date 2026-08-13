@@ -2,6 +2,15 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.30.4 — 2026-08-13
+
+### Security
+
+- **Support form now requires `manage_options`.** `SupportForm::handleSubmit()` verified a nonce but performed no capability check, and the nonce was localized onto every admin page for every logged-in user. A low-privilege user (e.g. subscriber) could lift the nonce and drive the handler, which proxies to the agency's Gravity Forms endpoint using the shared GF API credentials — an authenticated abuse/spam vector. The handler now rejects non-admins with 403, and the asset/nonce enqueue, dashboard widget, and footer modal are all gated on `current_user_can('manage_options')` so nothing is emitted to lower-privilege users.
+- **Unlock hub secrets encrypted at rest.** `UnlockPage` stored every managed site's Companion HMAC secret in plaintext in `wp_options['cw_unlock_sites']` — a single DB dump of the ops hub would leak the whole fleet's secrets. Secrets are now sealed with `sodium_crypto_secretbox` under a key derived from wp-config material (`CLOCKWORK_UNLOCK_KEY` if defined, else the site's `AUTH_KEY`/`SECURE_AUTH_KEY` salts), which lives outside the database. Existing plaintext rows are read transparently and upgraded to ciphertext on the next save. Note: a change to the key material (salt rotation) makes existing ciphertext unreadable — re-import the affected sites (secrets are held authoritatively in Clockwork).
+- **Unlock hub rejects non-public target hosts.** Domains are validated at store time (add + import) and again before the signed `DELETE /lockouts` request fires, blocking the proxy from being pointed at `localhost`, link-local, or private-range hosts (bare IPs, `*.local`, `*.internal`, single-label names).
+- **2FA enrollment code is now burned.** `UserSettings::confirmEnrollment()` recorded no replay step, so the TOTP code used to confirm enrollment stayed valid for its full window and could be replayed as the first login factor. It now records the winning step (RFC 6238 §5.2). The WFLS migration path (`activateWithSecret()`) also clears stale replay state to avoid locking out a re-enrolling user.
+
 ## 1.30.3 — 2026-08-12
 
 `PluginsRoute`: only set `update_available=true` when the transient's `new_version` is strictly greater than the installed version. Stale transients could keep a slug in `response[]` after it was already updated, producing false "1.x → 1.x" entries in the updates queue that would run as no-ops.
