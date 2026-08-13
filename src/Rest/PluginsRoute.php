@@ -117,10 +117,15 @@ class PluginsRoute
             // this plugin actually running on the site?" — same effective state.
             $isActive = $isSiteActive || $isNetworkActive;
 
-            $hasUpdate = isset($updates[$slug]);
-            $newVersion = $hasUpdate && isset($updates[$slug]->new_version)
+            $newVersion = isset($updates[$slug]->new_version)
                 ? (string) $updates[$slug]->new_version
                 : null;
+            // Only flag as update_available when the new version is actually
+            // newer than what's installed. Stale transients occasionally keep
+            // a slug in response[] after the site was already updated to that
+            // version, causing false "X → X" entries in the updates queue.
+            $hasUpdate = $newVersion !== null
+                && version_compare($newVersion, (string) ($meta['Version'] ?? ''), '>');
 
             if ($isActive) {
                 $activeCount++;

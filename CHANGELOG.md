@@ -2,6 +2,10 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.30.3 — 2026-08-12
+
+`PluginsRoute`: only set `update_available=true` when the transient's `new_version` is strictly greater than the installed version. Stale transients could keep a slug in `response[]` after it was already updated, producing false "1.x → 1.x" entries in the updates queue that would run as no-ops.
+
 ## 1.30.2 — 2026-08-12
 
 Merge of 1.29.x 2FA branch (1.29.1–1.29.6) with 1.30.x Elementor branch (1.30.0–1.30.1). No new logic beyond resolving the divergence; both lines of development are fully included.
