@@ -2,6 +2,12 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.31.1 — 2026-08-14
+
+### Fixed
+
+- Notifications page card header now uses the correct `.clockwork-card__head` class, restoring the expected `14px 20px` padding around the "Slack" heading.
+
 ## 1.31.0 — 2026-08-14
 
 ### Added

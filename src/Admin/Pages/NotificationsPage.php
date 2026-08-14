@@ -41,7 +41,7 @@ class NotificationsPage
             <input type="hidden" name="_wpnonce" value="<?php echo esc_attr($nonce); ?>">
 
             <div class="clockwork-card" style="max-width:640px;">
-                <div class="clockwork-card__header">
+                <div class="clockwork-card__head">
                     <h2>Slack</h2>
                 </div>
                 <div class="clockwork-card__body">
