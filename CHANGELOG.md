@@ -2,6 +2,12 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.31.0 — 2026-08-14
+
+### Added
+
+- **Client Slack notifications.** A new Notifications page (Clockwork admin → Notifications) lets Clockwork configure a Slack incoming webhook URL per site. When saved, the monitoring app reads the URL from the `/snapshot` endpoint and sends plain-English alerts directly to the client's Slack workspace when a contact form fails or the site goes down. Messages are intentionally generic and direct the client to contact Clockwork for a fix. Clients who have not configured a webhook receive no change in behavior.
+
 ## 1.30.4 — 2026-08-13
 
 ### Security
