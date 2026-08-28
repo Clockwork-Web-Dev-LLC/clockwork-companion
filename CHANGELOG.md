@@ -2,6 +2,12 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.30.2 — 2026-08-28
+
+### Fix
+
+- **`Runner::run()` reported a plugin update as successful even when re-activation failed, letting broken updates through as "complete."** Investigated after reports of random plugin disables across the fleet (WFLS/Contact Form 7 left deactivated on one site, The Events Calendar left with missing files on another). Root cause: `Plugin_Upgrader::upgrade()` succeeding does not mean the plugin is usable afterward — Runner re-activates it separately, and if that `activate_plugin()` call fails (corrupted/incomplete file swap, a fatal on activation, a genuinely missing plugin file), the failure was only appended to `messages`; `ok` stayed `true`. Since `AbstractRunUpdate` in the monitoring app trusts `ok` to decide `STATUS_COMPLETE` vs `STATUS_FAILED`, these updates sailed through nightly runs as successful — no Mattermost alert, no retry, no visibility — while `post-update-verify`'s `verifyPlugins()` explicitly skips slugs no longer in `get_plugins()`, so a fully-missing plugin file could never self-heal either. `Runner::run()` now returns `ok: false` (with a descriptive `error`) whenever a plugin that was active before the upgrade fails to re-activate after it, while still reporting `upgrade_completed: true` so the orchestrator's post-update-verify pass still runs and can repair collateral damage to *other* plugins. Companion-side half of a two-part fix; see the clockwork-monitoring-app changelog for the orchestrator-side defense-in-depth for sites still running older Companion versions.
+
 ## 1.30.1 — 2026-07-23
 
 ### Fix

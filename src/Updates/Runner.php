@@ -18,7 +18,12 @@ use WP_Ajax_Upgrader_Skin;
  *   6. Capture after_version.
  *   7. Re-activate if it was active before. Plugin_Upgrader::upgrade() does
  *      NOT re-activate; if you don't do this yourself, the site is left
- *      running with the plugin off — the dangerous failure mode.
+ *      running with the plugin off — the dangerous failure mode. If
+ *      re-activation fails (corrupted swap, missing files, a fatal on
+ *      activation), the whole call reports ok=false — a plugin the site
+ *      needs, ending up OFF, is a failure regardless of whether the file
+ *      copy itself succeeded. Silently reporting ok=true here is what let
+ *      broken updates sail through the nightly job as "complete."
  *   8. Return structured result.
  *
  * Pulled out of the route so we can test the dance without standing up the
@@ -29,6 +34,7 @@ class Runner
     /**
      * @return array{
      *     ok: bool,
+     *     upgrade_completed?: bool,
      *     slug: string,
      *     before_version: string,
      *     after_version: ?string,
@@ -118,10 +124,12 @@ class Runner
         // doesn't re-fire the activation hook by default, which is what we
         // want for an upgrade (the plugin's first-time setup already ran).
         $reactivated = ! $wasActive;
+        $reactivationError = null;
         if ($wasActive) {
             $activateResult = activate_plugin($slug, '', false, true);
             if (is_wp_error($activateResult)) {
-                $messages[] = 'Re-activation failed: ' . $activateResult->get_error_message();
+                $reactivationError = $activateResult->get_error_message();
+                $messages[] = 'Re-activation failed: ' . $reactivationError;
                 $reactivated = false;
             } else {
                 $reactivated = true;
@@ -139,8 +147,44 @@ class Runner
             ));
         }
 
+        // A plugin that was active before the upgrade and is not active
+        // after it is a failure, full stop — regardless of whether
+        // Plugin_Upgrader::upgrade() itself reported success. This is the
+        // one case that matters most (the site just lost functionality),
+        // and it's also the signal for a corrupted/incomplete file swap:
+        // activate_plugin() fails with a WP_Error when the plugin's main
+        // file is missing. Reporting ok=true here was letting these sail
+        // through the nightly job as "complete" with the failure buried
+        // in `messages`, where nothing was watching.
+        if ($wasActive && ! $reactivated) {
+            return [
+                'ok' => false,
+                // The file swap itself succeeded even though the overall
+                // call failed — distinct from 'ok' so the orchestrator can
+                // still run its post-update-verify pass (which checks the
+                // whole site's plugin list, not just this slug, and can
+                // catch collateral deactivations of OTHER plugins even when
+                // this plugin's own reactivation is unrecoverable).
+                'upgrade_completed' => true,
+                'slug' => $slug,
+                'before_version' => $beforeVersion,
+                'after_version' => $afterVersion,
+                'was_active' => $wasActive,
+                'reactivated' => $reactivated,
+                'messages' => $messages,
+                'elapsed_ms' => $this->elapsed($start),
+                'error' => sprintf(
+                    'reactivation_failed: files updated %s -> %s but the plugin failed to re-activate (%s). Site is running with this plugin OFF.',
+                    $beforeVersion,
+                    $afterVersion,
+                    $reactivationError ?? 'unknown reason'
+                ),
+            ];
+        }
+
         return [
             'ok' => true,
+            'upgrade_completed' => true,
             'slug' => $slug,
             'before_version' => $beforeVersion,
             'after_version' => $afterVersion,
