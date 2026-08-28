@@ -2,11 +2,81 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
-## 1.30.2 — 2026-08-28
+## 1.31.2 — 2026-08-28
 
 ### Fix
 
 - **`Runner::run()` reported a plugin update as successful even when re-activation failed, letting broken updates through as "complete."** Investigated after reports of random plugin disables across the fleet (WFLS/Contact Form 7 left deactivated on one site, The Events Calendar left with missing files on another). Root cause: `Plugin_Upgrader::upgrade()` succeeding does not mean the plugin is usable afterward — Runner re-activates it separately, and if that `activate_plugin()` call fails (corrupted/incomplete file swap, a fatal on activation, a genuinely missing plugin file), the failure was only appended to `messages`; `ok` stayed `true`. Since `AbstractRunUpdate` in the monitoring app trusts `ok` to decide `STATUS_COMPLETE` vs `STATUS_FAILED`, these updates sailed through nightly runs as successful — no Mattermost alert, no retry, no visibility — while `post-update-verify`'s `verifyPlugins()` explicitly skips slugs no longer in `get_plugins()`, so a fully-missing plugin file could never self-heal either. `Runner::run()` now returns `ok: false` (with a descriptive `error`) whenever a plugin that was active before the upgrade fails to re-activate after it, while still reporting `upgrade_completed: true` so the orchestrator's post-update-verify pass still runs and can repair collateral damage to *other* plugins. Companion-side half of a two-part fix; see the clockwork-monitoring-app changelog for the orchestrator-side defense-in-depth for sites still running older Companion versions.
+
+## 1.31.1 — 2026-08-14
+
+### Fixed
+
+- Notifications page card header now uses the correct `.clockwork-card__head` class, restoring the expected `14px 20px` padding around the "Slack" heading.
+
+## 1.31.0 — 2026-08-14
+
+### Added
+
+- **Client Slack notifications.** A new Notifications page (Clockwork admin → Notifications) lets Clockwork configure a Slack incoming webhook URL per site. When saved, the monitoring app reads the URL from the `/snapshot` endpoint and sends plain-English alerts directly to the client's Slack workspace when a contact form fails or the site goes down. Messages are intentionally generic and direct the client to contact Clockwork for a fix. Clients who have not configured a webhook receive no change in behavior.
+
+## 1.30.4 — 2026-08-13
+
+### Security
+
+- **Support form now requires `manage_options`.** `SupportForm::handleSubmit()` verified a nonce but performed no capability check, and the nonce was localized onto every admin page for every logged-in user. A low-privilege user (e.g. subscriber) could lift the nonce and drive the handler, which proxies to the agency's Gravity Forms endpoint using the shared GF API credentials — an authenticated abuse/spam vector. The handler now rejects non-admins with 403, and the asset/nonce enqueue, dashboard widget, and footer modal are all gated on `current_user_can('manage_options')` so nothing is emitted to lower-privilege users.
+- **Unlock hub secrets encrypted at rest.** `UnlockPage` stored every managed site's Companion HMAC secret in plaintext in `wp_options['cw_unlock_sites']` — a single DB dump of the ops hub would leak the whole fleet's secrets. Secrets are now sealed with `sodium_crypto_secretbox` under a key derived from wp-config material (`CLOCKWORK_UNLOCK_KEY` if defined, else the site's `AUTH_KEY`/`SECURE_AUTH_KEY` salts), which lives outside the database. Existing plaintext rows are read transparently and upgraded to ciphertext on the next save. Note: a change to the key material (salt rotation) makes existing ciphertext unreadable — re-import the affected sites (secrets are held authoritatively in Clockwork).
+- **Unlock hub rejects non-public target hosts.** Domains are validated at store time (add + import) and again before the signed `DELETE /lockouts` request fires, blocking the proxy from being pointed at `localhost`, link-local, or private-range hosts (bare IPs, `*.local`, `*.internal`, single-label names).
+- **2FA enrollment code is now burned.** `UserSettings::confirmEnrollment()` recorded no replay step, so the TOTP code used to confirm enrollment stayed valid for its full window and could be replayed as the first login factor. It now records the winning step (RFC 6238 §5.2). The WFLS migration path (`activateWithSecret()`) also clears stale replay state to avoid locking out a re-enrolling user.
+
+## 1.30.3 — 2026-08-12
+
+`PluginsRoute`: only set `update_available=true` when the transient's `new_version` is strictly greater than the installed version. Stale transients could keep a slug in `response[]` after it was already updated, producing false "1.x → 1.x" entries in the updates queue that would run as no-ops.
+
+## 1.30.2 — 2026-08-12
+
+Merge of 1.29.x 2FA branch (1.29.1–1.29.6) with 1.30.x Elementor branch (1.30.0–1.30.1). No new logic beyond resolving the divergence; both lines of development are fully included.
+
+## 1.29.6 — 2026-07-31
+
+### Added
+
+- **`POST /wp-json/clockwork/v1/two-factor/migrate`** — HMAC-authenticated endpoint that triggers a WFLS → Companion migration for a given `user_id` without requiring the user to click through the admin UI. Intended for monitoring-app-driven fleet migrations.
+
+## 1.29.5 — 2026-07-22
+
+### Change
+
+- **Migrate button shows a loading spinner.** Clicking "Migrate my two-factor setup" now immediately disables the button, shows a spinning circle, and changes the label to "Migrating…" so the page doesn't appear frozen while the migration POST processes.
+
+## 1.29.4 — 2026-07-22
+
+### Security
+
+- **TOTP replay prevention.** `Totp::verify()` now returns `int|false` — the winning step counter on success, false on failure. `LoginInterceptor` records the last accepted step in `_clockwork_2fa_last_step` user meta and passes it as `$minStep` on every subsequent verify call. Any code at or below the already-used step is rejected, closing the 90-second reuse window (RFC 6238 §5.2).
+- **Lock out after 5th bad code (not 6th).** After the 5th wrong TOTP or backup code the transient is immediately deleted and the user is bounced back to the login page with the "verification window expired" notice, instead of rendering the challenge form one more time with "0 attempts left." The existing `> MAX_ATTEMPTS` guard (which would have caught request 6) is now defense-in-depth for concurrent races only.
+
+### Change
+
+- **Attempt counter non-atomicity documented.** Added a comment explaining that the get-transient → increment → set-transient sequence is not atomic under Redis/Memcached, and why it's acceptable here (races allow at most ~2× the attempt cap, which is well within brute-force infeasibility for a 6-digit TOTP).
+
+## 1.29.3 — 2026-07-22
+
+### Change
+
+- **Rename "Login Security" tab to "2FA"** to keep the nav compact.
+
+## 1.29.2 — 2026-07-22
+
+### Fix
+
+- **Login Security page cards unstyled.** All four cards were using `cwk-card` (an undefined class), leaving content with no padding, shadow, or radius — most visibly the backup-codes alert card had no spacing between the red left border and the text, and no background tint. Switched to `clockwork-card` + `clockwork-card__body` throughout. Backup codes card gets a `#fef2f2` red tint; WFLS removal card gets a `#f0fdf4` green tint.
+
+## 1.29.1 — 2026-07-22
+
+### Fix
+
+- **Login broken for users migrated from WFLS to Companion 2FA.** Migration was leaving the user's row in `wfls_2fa_secrets` for rollback purposes, but WFLS is still active on the site. WFLS's `authenticate` hook (priority 25) would see that row, try to issue its own 2FA challenge, and produce "An error was encountered while trying to authenticate" — Companion's gate at `PHP_INT_MAX` never ran. Fix: `migrate()` now deletes the user's WFLS row immediately after the secret is safely written to Companion user meta. The underlying binary key is identical in both systems, so the user's authenticator-app entry keeps producing valid codes.
 
 ## 1.30.1 — 2026-07-23
 
@@ -19,7 +89,6 @@ Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earli
 ### Added
 
 - **Elementor cache-race fix (`ElementorCacheGuard`).** Elementor deletes a post's compiled CSS mid-save but only regenerates it lazily on the next page load; hosts purge their page cache earlier in that same save request (SpinupWP on `transition_post_status`, WP Engine on `save_post`), so whichever request lands in the gap can get an unstyled page baked into the cache — a years-old upstream Elementor defect (GitHub #27735), not host-specific. Hooking `elementor/document/after_save`, Companion now forces the CSS rebuild synchronously in the save request, then re-purges the page cache (SpinupWP or WP Engine Varnish, whichever is present) only once the CSS is confirmed back on disk. No-op on non-Elementor sites; the callback is additionally guarded with class/method checks and a try/catch against future Elementor internals changes. Replaces the per-site `elementor-cache-race-fix.php` mu-plugin piloted on AEX and xqstaging.
-
 ## 1.29.0 — 2026-07-22
 
 ### Added

@@ -83,14 +83,18 @@ class WflsMigrator
      * fresh backup codes for one-time display. Returns false when there
      * is nothing to migrate (or the secret row is malformed).
      *
-     * The WFLS row is left untouched: if the user needs to roll back,
-     * reactivating WFLS just works. Cleanup belongs to whoever removes
-     * the plugin's tables, not to us.
+     * The WFLS secret row is deleted after migration. Leaving it in place
+     * would cause WFLS's authenticate hook (priority 25) to intercept the
+     * login and produce an error before Companion's gate (PHP_INT_MAX) can
+     * show the 2FA challenge. The underlying binary key is identical in both
+     * systems, so the user's authenticator app entry keeps working regardless.
      *
      * @return array<int, string>|false
      */
     public static function migrate(int $userId)
     {
+        global $wpdb;
+
         if (UserSettings::isEnabled($userId)) {
             return false;
         }
@@ -101,6 +105,10 @@ class WflsMigrator
         }
 
         $codes = UserSettings::activateWithSecret($userId, Totp::base32Encode($binary));
+
+        // Remove the WFLS row so its authenticate hook no longer challenges
+        // this user — the secret is now in Companion meta.
+        $wpdb->delete(self::tableName(), ['user_id' => $userId], ['%d']);
 
         $user = get_userdata($userId);
         ActionLogRepository::insert([

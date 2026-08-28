@@ -85,15 +85,17 @@ class TwoFactorPage
             return;
         }
         ?>
-        <div class="cwk-card" style="border-left: 4px solid #d63638; margin-bottom: 16px;">
-            <h2 style="margin-top:0;">Your backup codes — save these now</h2>
-            <p>Each code works once, and this is the <strong>only time they will be shown</strong>.
-               Store them somewhere safe (password manager, printed copy). If you lose your
-               phone, a backup code is how you get back in.</p>
-            <div style="display:grid;grid-template-columns:repeat(4,max-content);gap:8px 32px;font-family:monospace;font-size:15px;padding:12px 0;">
-                <?php foreach ((array) $stash['codes'] as $code) : ?>
-                    <span><?php echo esc_html((string) $code); ?></span>
-                <?php endforeach; ?>
+        <div class="clockwork-card" style="border-left: 4px solid #d63638; margin-bottom: 16px;">
+            <div class="clockwork-card__body" style="background:#fef2f2;">
+                <h2 style="margin-top:0;">Your backup codes — save these now</h2>
+                <p>Each code works once, and this is the <strong>only time they will be shown</strong>.
+                   Store them somewhere safe (password manager, printed copy). If you lose your
+                   phone, a backup code is how you get back in.</p>
+                <div style="display:grid;grid-template-columns:repeat(4,max-content);gap:8px 32px;font-family:monospace;font-size:15px;padding:12px 0 0;">
+                    <?php foreach ((array) $stash['codes'] as $code) : ?>
+                        <span><?php echo esc_html((string) $code); ?></span>
+                    <?php endforeach; ?>
+                </div>
             </div>
         </div>
         <?php
@@ -104,7 +106,8 @@ class TwoFactorPage
         $userId = get_current_user_id();
         $user = wp_get_current_user();
         ?>
-        <div class="cwk-card" style="margin-bottom: 16px;">
+        <div class="clockwork-card" style="margin-bottom: 16px;">
+            <div class="clockwork-card__body">
             <h2 style="margin-top:0;">Your two-factor authentication</h2>
             <?php
             if (UserSettings::isEnabled($userId)) {
@@ -117,6 +120,7 @@ class TwoFactorPage
                 self::renderNotEnrolledState();
             }
             ?>
+            </div>
         </div>
         <?php
     }
@@ -145,6 +149,22 @@ class TwoFactorPage
     {
         $wflsActive = WflsMigrator::isWflsActive();
         ?>
+        <style>
+            @keyframes cwk-spin { to { transform: rotate(360deg); } }
+            .cwk-btn-loading { cursor: default !important; }
+            .cwk-btn-loading::before {
+                content: "";
+                display: inline-block;
+                width: 11px;
+                height: 11px;
+                border: 2px solid rgba(255,255,255,.35);
+                border-top-color: #fff;
+                border-radius: 50%;
+                animation: cwk-spin .75s linear infinite;
+                margin-right: 7px;
+                vertical-align: middle;
+            }
+        </style>
         <?php if ($wflsActive) : ?>
             <div style="border-left:4px solid #dba617;background:#fcf9e8;padding:12px 16px;margin-bottom:12px;">
                 <p style="margin:0 0 6px;"><strong>Wordfence Login Security is protecting this account today</strong> — but Wordfence is discontinuing that plugin.</p>
@@ -160,7 +180,7 @@ class TwoFactorPage
                    your authenticator app starts protecting your sign-ins again immediately.</p>
             </div>
         <?php endif; ?>
-        <?php self::actionForm('migrate', 'Migrate my two-factor setup', 'button button-primary'); ?>
+        <?php self::actionForm('migrate', 'Migrate my two-factor setup', 'button button-primary', '', 'Migrating…'); ?>
         <p style="color:#787c82;font-size:12px;margin-top:10px;">
             Prefer a clean start? <?php self::actionLink('begin', 'Set up from scratch instead'); ?> — you'll scan a new QR code.
         </p>
@@ -229,17 +249,19 @@ class TwoFactorPage
             return;
         }
         ?>
-        <div class="cwk-card" style="border-left:4px solid #00753d;margin-bottom:16px;">
-            <h2 style="margin-top:0;">Wordfence Login Security can now be removed</h2>
-            <p style="color:#50575e;">Every account that had two-factor in Wordfence Login Security has been
-               migrated to Clockwork — nothing depends on it anymore. Wordfence is discontinuing the plugin,
-               so this is the moment to remove it<?php echo WflsMigrator::isWflsActive() ? '' : ' (it is already deactivated; only the files remain)'; ?>.</p>
-            <?php self::actionForm(
-                'remove_wfls',
-                'Deactivate & remove Wordfence Login Security',
-                'button button-primary',
-                'Remove the Wordfence Login Security plugin? All two-factor setups have been migrated to Clockwork, so no account loses protection. This also runs the plugin\'s uninstall cleanup.'
-            ); ?>
+        <div class="clockwork-card" style="border-left:4px solid #00753d;margin-bottom:16px;">
+            <div class="clockwork-card__body" style="background:#f0fdf4;">
+                <h2 style="margin-top:0;">Wordfence Login Security can now be removed</h2>
+                <p style="color:#50575e;">Every account that had two-factor in Wordfence Login Security has been
+                   migrated to Clockwork — nothing depends on it anymore. Wordfence is discontinuing the plugin,
+                   so this is the moment to remove it<?php echo WflsMigrator::isWflsActive() ? '' : ' (it is already deactivated; only the files remain)'; ?>.</p>
+                <?php self::actionForm(
+                    'remove_wfls',
+                    'Deactivate & remove Wordfence Login Security',
+                    'button button-primary',
+                    'Remove the Wordfence Login Security plugin? All two-factor setups have been migrated to Clockwork, so no account loses protection. This also runs the plugin\'s uninstall cleanup.'
+                ); ?>
+            </div>
         </div>
         <?php
     }
@@ -256,7 +278,8 @@ class TwoFactorPage
             'fields' => 'all',
         ]);
         ?>
-        <div class="cwk-card">
+        <div class="clockwork-card">
+            <div class="clockwork-card__body">
             <h2 style="margin-top:0;">Team status</h2>
             <p style="color:#50575e;">Administrator and editor accounts on this site, and where each one's two-factor protection stands.</p>
             <table class="widefat striped" style="max-width:720px;">
@@ -293,15 +316,21 @@ class TwoFactorPage
                     their protection.
                 </p>
             <?php endif; ?>
+            </div>
         </div>
         <?php
     }
 
-    private static function actionForm(string $op, string $label, string $buttonClass, string $confirm = ''): void
+    private static function actionForm(string $op, string $label, string $buttonClass, string $confirm = '', string $spinnerLabel = ''): void
     {
-        $onSubmit = $confirm !== ''
-            ? sprintf(' onsubmit="return confirm(%s);"', esc_attr(wp_json_encode($confirm)))
-            : '';
+        if ($confirm !== '') {
+            $onSubmit = sprintf(' onsubmit="return confirm(%s);"', esc_attr(wp_json_encode($confirm)));
+        } elseif ($spinnerLabel !== '') {
+            $js = "var b=this.querySelector('button');b.disabled=true;b.classList.add('cwk-btn-loading');b.textContent=" . wp_json_encode($spinnerLabel) . ";";
+            $onSubmit = ' onsubmit="' . esc_attr($js) . '"';
+        } else {
+            $onSubmit = '';
+        }
         ?>
         <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="display:inline;"<?php echo $onSubmit; ?>>
             <input type="hidden" name="action" value="<?php echo esc_attr(\ClockworkCompanion\Admin\Actions\TwoFactorActions::ACTION_HOOK); ?>">

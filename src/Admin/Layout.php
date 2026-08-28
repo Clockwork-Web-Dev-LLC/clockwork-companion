@@ -25,11 +25,12 @@ class Layout
             ['slug' => 'activity', 'label' => 'Activity', 'page' => Menu::SLUG],
             ['slug' => 'uptime', 'label' => 'Uptime', 'page' => \ClockworkCompanion\Admin\Pages\UptimePage::SLUG],
             ['slug' => 'security', 'label' => 'Security', 'page' => \ClockworkCompanion\Admin\Pages\SecurityPage::SLUG],
-            ['slug' => 'two-factor', 'label' => 'Login Security', 'page' => \ClockworkCompanion\Admin\Pages\TwoFactorPage::SLUG],
+            ['slug' => 'two-factor', 'label' => '2FA', 'page' => \ClockworkCompanion\Admin\Pages\TwoFactorPage::SLUG],
             ['slug' => 'performance', 'label' => 'Performance', 'page' => \ClockworkCompanion\Admin\Pages\PerformancePage::SLUG],
             ['slug' => 'traffic', 'label' => 'Traffic', 'page' => \ClockworkCompanion\Admin\Pages\TrafficPage::SLUG],
             ['slug' => 'forms', 'label' => 'Forms', 'page' => \ClockworkCompanion\Admin\Pages\FormsPage::SLUG],
             ['slug' => 'backups', 'label' => 'Backups', 'page' => \ClockworkCompanion\Admin\Pages\BackupsPage::SLUG],
+            ['slug' => 'notifications', 'label' => 'Notifications', 'page' => \ClockworkCompanion\Admin\Pages\NotificationsPage::SLUG],
             ...( defined('CLOCKWORK_UNLOCK_HUB') && CLOCKWORK_UNLOCK_HUB
                 ? [['slug' => 'unlock', 'label' => 'Unlock', 'page' => \ClockworkCompanion\Admin\Pages\UnlockPage::SLUG]]
                 : []

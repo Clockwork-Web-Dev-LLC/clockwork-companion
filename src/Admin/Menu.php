@@ -9,6 +9,7 @@ use ClockworkCompanion\Admin\Pages\PerformancePage;
 use ClockworkCompanion\Admin\Pages\SecurityPage;
 use ClockworkCompanion\Admin\Pages\TrafficPage;
 use ClockworkCompanion\Admin\Pages\TwoFactorPage;
+use ClockworkCompanion\Admin\Pages\NotificationsPage;
 use ClockworkCompanion\Admin\Pages\UnlockPage;
 use ClockworkCompanion\Admin\Pages\UptimePage;
 
@@ -59,6 +60,7 @@ class Menu
         add_action('admin_menu', [$this, 'maybeHideMenu'], 999);
         add_action('admin_enqueue_scripts', [$this, 'enqueueAssets']);
         add_action('admin_head', [$this, 'outputIconCss']);
+        add_action('admin_post_clockwork_save_notifications', [NotificationsPage::class, 'handleSave']);
 
         if (defined('CLOCKWORK_UNLOCK_HUB') && CLOCKWORK_UNLOCK_HUB) {
             UnlockPage::registerAjax();
@@ -221,6 +223,15 @@ class Menu
             self::CAPABILITY,
             BackupsPage::SLUG,
             [BackupsPage::class, 'render']
+        );
+
+        add_submenu_page(
+            self::SLUG,
+            'Notifications',
+            'Notifications',
+            self::CAPABILITY,
+            NotificationsPage::SLUG,
+            [NotificationsPage::class, 'render']
         );
 
         if (defined('CLOCKWORK_UNLOCK_HUB') && CLOCKWORK_UNLOCK_HUB) {

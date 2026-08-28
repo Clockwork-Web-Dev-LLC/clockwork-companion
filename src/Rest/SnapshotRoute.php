@@ -3,6 +3,7 @@
 namespace ClockworkCompanion\Rest;
 
 use ClockworkCompanion\Auth\HmacVerifier;
+use ClockworkCompanion\Notifications\ClientNotifications;
 use WP_REST_Request;
 use WP_REST_Response;
 
@@ -51,7 +52,8 @@ class SnapshotRoute
             'admins'           => (new AdminsRoute())->payload(),
             'wp_cron'          => (new CronRoute())->payload(),
             'comments_summary' => (new CommentsSummaryRoute())->payload(),
-            'two_factor'       => (new TwoFactorStatusRoute())->payload(),
+            'two_factor'            => (new TwoFactorStatusRoute())->payload(),
+            'client_notifications'  => ClientNotifications::payload(),
         ]);
     }
 
