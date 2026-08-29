@@ -2,6 +2,18 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.31.4 — 2026-08-29
+
+### Added
+
+- **Traffic page now handles period-totals-only hosts (Pressable).** SpinupWP sites source Traffic from an SSH-tailed nginx access-log rollup, which Pressable sites structurally cannot provide (no SSH access at all). Pressable's own stats API exposes period totals instead (today/yesterday/this-month/last-12-months), not a daily breakdown. `TrafficReportRoute` now accepts an optional `period_summary` alongside (in place of) `daily`, and `TrafficPage` renders a simplified stat-grid view for it instead of stretching sparse data into a chart that needs day-by-day granularity it doesn't have. SpinupWP sites are unaffected — this only activates when `daily` is empty and `period_summary` is present.
+
+## 1.31.3 — 2026-08-28
+
+### Fixed
+
+- **`wp-force-login` was 401-locking Companion out of its own REST endpoints on a client intranet site.** That plugin hooks `rest_authentication_errors` at priority 99 and rejects any REST request without a live WP session — including every Companion request, which authenticates via HMAC signature, not cookies. Unlike its page-view gate (`template_redirect`), the plugin's REST block has no `v_forcelogin_bypass` filter or any other allowlist hook to extend, and patching the plugin's own file directly would just get overwritten on its next update. Added `Compat/WpForceLoginCompat.php`, which hooks the same filter at priority 10 (ahead of wp-force-login's 99) and short-circuits it to `true` for requests under `clockwork/v1`. This doesn't itself authenticate anything — it only stops the blanket block from firing before WordPress reaches route dispatch; every Companion route's `permission_callback` is still `HmacVerifier::verify`, and that's the check that actually decides whether the request is let through, exactly as on every other site. Same trust model as the existing `PerfmattersCompat` shim.
+
 ## 1.31.2 — 2026-08-28
 
 ### Fix

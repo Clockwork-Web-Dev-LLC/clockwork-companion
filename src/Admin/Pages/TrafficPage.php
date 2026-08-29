@@ -60,8 +60,21 @@ class TrafficPage
             'A 30-day view of how much traffic your site is serving — sourced from your server\'s access logs and refreshed nightly.'
         );
 
-        if ($report === null || empty($report['daily'])) {
+        $periodSummary = is_array($report['period_summary'] ?? null) ? $report['period_summary'] : null;
+
+        if ($report === null || (empty($report['daily']) && $periodSummary === null)) {
             self::renderEmptyState();
+            return;
+        }
+
+        // Pressable sites have no access-log rollup to source a daily chart
+        // from — Pressable's own stats API only exposes period totals
+        // (today/month/year), not a per-day breakdown. Render what's honest
+        // instead of stretching that data into a chart it can't support.
+        if (empty($report['daily']) && $periodSummary !== null) {
+            self::renderPeriodSummaryCadenceBanner($report);
+            self::renderPeriodSummary($periodSummary);
+            self::renderCaption($report);
             return;
         }
 
@@ -100,6 +113,64 @@ class TrafficPage
             <?php if ($fetchedAt) : ?>
                 Last refreshed <?php echo esc_html($fetchedAt); ?>.
             <?php endif; ?>
+        </div>
+        <?php
+    }
+
+    /**
+     * @param  array<string, mixed>  $report
+     */
+    private static function renderPeriodSummaryCadenceBanner(array $report): void
+    {
+        $fetchedAt = self::formatTimestamp($report['fetched_at'] ?? null);
+        ?>
+        <div class="clockwork-notice clockwork-notice--muted" style="margin-bottom: 16px;">
+            <strong>Refreshed nightly.</strong>
+            Your hosting plan provides traffic in monthly-level totals rather than a daily breakdown, so there's no
+            day-by-day chart here — just the running counts your host tracks.
+            <?php if ($fetchedAt) : ?>
+                Last refreshed <?php echo esc_html($fetchedAt); ?>.
+            <?php endif; ?>
+        </div>
+        <?php
+    }
+
+    /**
+     * Simplified stat-grid view for hosts (Pressable) that only expose
+     * period totals, not a daily rollup — see renderChartCard()'s docblock
+     * for why the normal chart path can't be reused here.
+     *
+     * @param  array<string, mixed>  $periodSummary
+     */
+    private static function renderPeriodSummary(array $periodSummary): void
+    {
+        $boxes = [
+            'today' => 'Today',
+            'yesterday' => 'Yesterday',
+            'current_month' => 'This month',
+            'last_12_months' => 'Last 12 months',
+        ];
+        ?>
+        <div class="clockwork-card">
+            <div class="clockwork-card__body">
+                <div style="font-size: 13px; font-weight: 600; color: #111; margin-bottom: 2px;">Page Views</div>
+                <div style="font-size: 12px; color: #6b7280; margin-bottom: 16px;">
+                    Counted by your host — views and unique visitors, by period.
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 24px;">
+                    <?php foreach ($boxes as $key => $label) :
+                        $bucket = is_array($periodSummary[$key] ?? null) ? $periodSummary[$key] : [];
+                        $views = (int) ($bucket['views'] ?? 0);
+                        $visitors = (int) ($bucket['visitors'] ?? 0);
+                    ?>
+                        <div>
+                            <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280; margin-bottom: 6px;"><?php echo esc_html($label); ?></div>
+                            <div style="font-size: 28px; font-weight: 600; color: #111;"><?php echo number_format($views); ?></div>
+                            <div style="font-size: 11px; color: #6b7280; margin-top: 4px;"><?php echo number_format($visitors); ?> visitor<?php echo $visitors === 1 ? '' : 's'; ?></div>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
         </div>
         <?php
     }

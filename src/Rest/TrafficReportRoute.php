@@ -41,7 +41,11 @@ use WP_REST_Response;
  *     "today_partial": <bool>,    // today's bar may still be growing
  *     "has_data": <bool>,
  *     "top_paths": [ { "path": "/", "hits": N }, ... ],   // most-recent day, capped at 10
- *     "top_paths_date": "YYYY-MM-DD"
+ *     "top_paths_date": "YYYY-MM-DD",
+ *     "period_summary": {   // period-totals-only hosts (Pressable); "daily" is [] when this is set
+ *       "today": { "views": N, "visitors": N }, "yesterday": {...},
+ *       "current_month": {...}, "last_12_months": {...}
+ *     }
  *   }
  *
  * Response: { "ok": true }
@@ -84,6 +88,10 @@ class TrafficReportRoute
             'has_data' => ! empty($payload['has_data']),
             'top_paths' => self::normaliseTopPaths($payload['top_paths'] ?? null),
             'top_paths_date' => isset($payload['top_paths_date']) ? (string) $payload['top_paths_date'] : '',
+            // Period-totals-only hosts (Pressable — no daily rollup available)
+            // send this instead of a populated 'daily' array. See TrafficPage.
+            'period_summary' => isset($payload['period_summary']) && is_array($payload['period_summary'])
+                ? $payload['period_summary'] : null,
         ];
 
         update_option(TrafficPage::OPTION, $stored, false);

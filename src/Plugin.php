@@ -115,6 +115,7 @@ class Plugin
         // sites that don't have the targeted plugin active.
         \ClockworkCompanion\Compat\PerfmattersCompat::register();
         \ClockworkCompanion\Compat\ElementorCacheGuard::register();
+        \ClockworkCompanion\Compat\WpForceLoginCompat::register();
 
         // Register the per-request CPU/memory sampler IMMEDIATELY (not on a
         // hook). The sampler snapshots getrusage() at construction time and
