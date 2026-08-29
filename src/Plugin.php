@@ -139,6 +139,7 @@ class Plugin
             (new CommentsSummaryRoute())->register();
             (new SnapshotRoute())->register();
             (new BackupsReportRoute())->register();
+            (new \ClockworkCompanion\Rest\SecuritySummaryReportRoute())->register();
             (new SsoRoute())->register();
             (new ActionLogAppendRoute())->register();
             (new SecretRotateRoute())->register();

@@ -53,7 +53,11 @@ class BackupsPage
         $config = $report['config'] ?? [];
         $active = (bool) ($config['files'] ?? false) || (bool) ($config['database'] ?? false);
         $history = is_array($report['history'] ?? null) ? $report['history'] : [];
-        $lastRunLabel = isset($history[0]['date']) ? self::formatTimestamp($history[0]['date']) : null;
+        // Pressable reports carry an explicit last_backup_at instead of a
+        // single merged history list (files/database run on independent
+        // cadences, reported as two separate lists — see renderHistoryCard()).
+        $lastRunAt = $report['last_backup_at'] ?? ($history[0]['date'] ?? null);
+        $lastRunLabel = isset($lastRunAt) ? self::formatTimestamp($lastRunAt) : null;
 
         return ['active' => $active, 'lastRunLabel' => $lastRunLabel, 'hasReport' => true];
     }
@@ -63,9 +67,13 @@ class BackupsPage
         $report = get_option(self::OPTION, null);
         $report = is_array($report) ? $report : null;
 
+        $isAvailableScope = is_array($report) && ($report['history_scope'] ?? 'policy') === 'available';
+
         Layout::pageHeader(
             'Backups',
-            'Your site is backed up to off-site storage on a schedule. This page shows the current backup configuration.'
+            $isAvailableScope
+                ? 'Your host already keeps recent backups of your site — this page shows what\'s currently on record.'
+                : 'Your site is backed up to off-site storage on a schedule. This page shows the current backup configuration.'
         );
 
         if ($report === null) {
@@ -105,6 +113,14 @@ class BackupsPage
         $storage = $config['storage_provider'] ?? null;
         $excludePaths = $config['paths_to_exclude'] ?? null;
 
+        // Pressable has no schedule-config API to report a future run time
+        // from — but we DO know the most recent backup (the newest history
+        // row), which is a real, verifiable fact rather than a guess. Showing
+        // "Not scheduled" here read as "nothing is happening," directly
+        // contradicting a history table full of hourly backups right below it.
+        $availableScope = ($report['history_scope'] ?? 'policy') === 'available';
+        $lastBackupAt = $report['last_backup_at'] ?? null;
+
         ?>
         <div class="clockwork-card">
             <div class="clockwork-card__head">
@@ -123,14 +139,25 @@ class BackupsPage
                     <dt>Database backup</dt>
                     <dd><?php echo $database ? '<span class="clockwork-pill clockwork-pill--ok">Enabled</span>' : '<span class="clockwork-pill clockwork-pill--off">Disabled</span>'; ?></dd>
 
-                    <dt>Next scheduled run</dt>
-                    <dd>
-                        <?php if ($nextRun) : ?>
-                            <?php echo esc_html(self::formatTimestamp($nextRun)); ?>
-                        <?php else : ?>
-                            <span class="clockwork-pill clockwork-pill--warn">Not scheduled</span>
-                        <?php endif; ?>
-                    </dd>
+                    <?php if ($availableScope) : ?>
+                        <dt>Last backup</dt>
+                        <dd>
+                            <?php if ($lastBackupAt) : ?>
+                                <?php echo esc_html(self::formatTimestamp($lastBackupAt)); ?>
+                            <?php else : ?>
+                                <span class="clockwork-pill clockwork-pill--warn">None recorded yet</span>
+                            <?php endif; ?>
+                        </dd>
+                    <?php else : ?>
+                        <dt>Next scheduled run</dt>
+                        <dd>
+                            <?php if ($nextRun) : ?>
+                                <?php echo esc_html(self::formatTimestamp($nextRun)); ?>
+                            <?php else : ?>
+                                <span class="clockwork-pill clockwork-pill--warn">Not scheduled</span>
+                            <?php endif; ?>
+                        </dd>
+                    <?php endif; ?>
 
                     <?php if (is_array($storage) && (! empty($storage['region']) || ! empty($storage['bucket']))) : ?>
                         <dt>Storage destination</dt>
@@ -163,6 +190,23 @@ class BackupsPage
      */
     private static function renderHistoryCard(array $report): void
     {
+        $availableScope = ($report['history_scope'] ?? 'policy') === 'available';
+
+        if ($availableScope) {
+            // Filesystem and database backups run on independent cadences
+            // (daily vs. hourly on Pressable) with their own real sizes —
+            // shown as two separate tables rather than forced into paired
+            // rows that would misrepresent which component ran when.
+            $historyFiles = is_array($report['history_files'] ?? null) ? $report['history_files'] : [];
+            $historyDatabase = is_array($report['history_database'] ?? null) ? $report['history_database'] : [];
+
+            self::renderAvailableScopeHistoryTable('Filesystem backups', $historyFiles);
+            self::renderAvailableScopeHistoryTable('Database backups', $historyDatabase);
+            self::renderRefreshCaption($report);
+
+            return;
+        }
+
         $history = is_array($report['history'] ?? null) ? $report['history'] : [];
         $totalRuns = count($history);
 
@@ -252,6 +296,80 @@ class BackupsPage
             </div>
         </div>
 
+        <?php self::renderRefreshCaption($report); ?>
+        <?php
+    }
+
+    /**
+     * One of the two Pressable-scope history tables (Filesystem or
+     * Database backups) — each entry has a real per-backup size (parsed by
+     * Clockwork from Pressable's own title strings), shown newest-first,
+     * capped at PAGE_SIZE with a plain "showing N of M" note rather than a
+     * full pager (depth here varies a lot by how long the site's existed —
+     * not worth building two independent paginators for yet).
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     */
+    private static function renderAvailableScopeHistoryTable(string $title, array $rows): void
+    {
+        $total = count($rows);
+        $shown = array_slice($rows, 0, self::PAGE_SIZE);
+        ?>
+        <div class="clockwork-card" style="margin-bottom: 16px;">
+            <div class="clockwork-card__head">
+                <h2><?php echo esc_html($title); ?></h2>
+                <?php if ($total > 0) : ?>
+                    <span class="clockwork-pill clockwork-pill--info">
+                        <?php echo (int) $total; ?> backup<?php echo $total === 1 ? '' : 's'; ?> on record
+                    </span>
+                <?php endif; ?>
+            </div>
+            <div class="clockwork-card__body clockwork-card__body--tight">
+                <?php if ($total === 0) : ?>
+                    <div style="padding: 20px;">
+                        <div class="clockwork-notice clockwork-notice--muted">No backups on record yet.</div>
+                    </div>
+                <?php else : ?>
+                    <table class="clockwork-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Type</th>
+                                <th>Size</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($shown as $row) : ?>
+                                <?php if (! is_array($row)) continue; ?>
+                                <tr>
+                                    <td class="mono"><?php echo esc_html(self::formatTimestamp($row['date'] ?? null) ?: '—'); ?></td>
+                                    <td>
+                                        <span class="clockwork-pill clockwork-pill--info">
+                                            <?php echo esc_html(ucfirst((string) ($row['type'] ?? 'automatic'))); ?>
+                                        </span>
+                                    </td>
+                                    <td class="mono"><?php echo esc_html(self::formatBytes($row['bytes'] ?? null)); ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                    <?php if ($total > self::PAGE_SIZE) : ?>
+                        <div style="padding: 8px 20px 12px; font-size: 12px; color: #6b7280;">
+                            Showing the most recent <?php echo self::PAGE_SIZE; ?> of <?php echo (int) $total; ?>.
+                        </div>
+                    <?php endif; ?>
+                <?php endif; ?>
+            </div>
+        </div>
+        <?php
+    }
+
+    /**
+     * @param  array<string, mixed>  $report
+     */
+    private static function renderRefreshCaption(array $report): void
+    {
+        ?>
         <p class="clockwork-meta-line" style="padding: 0 4px;">
             Report last refreshed:
             <?php echo esc_html(self::formatTimestamp($report['fetched_at'] ?? null) ?: 'unknown'); ?>

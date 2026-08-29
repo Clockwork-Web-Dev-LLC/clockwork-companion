@@ -55,12 +55,15 @@ class TrafficPage
         $report = get_option(self::OPTION, null);
         $report = is_array($report) ? $report : null;
 
+        $periodSummary = is_array($report['period_summary'] ?? null) ? $report['period_summary'] : null;
+        $isPeriodSummary = empty($report['daily']) && $periodSummary !== null;
+
         Layout::pageHeader(
             'Traffic',
-            'A 30-day view of how much traffic your site is serving — sourced from your server\'s access logs and refreshed nightly.'
+            $isPeriodSummary
+                ? 'How much traffic your site is serving — sourced from your host\'s own traffic stats and refreshed nightly.'
+                : 'A 30-day view of how much traffic your site is serving — sourced from your server\'s access logs and refreshed nightly.'
         );
-
-        $periodSummary = is_array($report['period_summary'] ?? null) ? $report['period_summary'] : null;
 
         if ($report === null || (empty($report['daily']) && $periodSummary === null)) {
             self::renderEmptyState();
@@ -71,10 +74,10 @@ class TrafficPage
         // from — Pressable's own stats API only exposes period totals
         // (today/month/year), not a per-day breakdown. Render what's honest
         // instead of stretching that data into a chart it can't support.
-        if (empty($report['daily']) && $periodSummary !== null) {
+        if ($isPeriodSummary) {
             self::renderPeriodSummaryCadenceBanner($report);
             self::renderPeriodSummary($periodSummary);
-            self::renderCaption($report);
+            self::renderCaption($report, periodSummary: true);
             return;
         }
 
@@ -148,6 +151,7 @@ class TrafficPage
             'today' => 'Today',
             'yesterday' => 'Yesterday',
             'current_month' => 'This month',
+            'last_month' => 'Last month',
             'last_12_months' => 'Last 12 months',
         ];
         ?>
@@ -527,13 +531,17 @@ class TrafficPage
     /**
      * @param  array<string, mixed>  $report
      */
-    private static function renderCaption(array $report): void
+    private static function renderCaption(array $report, bool $periodSummary = false): void
     {
         $fetched = self::formatTimestamp($report['fetched_at'] ?? null);
         ?>
         <p class="clockwork-meta-line" style="padding: 0 4px;">
-            From your server's access logs &middot;
-            Visits = unique IPs/day, excluding 403s and static assets &middot;
+            <?php if ($periodSummary) : ?>
+                From your host's own traffic stats &middot;
+            <?php else : ?>
+                From your server's access logs &middot;
+                Visits = unique IPs/day, excluding 403s and static assets &middot;
+            <?php endif; ?>
             Refreshed nightly<?php if ($fetched) : ?> &middot; Last refresh <?php echo esc_html($fetched); ?><?php endif; ?>
         </p>
         <?php

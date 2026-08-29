@@ -33,6 +33,17 @@ class SecurityPage
 {
     public const SLUG = 'clockwork-security';
 
+    /**
+     * Pressable-only signal with no SpinupWP equivalent (native plugin/theme
+     * vulnerability alerts) — populated by SecuritySummaryReportRoute, empty/
+     * absent on SpinupWP sites. Also carries defensive_mode data (still
+     * pushed by clockwork:pressable-security-summary-report), but that's
+     * intentionally not rendered here — a status line with no way to act on
+     * it read as more confusing than useful. Revisit once there's an actual
+     * ops-side trigger for it.
+     */
+    public const PRESSABLE_SUMMARY_OPTION = 'clockwork_companion_pressable_security_summary';
+
     public static function render(): void
     {
         Layout::render('security', [self::class, 'renderBody']);
@@ -160,9 +171,67 @@ class SecurityPage
         </div>
         <?php
 
+        self::renderPressableSummary();
         self::renderHistorySection();
         self::renderAuthFailuresCard();
         self::renderInlineStyles();
+    }
+
+    /**
+     * Pressable-only: known plugin/theme vulnerabilities (Pressable's own CVE
+     * feed). Renders nothing at all on SpinupWP sites (the option is simply
+     * never populated there) or on a Pressable site before the first
+     * nightly push has run.
+     */
+    private static function renderPressableSummary(): void
+    {
+        $summary = get_option(self::PRESSABLE_SUMMARY_OPTION, null);
+        if (! is_array($summary)) {
+            return;
+        }
+
+        $plugins = is_array($summary['vulnerabilities']['plugins'] ?? null) ? $summary['vulnerabilities']['plugins'] : [];
+        $themes = is_array($summary['vulnerabilities']['themes'] ?? null) ? $summary['vulnerabilities']['themes'] : [];
+        $totalVulnerable = count($plugins) + count($themes);
+        ?>
+        <div class="clockwork-card" style="margin-bottom: 20px;">
+            <div class="clockwork-card__head">
+                <h2>Vulnerability scan</h2>
+                <?php if ($totalVulnerable === 0) : ?>
+                    <span class="clockwork-pill clockwork-pill--ok"><span class="clockwork-pill__dot"></span> Clean</span>
+                <?php else : ?>
+                    <span class="clockwork-pill clockwork-pill--warn"><span class="clockwork-pill__dot"></span> <?php echo (int) $totalVulnerable; ?> flagged</span>
+                <?php endif; ?>
+            </div>
+            <div class="clockwork-card__body">
+                <p style="font-size: 12px; color: #6b7280; margin: 0 0 12px;">
+                    Checked against your host's own vulnerability feed for every installed plugin and theme.
+                </p>
+                <?php if ($totalVulnerable === 0) : ?>
+                    <div class="clockwork-notice clockwork-notice--ok">No known vulnerabilities in your installed plugins or themes.</div>
+                <?php else : ?>
+                    <?php foreach ([['label' => 'Plugin', 'rows' => $plugins], ['label' => 'Theme', 'rows' => $themes]] as $group) : ?>
+                        <?php foreach ($group['rows'] as $row) : ?>
+                            <?php if (! is_array($row)) continue; ?>
+                            <div class="clockwork-notice clockwork-notice--warn" style="margin-bottom: 8px;">
+                                <strong><?php echo esc_html($group['label']); ?>: <?php echo esc_html((string) ($row['name'] ?? 'unknown')); ?></strong>
+                                (v<?php echo esc_html((string) ($row['version'] ?? '?')); ?>)
+                                <?php foreach ((is_array($row['alerts'] ?? null) ? $row['alerts'] : []) as $alert) : ?>
+                                    <?php if (! is_array($alert)) continue; ?>
+                                    <div style="margin-top: 4px; font-size: 12px;">
+                                        <?php echo esc_html((string) ($alert['title'] ?? '')); ?>
+                                        <?php if (! empty($alert['fixed_in'])) : ?>
+                                            — fixed in <?php echo esc_html((string) $alert['fixed_in']); ?>
+                                        <?php endif; ?>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </div>
+        </div>
+        <?php
     }
 
     /**

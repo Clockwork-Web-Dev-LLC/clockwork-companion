@@ -237,6 +237,16 @@ body.wp-admin {
     color: var(--cwk-text-muted);
     border-left-color: var(--cwk-text-soft);
 }
+.clockwork-notice--ok {
+    background: var(--cwk-accent-bg);
+    color: var(--cwk-success);
+    border-left-color: var(--cwk-success);
+}
+.clockwork-notice--warn {
+    background: #fff3d6;
+    color: var(--cwk-warning);
+    border-left-color: var(--cwk-warning);
+}
 .clockwork-notice strong { color: var(--cwk-text); }
 
 /* Tables */

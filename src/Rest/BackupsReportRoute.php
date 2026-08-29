@@ -31,7 +31,10 @@ use WP_REST_Response;
  *     "schedules": [...],
  *     "history": [...],
  *     "care_plan_enabled": true,
- *     "retention_days": 90
+ *     "retention_days": 90,
+ *     "history_files": [...],       // Pressable only — {date, type, bytes, notes} per entry
+ *     "history_database": [...],    // same shape, independent cadence
+ *     "last_backup_at": "2026-08-29T16:00:00+00:00"
  *   }
  *
  * Response: { "ok": true }
@@ -74,11 +77,22 @@ class BackupsReportRoute
             'config' => $payload['config'],
             'schedules' => isset($payload['schedules']) && is_array($payload['schedules']) ? $payload['schedules'] : [],
             'history' => isset($payload['history']) && is_array($payload['history']) ? $payload['history'] : [],
+            // Pressable-only: filesystem and database backups run on
+            // independent cadences (daily vs. hourly) with real per-entry
+            // sizes, reported as two separate lists rather than forced into
+            // paired rows. Absent/empty on SpinupWP sites.
+            'history_files' => isset($payload['history_files']) && is_array($payload['history_files']) ? $payload['history_files'] : [],
+            'history_database' => isset($payload['history_database']) && is_array($payload['history_database']) ? $payload['history_database'] : [],
+            'last_backup_at' => isset($payload['last_backup_at']) ? (string) $payload['last_backup_at'] : null,
             // Care-plan retention fields drive BackupsPage's banner + pill.
             // Dropping them here made every site render the off-plan 30-day
             // upsell copy no matter what Clockwork pushed.
             'care_plan_enabled' => ! empty($payload['care_plan_enabled']),
             'retention_days' => isset($payload['retention_days']) ? (int) $payload['retention_days'] : 30,
+            // 'available' (Pressable — no retention policy to promise, just
+            // whatever the host's API currently returns) vs the default
+            // 'policy' (SpinupWP — a real 30/90-day window we control).
+            'history_scope' => isset($payload['history_scope']) ? (string) $payload['history_scope'] : 'policy',
         ];
 
         update_option(BackupsPage::OPTION, $stored, false);

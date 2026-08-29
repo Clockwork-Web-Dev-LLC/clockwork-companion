@@ -2,6 +2,48 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.31.11 — 2026-08-29
+
+### Changed
+
+- **Removed the Defensive Mode status line from the Security page.** It only ever showed status (on/off), with no way for anyone — client or ops — to actually act on it; that read as more confusing than useful. The underlying data is still pushed by `clockwork:pressable-security-summary-report` (harmless, kept for a future ops-side trigger), just not rendered. The vulnerability-alerts card on the same page is unaffected.
+
+## 1.31.10 — 2026-08-29
+
+### Fixed
+
+- **Backup history depth and sizes were wrong — Pressable exposes much more than we were pulling.** The endpoint used until now (`/sites/{id}/backups`) only returns a short recent-pairing window; two separate, dedicated endpoints (`/backups/fs`, `/backups/db`) return the real depth (confirmed live on an established site: daily filesystem backups tapering to weekly, going back months) with a real size embedded in each entry. Filesystem and database backups run on independent cadences (daily vs. hourly) — the History section is now two separate tables (Filesystem backups, Database backups) with real per-entry sizes, instead of one merged table forcing them into the same row and showing permanently-empty size columns. SpinupWP sites are unaffected — unchanged single-table rendering.
+
+## 1.31.9 — 2026-08-29
+
+### Fixed
+
+- **Backup history's Database/Files columns always showed "—" on Pressable sites, reading as a failure.** Pressable's `/backups` endpoint has no byte-size data at all, but each row does tell us whether that specific backup point captured a database snapshot and/or a files snapshot (via presence of the two backup IDs) — real signal we were discarding. `history_scope: 'available'` rows now show an "Included" pill per component instead of a permanently-empty size column that looked identical to "this part of the backup failed." SpinupWP sites are unaffected — they still show real byte sizes.
+
+## 1.31.8 — 2026-08-29
+
+### Fixed
+
+- **Backups page misrepresented Pressable's real backup state.** Two issues, both on sites with `history_scope: 'available'` (Pressable): "Next scheduled run" showed "Not scheduled" — flatly contradicting a history table right below it full of real, hourly backups, because Pressable's API has no schedule-config endpoint to report a future run time from. Replaced with "Last backup," computed from the newest history row (a fact we actually have, not a guess). Separately, every history row's Type column showed "Scheduled" — reads as future-tense ("this will happen") next to something that already happened; relabeled to "Automatic" at the source. Also softened the page's top description away from "on a schedule" framing for the same reason. SpinupWP sites are unaffected — this only branches on `history_scope`.
+
+## 1.31.7 — 2026-08-29
+
+### Fixed
+
+- **Traffic page's period-summary view (Pressable) still said "sourced from your server's access logs."** Leftover copy from the daily-chart path — wrong for Pressable, which has no access logs involved at all. Page header, the bottom caption, and the "Visits = unique IPs/day" methodology line (meaningless for host-reported page views) now all branch correctly for the period-summary case. Also added "Last month" as a 5th stat box — Pressable's stats API already returns it, it just wasn't being surfaced.
+
+## 1.31.6 — 2026-08-29
+
+### Added
+
+- **Security page shows Pressable-only vulnerability alerts + Defensive Mode status.** Two signals Pressable's own API exposes with no SpinupWP equivalent: known plugin/theme CVEs (Pressable's own vulnerability feed) and Defensive Mode's current on/off state (an aggressive edge-cache mitigation for traffic spikes/bot attacks). Status-only for Defensive Mode by design — this is an ops-triggered mitigation, not a client-facing toggle; clients see whether it's active, not a switch to flip it themselves. New `/security-summary-report` endpoint, renders nothing on SpinupWP sites (the option is simply never populated there). Also fixed a real pre-existing gap found while building this: `.clockwork-notice--ok`/`--warn` were used on the Backups page but never defined in CSS — added both, matching the existing pill color tokens.
+
+## 1.31.5 — 2026-08-29
+
+### Fixed
+
+- **Backups page no longer overpromises retention for Pressable sites.** Pressable's `/backups` endpoint has no pagination and returns whatever window it returns — observed ~36-38 hours across both pilot sites, nowhere near the 30/90-day figures the care-plan messaging assumed (that framing only ever applied to SpinupWP, where we control the retention window ourselves via Spaces). `BackupsReportRoute` now accepts a `history_scope` field; when it's `"available"` (Pressable), the History card shows "All available history" and a neutral note instead of a day-count promise or a care-plan upsell that Pressable's own API can't back up.
+
 ## 1.31.4 — 2026-08-29
 
 ### Added
