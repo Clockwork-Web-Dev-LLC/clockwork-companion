@@ -3,6 +3,7 @@
 namespace ClockworkCompanion\Admin\Pages;
 
 use ClockworkCompanion\Admin\Layout;
+use ClockworkCompanion\TwoFactor\EnrollmentNudge;
 use ClockworkCompanion\TwoFactor\Totp;
 use ClockworkCompanion\TwoFactor\UserSettings;
 use ClockworkCompanion\TwoFactor\WflsMigrator;
@@ -282,9 +283,9 @@ class TwoFactorPage
             <div class="clockwork-card__body">
             <h2 style="margin-top:0;">Team status</h2>
             <p style="color:#50575e;">Administrator and editor accounts on this site, and where each one's two-factor protection stands.</p>
-            <table class="widefat striped" style="max-width:720px;">
+            <table class="widefat striped" style="max-width:920px;">
                 <thead>
-                    <tr><th>User</th><th>Role</th><th>Two-factor</th></tr>
+                    <tr><th>User</th><th>Role</th><th>Two-factor</th><th>Grace period</th></tr>
                 </thead>
                 <tbody>
                 <?php foreach ($users as $u) : ?>
@@ -303,6 +304,7 @@ class TwoFactorPage
                         <td><?php echo esc_html($u->display_name); ?> <span style="color:#787c82;">(<?php echo esc_html($u->user_login); ?>)</span></td>
                         <td><?php echo esc_html(implode(', ', $u->roles)); ?></td>
                         <td><?php echo wp_kses_post($pill); ?></td>
+                        <td><?php self::renderGraceCell($u->ID); ?></td>
                     </tr>
                 <?php endforeach; ?>
                 </tbody>
@@ -318,6 +320,41 @@ class TwoFactorPage
             <?php endif; ?>
             </div>
         </div>
+        <?php
+    }
+
+    /**
+     * Grace-period cell for one Team Status row. Only rendered as an
+     * editable control for users EnrollmentNudge actually tracks (agency
+     * email + manage_options + not yet enrolled) — everyone else (editors,
+     * client accounts, already-enrolled users) just gets a dash, since the
+     * nudge/enforcement never applies to them.
+     */
+    private static function renderGraceCell(int $userId): void
+    {
+        if (! EnrollmentNudge::isEligible($userId)) {
+            echo '<span style="color:#c3c4c7;">—</span>';
+
+            return;
+        }
+
+        $daysLeft = EnrollmentNudge::daysLeftFor($userId);
+        $nonce = wp_create_nonce(EnrollmentNudge::graceNonceAction($userId));
+        ?>
+        <div style="color:<?php echo $daysLeft > 0 ? '#50575e' : '#d63638'; ?>;font-size:12px;margin-bottom:4px;">
+            <?php echo $daysLeft > 0
+                ? esc_html($daysLeft).' day'.($daysLeft === 1 ? '' : 's').' left'
+                : '<strong>Expired — enforced now</strong>'; ?>
+        </div>
+        <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="display:flex;gap:4px;align-items:center;">
+            <input type="hidden" name="action" value="<?php echo esc_attr(EnrollmentNudge::SET_GRACE_ACTION); ?>">
+            <input type="hidden" name="user_id" value="<?php echo esc_attr((string) $userId); ?>">
+            <input type="hidden" name="_wpnonce" value="<?php echo esc_attr($nonce); ?>">
+            <input type="number" name="days" min="0" value="<?php echo esc_attr((string) $daysLeft); ?>"
+                   style="width:60px;" aria-label="Days">
+            <button type="submit" name="grace_op" value="set" class="button button-small">Set</button>
+            <button type="submit" name="grace_op" value="reset" class="button-link" style="font-size:12px;">Reset</button>
+        </form>
         <?php
     }
 

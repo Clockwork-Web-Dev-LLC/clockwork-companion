@@ -37,6 +37,7 @@ use ClockworkCompanion\Rest\WordfenceBlocksRoute;
 use ClockworkCompanion\Resource\Sampler as ResourceSampler;
 use ClockworkCompanion\Resource\Schema as ResourceSchema;
 use ClockworkCompanion\Sso\Interceptor as SsoInterceptor;
+use ClockworkCompanion\TwoFactor\EnrollmentNudge as TwoFactorEnrollmentNudge;
 use ClockworkCompanion\TwoFactor\LoginInterceptor as TwoFactorLoginInterceptor;
 
 class Plugin
@@ -189,5 +190,12 @@ class Plugin
         // No-op for users without 2FA enabled; rescue hatch via the
         // CLOCKWORK_2FA_DISABLE constant.
         (new TwoFactorLoginInterceptor())->register();
+
+        // Nags agency-visible admins (same gate as the Clockwork menu
+        // itself) to set up 2FA, then redirect-locks wp-admin to the
+        // Login Security page once their 30-day grace period runs out.
+        // No-op for anyone without menu visibility or already enrolled;
+        // same CLOCKWORK_2FA_DISABLE rescue hatch as the login gate above.
+        (new TwoFactorEnrollmentNudge())->register();
     }
 }

@@ -99,7 +99,7 @@ class Menu
      */
     public function maybeHideMenu(): void
     {
-        if ($this->currentUserIsAgency()) {
+        if (self::currentUserIsAgency()) {
             return;
         }
 
@@ -108,12 +108,26 @@ class Menu
         remove_menu_page(self::SLUG);
     }
 
-    private function currentUserIsAgency(): bool
+    /**
+     * Whether the Clockwork menu — and everything under it, including the
+     * Login Security page — is actually visible to the given user (current
+     * user if omitted). Static + public so other features can gate on "is
+     * this thing visible to this user at all" without duplicating the
+     * agency-domain check (e.g. TwoFactor\EnrollmentNudge — no point nagging
+     * a client admin to set up 2FA on a page their sidebar doesn't even
+     * show, and no point letting an agency admin tweak a grace period for
+     * someone the feature was never gated to in the first place). Takes an
+     * explicit $user so callers can check a user other than "whoever is
+     * currently logged in" — e.g. a Team Status row for a teammate.
+     */
+    public static function currentUserIsAgency(?\WP_User $user = null): bool
     {
-        if (! function_exists('wp_get_current_user')) {
-            return false;
+        if ($user === null) {
+            if (! function_exists('wp_get_current_user')) {
+                return false;
+            }
+            $user = wp_get_current_user();
         }
-        $user = wp_get_current_user();
         if (! $user || empty($user->user_email)) {
             return false;
         }
