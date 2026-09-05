@@ -2,6 +2,13 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.33.0 — 2026-09-05
+
+### Added
+
+- **White Label & Agency Branding Customizer with real-time live preview.** Agencies can now completely rebrand the Clockwork Companion plugin from a dedicated `Branding` admin tab (`admin.php?page=clockwork-branding`). Allows customizing the plugin name, author name, author URL, plugin URL, description, sidebar menu label, brand subtitle, custom logo image, and admin color palette. Includes 6 curated 1-click theme presets (Clockwork Classic, Emerald Forest, Royal Indigo, Ocean Midnight, Crimson Amber, Monochrome), synchronized hex/color pickers, WordPress Media Library integration (`wp.media`) for logo uploads, and real-time live preview of the header, tabs, and simulated `plugins.php` table row. White-label metadata filters apply to both standard plugins (`all_plugins`) and must-use plugins (`show_advanced_plugins`).
+- **Annual Support & Contribution Callout.** An open, non-blocking annual reminder encouraging agencies to support continued open-source development via PayPal. Clicking "I Donated! ❤️" records a verified contribution timestamp and snoozes the reminder for 365 days (1 full year); a dismiss option snoozes for 90 days. All white-labeling features remain 100% free, unrestricted, and open.
+
 ## 1.32.1 — 2026-09-04
 
 ### Added

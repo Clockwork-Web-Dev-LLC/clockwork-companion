@@ -12,6 +12,8 @@ use ClockworkCompanion\Admin\Pages\TwoFactorPage;
 use ClockworkCompanion\Admin\Pages\NotificationsPage;
 use ClockworkCompanion\Admin\Pages\UnlockPage;
 use ClockworkCompanion\Admin\Pages\UptimePage;
+use ClockworkCompanion\Admin\Pages\WhiteLabelPage;
+use ClockworkCompanion\WhiteLabel\WhiteLabel;
 
 /**
  * Registers the top-level "Clockwork" admin menu and its sub-pages.
@@ -144,10 +146,12 @@ class Menu
     public function addMenu(): void
     {
         $menuIcon = plugins_url('assets/clockwork-logo-mark.svg?v=1.1', CLOCKWORK_COMPANION_DIR . '/clockwork-companion.php');
+        $menuTitle = WhiteLabel::getMenuTitle();
+        $pluginName = WhiteLabel::getPluginName();
 
         add_menu_page(
-            'Clockwork',
-            'Clockwork',
+            $pluginName,
+            $menuTitle,
             self::CAPABILITY,
             self::SLUG,
             [ActivityPage::class, 'render'],
@@ -248,6 +252,15 @@ class Menu
             [NotificationsPage::class, 'render']
         );
 
+        add_submenu_page(
+            self::SLUG,
+            'Branding',
+            'Branding',
+            self::CAPABILITY,
+            WhiteLabelPage::SLUG,
+            [WhiteLabelPage::class, 'render']
+        );
+
         if (defined('CLOCKWORK_UNLOCK_HUB') && CLOCKWORK_UNLOCK_HUB) {
             add_submenu_page(
                 self::SLUG,
@@ -285,6 +298,11 @@ class Menu
                 CLOCKWORK_COMPANION_VERSION,
                 false
             );
+        }
+
+        // WP Media uploader for white-label logo selector
+        if (str_contains($hookSuffix, WhiteLabelPage::SLUG)) {
+            wp_enqueue_media();
         }
     }
 

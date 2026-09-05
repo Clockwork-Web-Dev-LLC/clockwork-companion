@@ -39,6 +39,7 @@ use ClockworkCompanion\Resource\Schema as ResourceSchema;
 use ClockworkCompanion\Sso\Interceptor as SsoInterceptor;
 use ClockworkCompanion\TwoFactor\EnrollmentNudge as TwoFactorEnrollmentNudge;
 use ClockworkCompanion\TwoFactor\LoginInterceptor as TwoFactorLoginInterceptor;
+use ClockworkCompanion\WhiteLabel\WhiteLabel;
 
 class Plugin
 {
@@ -101,10 +102,12 @@ class Plugin
         // /snapshot as two_factor). Replaces the discontinued Wordfence
         // Login Security plugin.
         'two-factor',
+        'white-label',
     ];
 
     public function boot(): void
     {
+        (new WhiteLabel())->boot();
         Secret::ensure();
         ActionLogSchema::ensureInstalled();
         AuthAuditSchema::ensureInstalled();
