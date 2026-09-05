@@ -24,11 +24,15 @@ class Layout
             ['slug' => 'security', 'label' => 'Security', 'page' => \ClockworkCompanion\Admin\Pages\SecurityPage::SLUG],
             ['slug' => 'two-factor', 'label' => '2FA', 'page' => \ClockworkCompanion\Admin\Pages\TwoFactorPage::SLUG],
             ['slug' => 'performance', 'label' => 'Performance', 'page' => \ClockworkCompanion\Admin\Pages\PerformancePage::SLUG],
-            ['slug' => 'traffic', 'label' => 'Traffic', 'page' => \ClockworkCompanion\Admin\Pages\TrafficPage::SLUG],
-            ['slug' => 'forms', 'label' => 'Forms', 'page' => \ClockworkCompanion\Admin\Pages\FormsPage::SLUG],
-            ['slug' => 'backups', 'label' => 'Backups', 'page' => \ClockworkCompanion\Admin\Pages\BackupsPage::SLUG],
-            ['slug' => 'notifications', 'label' => 'Notifications', 'page' => \ClockworkCompanion\Admin\Pages\NotificationsPage::SLUG],
         ];
+
+        if (\ClockworkCompanion\Admin\Pages\TrafficPage::isSupported()) {
+            $all[] = ['slug' => 'traffic', 'label' => 'Traffic', 'page' => \ClockworkCompanion\Admin\Pages\TrafficPage::SLUG];
+        }
+
+        $all[] = ['slug' => 'forms', 'label' => 'Forms', 'page' => \ClockworkCompanion\Admin\Pages\FormsPage::SLUG];
+        $all[] = ['slug' => 'backups', 'label' => 'Backups', 'page' => \ClockworkCompanion\Admin\Pages\BackupsPage::SLUG];
+        $all[] = ['slug' => 'notifications', 'label' => 'Notifications', 'page' => \ClockworkCompanion\Admin\Pages\NotificationsPage::SLUG];
 
         if (! WhiteLabel::isEnabled()) {
             $all[] = ['slug' => 'branding', 'label' => 'Branding', 'page' => \ClockworkCompanion\Admin\Pages\WhiteLabelPage::SLUG];

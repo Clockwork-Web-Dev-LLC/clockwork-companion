@@ -223,14 +223,16 @@ class Menu
         );
 
         // Traffic sits between Performance and Backups — matches Layout::tabs().
-        add_submenu_page(
-            self::SLUG,
-            'Traffic',
-            'Traffic',
-            self::CAPABILITY,
-            TrafficPage::SLUG,
-            [TrafficPage::class, 'render']
-        );
+        if (TrafficPage::isSupported()) {
+            add_submenu_page(
+                self::SLUG,
+                'Traffic',
+                'Traffic',
+                self::CAPABILITY,
+                TrafficPage::SLUG,
+                [TrafficPage::class, 'render']
+            );
+        }
 
         // Forms — contact-form test results pushed by Clockwork's scheduled
         // runs. Lives between Traffic and Backups per Layout::tabs().

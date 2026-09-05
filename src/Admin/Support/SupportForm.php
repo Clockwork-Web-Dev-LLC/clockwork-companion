@@ -161,7 +161,9 @@ class SupportForm
             self::renderStatTile('shield', 'Security', $security['label'], 'Last scans', $security['variant'], SecurityPage::SLUG);
             self::renderStatTile('cloud', 'Backups', $backupsValue, $backupsSub, $backupsVariant, BackupsPage::SLUG);
             self::renderStatTile('gauge', 'Performance', $perfValue, $perfSub, $performance['variant'], PerformancePage::SLUG);
-            self::renderStatTile('bars', 'Traffic', $trafficValue, $trafficSub, $traffic['hasReport'] ? 'info' : 'muted', TrafficPage::SLUG);
+            if (TrafficPage::isSupported()) {
+                self::renderStatTile('bars', 'Traffic', $trafficValue, $trafficSub, $traffic['hasReport'] ? 'info' : 'muted', TrafficPage::SLUG);
+            }
             self::renderStatTile('check', 'Tasks done', $tasksValue, $tasksSub, 'info', ActivityPage::SLUG);
             ?>
         </div>

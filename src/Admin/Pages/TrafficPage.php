@@ -29,7 +29,45 @@ class TrafficPage
 
     public static function render(): void
     {
+        if (! self::isSupported()) {
+            if (function_exists('wp_safe_redirect') && function_exists('admin_url')) {
+                wp_safe_redirect(admin_url('admin.php?page=' . \ClockworkCompanion\Admin\Menu::SLUG));
+                exit;
+            }
+            return;
+        }
+
         Layout::render('traffic', [self::class, 'renderBody']);
+    }
+
+    /**
+     * Whether traffic monitoring is supported and has data for this site.
+     *
+     * When traffic stats cannot be gathered (e.g. SpinupWP server lacks SSH,
+     * or provider doesn't support traffic logging, or explicitly disabled),
+     * this returns false so the Traffic tab, menu entry, and dashboard tiles
+     * are cleanly hidden from wp-admin.
+     */
+    public static function isSupported(): bool
+    {
+        $report = get_option(self::OPTION, null);
+        if (! is_array($report)) {
+            return false;
+        }
+
+        if (isset($report['supported']) && ! $report['supported']) {
+            return false;
+        }
+
+        if (isset($report['enabled']) && ! $report['enabled']) {
+            return false;
+        }
+
+        $hasDaily = ! empty($report['daily']) && is_array($report['daily']);
+        $hasPeriodSummary = ! empty($report['period_summary']) && is_array($report['period_summary']);
+        $hasData = ! isset($report['has_data']) || ! empty($report['has_data']);
+
+        return ($hasDaily || $hasPeriodSummary) && $hasData;
     }
 
     /**

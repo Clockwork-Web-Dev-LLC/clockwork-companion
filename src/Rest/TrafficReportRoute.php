@@ -71,6 +71,25 @@ class TrafficReportRoute
             );
         }
 
+        if (isset($payload['supported']) && ! $payload['supported']) {
+            $stored = [
+                'source' => isset($payload['source']) ? (string) $payload['source'] : 'clockwork-monitoring',
+                'supported' => false,
+                'reason' => isset($payload['reason']) ? (string) $payload['reason'] : '',
+                'fetched_at' => isset($payload['fetched_at']) ? (string) $payload['fetched_at'] : gmdate('c'),
+                'daily' => [],
+                'totals' => [],
+                'has_data' => false,
+                'top_paths' => ['pages' => [], 'api' => [], 'uploads' => []],
+                'top_paths_date' => '',
+                'period_summary' => null,
+            ];
+
+            update_option(TrafficPage::OPTION, $stored, false);
+
+            return new WP_REST_Response(['ok' => true, 'supported' => false]);
+        }
+
         if (! isset($payload['daily']) || ! is_array($payload['daily'])) {
             return new WP_REST_Response(
                 ['ok' => false, 'error' => 'missing_daily', 'message' => 'Missing required key: daily'],
@@ -80,6 +99,7 @@ class TrafficReportRoute
 
         $stored = [
             'source' => isset($payload['source']) ? (string) $payload['source'] : 'clockwork-monitoring',
+            'supported' => isset($payload['supported']) ? (bool) $payload['supported'] : true,
             'fetched_at' => isset($payload['fetched_at']) ? (string) $payload['fetched_at'] : gmdate('c'),
             'refresh_cadence' => isset($payload['refresh_cadence']) ? (string) $payload['refresh_cadence'] : 'daily',
             'daily' => array_values(array_filter($payload['daily'], 'is_array')),
