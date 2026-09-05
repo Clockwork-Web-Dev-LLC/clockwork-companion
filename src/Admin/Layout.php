@@ -18,7 +18,7 @@ class Layout
     /** @return array<int, array{slug: string, label: string, page?: string}> */
     public static function tabs(): array
     {
-        return [
+        $all = [
             ['slug' => 'activity', 'label' => 'Activity', 'page' => Menu::SLUG],
             ['slug' => 'uptime', 'label' => 'Uptime', 'page' => \ClockworkCompanion\Admin\Pages\UptimePage::SLUG],
             ['slug' => 'security', 'label' => 'Security', 'page' => \ClockworkCompanion\Admin\Pages\SecurityPage::SLUG],
@@ -28,12 +28,17 @@ class Layout
             ['slug' => 'forms', 'label' => 'Forms', 'page' => \ClockworkCompanion\Admin\Pages\FormsPage::SLUG],
             ['slug' => 'backups', 'label' => 'Backups', 'page' => \ClockworkCompanion\Admin\Pages\BackupsPage::SLUG],
             ['slug' => 'notifications', 'label' => 'Notifications', 'page' => \ClockworkCompanion\Admin\Pages\NotificationsPage::SLUG],
-            ['slug' => 'branding', 'label' => 'Branding', 'page' => \ClockworkCompanion\Admin\Pages\WhiteLabelPage::SLUG],
-            ...( defined('CLOCKWORK_UNLOCK_HUB') && CLOCKWORK_UNLOCK_HUB
-                ? [['slug' => 'unlock', 'label' => 'Unlock', 'page' => \ClockworkCompanion\Admin\Pages\UnlockPage::SLUG]]
-                : []
-            ),
         ];
+
+        if (! WhiteLabel::isEnabled()) {
+            $all[] = ['slug' => 'branding', 'label' => 'Branding', 'page' => \ClockworkCompanion\Admin\Pages\WhiteLabelPage::SLUG];
+        }
+
+        if (defined('CLOCKWORK_UNLOCK_HUB') && CLOCKWORK_UNLOCK_HUB) {
+            $all[] = ['slug' => 'unlock', 'label' => 'Unlock', 'page' => \ClockworkCompanion\Admin\Pages\UnlockPage::SLUG];
+        }
+
+        return $all;
     }
 
     /**
@@ -57,12 +62,14 @@ class Layout
                     <span class="clockwork-admin__brand-text"><?php echo esc_html($brandText); ?></span>
                 </div>
                 <div style="display:flex;align-items:center;gap:12px;">
-                    <?php if (!empty($supportUrl)) : ?>
-                        <a href="<?php echo esc_url($supportUrl); ?>" target="_blank" rel="noopener noreferrer" class="cwk-header-support-btn" style="text-decoration:none;display:inline-flex;align-items:center;">
-                            <?php echo esc_html($supportLabel); ?>
-                        </a>
-                    <?php else : ?>
-                        <button type="button" class="cwk-support-trigger cwk-header-support-btn"><?php echo esc_html($supportLabel); ?></button>
+                    <?php if (! WhiteLabel::areHelpLinksHidden()) : ?>
+                        <?php if (!empty($supportUrl)) : ?>
+                            <a href="<?php echo esc_url($supportUrl); ?>" target="_blank" rel="noopener noreferrer" class="cwk-header-support-btn" style="text-decoration:none;display:inline-flex;align-items:center;">
+                                <?php echo esc_html($supportLabel); ?>
+                            </a>
+                        <?php else : ?>
+                            <button type="button" class="cwk-support-trigger cwk-header-support-btn"><?php echo esc_html($supportLabel); ?></button>
+                        <?php endif; ?>
                     <?php endif; ?>
 
                     <?php if ($showVersion) : ?>

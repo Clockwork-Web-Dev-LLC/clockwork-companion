@@ -13,6 +13,7 @@ use ClockworkCompanion\AuthAudit\Schema as AuthAuditSchema;
 use ClockworkCompanion\Rest\ActionLogAppendRoute;
 use ClockworkCompanion\Rest\AdminsRoute;
 use ClockworkCompanion\Rest\BackupsReportRoute;
+use ClockworkCompanion\Rest\BrandingRoute;
 use ClockworkCompanion\Rest\CommentsSummaryRoute;
 use ClockworkCompanion\Rest\CronRoute;
 use ClockworkCompanion\Rest\DetectRoute;
@@ -155,6 +156,7 @@ class Plugin
             (new PostUpdateVerifyRoute())->register();
             (new \ClockworkCompanion\Rest\TwoFactorStatusRoute())->register();
             (new \ClockworkCompanion\Rest\TwoFactorMigrateRoute())->register();
+            (new BrandingRoute())->register();
         });
 
         // Self-service Forms tab AJAX. Capability + nonce gated; distinct

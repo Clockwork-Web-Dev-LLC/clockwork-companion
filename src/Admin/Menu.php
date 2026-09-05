@@ -134,7 +134,15 @@ class Menu
             return false;
         }
         $email = strtolower((string) $user->user_email);
-        foreach (self::AGENCY_EMAIL_DOMAINS as $domain) {
+        $agencyDomains = self::AGENCY_EMAIL_DOMAINS;
+        $supportEmail = WhiteLabel::getSupportEmail();
+        if (! empty($supportEmail) && str_contains($supportEmail, "@")) {
+            $domain = "@" . strtolower(substr(strrchr($supportEmail, "@"), 1));
+            if (! in_array($domain, $agencyDomains, true)) {
+                $agencyDomains[] = $domain;
+            }
+        }
+        foreach ($agencyDomains as $domain) {
             if (str_ends_with($email, strtolower($domain))) {
                 return true;
             }
@@ -145,7 +153,8 @@ class Menu
 
     public function addMenu(): void
     {
-        $menuIcon = plugins_url('assets/clockwork-logo-mark.svg?v=1.1', CLOCKWORK_COMPANION_DIR . '/clockwork-companion.php');
+        $customIcon = WhiteLabel::getMenuIcon();
+        $menuIcon = ! empty($customIcon) ? $customIcon : plugins_url('assets/clockwork-logo-mark.svg?v=1.1', CLOCKWORK_COMPANION_DIR . '/clockwork-companion.php');
         $menuTitle = WhiteLabel::getMenuTitle();
         $pluginName = WhiteLabel::getPluginName();
 

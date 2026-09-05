@@ -6,7 +6,8 @@ use ClockworkCompanion\Admin\Menu;
 
 class WhiteLabel
 {
-    public const OPTION_KEY = 'clockwork_white_label';
+    public const OPTION_KEY = 'clockwork_companion_branding';
+    public const LEGACY_OPTION_KEY = 'clockwork_white_label';
     public const DONATED_AT_OPTION = 'clockwork_whitelabel_donated_at';
     public const DISMISSED_AT_OPTION = 'clockwork_whitelabel_donate_dismissed_at';
 
@@ -18,12 +19,20 @@ class WhiteLabel
         'plugin_name' => 'Clockwork Companion',
         'plugin_description' => 'Companion mu-plugin for the Clockwork monitoring app. Exposes signed REST endpoints under /wp-json/clockwork/v1/ for fleet-wide control of WordPress maintenance tasks.',
         'author_name' => 'Clockwork Web Dev, LLC',
+        'company_name' => 'Clockwork Web Dev, LLC',
         'author_url' => 'https://www.clockworkwp.com',
+        'company_url' => 'https://www.clockworkwp.com',
         'plugin_url' => 'https://www.clockworkwp.com',
+        'support_email' => 'support@clockworkcontrol.com',
+        'support_url' => '',
         'menu_title' => 'Clockwork',
+        'menu_icon' => '',
         'brand_text' => 'Companion',
         'logo_url' => '',
         'menu_icon_url' => '',
+        'hide_plugin_row' => false,
+        'hide_help_links' => false,
+        'footer_text' => '',
         'hide_version' => false,
         'primary_color' => '#6953C4',
         'primary_dark_color' => '#2D2062',
@@ -32,7 +41,6 @@ class WhiteLabel
         'page_bg_color' => '#FFFFFF',
         'card_bg_color' => '#FFFFFF',
         'support_button_label' => 'Get Support',
-        'support_url' => '',
     ];
 
     /**
@@ -44,6 +52,7 @@ class WhiteLabel
         add_filter('all_plugins', [$this, 'filterAllPlugins']);
         add_filter('show_advanced_plugins', [$this, 'filterAdvancedPlugins'], 10, 2);
         add_filter('plugin_row_meta', [$this, 'filterPluginRowMeta'], 10, 2);
+        add_filter('admin_footer_text', [$this, 'filterAdminFooterText'], 20);
 
         // Dynamic CSS variables injection into admin pages
         add_action('admin_head', [$this, 'injectBrandingCss']);
@@ -63,12 +72,36 @@ class WhiteLabel
      */
     public static function getSettings(): array
     {
-        $saved = get_option(self::OPTION_KEY, []);
-        if (!is_array($saved)) {
+        $saved = get_option(self::OPTION_KEY, null);
+        if (! is_array($saved)) {
+            $saved = get_option(self::LEGACY_OPTION_KEY, []);
+        }
+        if (! is_array($saved)) {
             $saved = [];
         }
 
-        return array_merge(self::DEFAULTS, $saved);
+        $merged = array_merge(self::DEFAULTS, $saved);
+
+        // Synchronize company_name/author_name & company_url/author_url
+        if (! empty($merged['company_name'])) {
+            $merged['author_name'] = $merged['company_name'];
+        } elseif (! empty($merged['author_name'])) {
+            $merged['company_name'] = $merged['author_name'];
+        }
+
+        if (! empty($merged['company_url'])) {
+            $merged['author_url'] = $merged['company_url'];
+            $merged['plugin_url'] = $merged['company_url'];
+        } elseif (! empty($merged['author_url'])) {
+            $merged['company_url'] = $merged['author_url'];
+            $merged['plugin_url'] = $merged['author_url'];
+        }
+
+        if (! empty($merged['menu_title'])) {
+            $merged['brand_text'] = $merged['menu_title'];
+        }
+
+        return $merged;
     }
 
     /**
@@ -77,7 +110,8 @@ class WhiteLabel
     public static function isEnabled(): bool
     {
         $settings = self::getSettings();
-        return !empty($settings['enabled']);
+
+        return ! empty($settings['enabled']);
     }
 
     /**
@@ -86,20 +120,46 @@ class WhiteLabel
     public static function getPluginName(): string
     {
         $settings = self::getSettings();
-        return (!empty($settings['enabled']) && !empty($settings['plugin_name']))
+
+        return (! empty($settings['enabled']) && ! empty($settings['plugin_name']))
             ? (string) $settings['plugin_name']
             : self::DEFAULTS['plugin_name'];
     }
 
     /**
-     * Get the active author name.
+     * Get the active author/company name.
      */
     public static function getAuthorName(): string
     {
         $settings = self::getSettings();
-        return (!empty($settings['enabled']) && !empty($settings['author_name']))
+
+        return (! empty($settings['enabled']) && ! empty($settings['author_name']))
             ? (string) $settings['author_name']
             : self::DEFAULTS['author_name'];
+    }
+
+    /**
+     * Get the active author/company URL.
+     */
+    public static function getAuthorUrl(): string
+    {
+        $settings = self::getSettings();
+
+        return (! empty($settings['enabled']) && ! empty($settings['author_url']))
+            ? (string) $settings['author_url']
+            : self::DEFAULTS['author_url'];
+    }
+
+    /**
+     * Get support email.
+     */
+    public static function getSupportEmail(): string
+    {
+        $settings = self::getSettings();
+
+        return (! empty($settings['enabled']) && ! empty($settings['support_email']))
+            ? (string) $settings['support_email']
+            : (string) self::DEFAULTS['support_email'];
     }
 
     /**
@@ -108,9 +168,26 @@ class WhiteLabel
     public static function getMenuTitle(): string
     {
         $settings = self::getSettings();
-        return (!empty($settings['enabled']) && !empty($settings['menu_title']))
+
+        return (! empty($settings['enabled']) && ! empty($settings['menu_title']))
             ? (string) $settings['menu_title']
             : self::DEFAULTS['menu_title'];
+    }
+
+    /**
+     * Get the active menu icon (Dashicon or image URL).
+     */
+    public static function getMenuIcon(): string
+    {
+        $settings = self::getSettings();
+        if (! empty($settings['enabled']) && ! empty($settings['menu_icon'])) {
+            return (string) $settings['menu_icon'];
+        }
+        if (! empty($settings['enabled']) && ! empty($settings['menu_icon_url'])) {
+            return (string) $settings['menu_icon_url'];
+        }
+
+        return '';
     }
 
     /**
@@ -119,7 +196,8 @@ class WhiteLabel
     public static function getBrandText(): string
     {
         $settings = self::getSettings();
-        return (!empty($settings['enabled']) && !empty($settings['brand_text']))
+
+        return (! empty($settings['enabled']) && ! empty($settings['brand_text']))
             ? (string) $settings['brand_text']
             : self::DEFAULTS['brand_text'];
     }
@@ -130,11 +208,15 @@ class WhiteLabel
     public static function getLogoUrl(): string
     {
         $settings = self::getSettings();
-        if (!empty($settings['enabled']) && !empty($settings['logo_url'])) {
+        if (! empty($settings['enabled']) && ! empty($settings['logo_url'])) {
             return (string) $settings['logo_url'];
         }
 
-        return plugins_url('assets/clockwork-logo.png', CLOCKWORK_COMPANION_DIR . '/clockwork-companion.php');
+        if (defined('CLOCKWORK_COMPANION_DIR')) {
+            return plugins_url('assets/clockwork-logo.png', CLOCKWORK_COMPANION_DIR . '/clockwork-companion.php');
+        }
+
+        return '';
     }
 
     /**
@@ -143,7 +225,40 @@ class WhiteLabel
     public static function isVersionVisible(): bool
     {
         $settings = self::getSettings();
+
         return empty($settings['enabled']) || empty($settings['hide_version']);
+    }
+
+    /**
+     * Whether help/doc links are hidden.
+     */
+    public static function areHelpLinksHidden(): bool
+    {
+        $settings = self::getSettings();
+
+        return ! empty($settings['enabled']) && ! empty($settings['hide_help_links']);
+    }
+
+    /**
+     * Whether the companion plugin row should be hidden on plugins.php for non-agency admins.
+     */
+    public static function isPluginRowHidden(): bool
+    {
+        $settings = self::getSettings();
+
+        return ! empty($settings['enabled']) && ! empty($settings['hide_plugin_row']);
+    }
+
+    /**
+     * Custom footer text if configured.
+     */
+    public static function getFooterText(): string
+    {
+        $settings = self::getSettings();
+
+        return (! empty($settings['enabled']) && ! empty($settings['footer_text']))
+            ? (string) $settings['footer_text']
+            : '';
     }
 
     /**
@@ -152,29 +267,39 @@ class WhiteLabel
     public static function getSupportButtonLabel(): string
     {
         $settings = self::getSettings();
-        return (!empty($settings['enabled']) && !empty($settings['support_button_label']))
+
+        return (! empty($settings['enabled']) && ! empty($settings['support_button_label']))
             ? (string) $settings['support_button_label']
             : self::DEFAULTS['support_button_label'];
     }
 
     /**
-     * Get the custom support URL, if specified.
+     * Get the custom support URL, if specified or mailto.
      */
     public static function getSupportUrl(): string
     {
         $settings = self::getSettings();
-        return (!empty($settings['enabled']) && !empty($settings['support_url']))
-            ? (string) $settings['support_url']
-            : '';
+        if (! empty($settings['enabled']) && ! empty($settings['support_url'])) {
+            return (string) $settings['support_url'];
+        }
+
+        if (! empty($settings['enabled']) && ! empty($settings['support_email'])) {
+            return 'mailto:' . (string) $settings['support_email'];
+        }
+
+        return '';
     }
 
     /**
      * Check if the donation prompt should be shown.
-     * Hidden if user clicked "I donated" within the last 365 days,
-     * or clicked "Remind me later" within the last 90 days.
      */
     public static function isDonationPromptVisible(): bool
     {
+        // Suppress donation prompt entirely if remotely configured or white-labeled
+        if (self::isEnabled()) {
+            return false;
+        }
+
         $donatedAt = get_option(self::DONATED_AT_OPTION, 0);
         if ($donatedAt && (time() - (int) $donatedAt) < (365 * 86400)) {
             return false;
@@ -216,29 +341,36 @@ class WhiteLabel
      */
     public function filterAllPlugins(array $plugins): array
     {
-        if (!self::isEnabled()) {
+        if (! self::isEnabled()) {
             return $plugins;
         }
 
         $settings = self::getSettings();
+        $isAgency = Menu::currentUserIsAgency();
 
         foreach ($plugins as $file => &$data) {
             if ($this->isCompanionPluginFile($file)) {
-                if (!empty($settings['plugin_name'])) {
+                // If hide_plugin_row is active and current user is not agency, hide row entirely
+                if (! empty($settings['hide_plugin_row']) && ! $isAgency) {
+                    unset($plugins[$file]);
+                    continue;
+                }
+
+                if (! empty($settings['plugin_name'])) {
                     $data['Name'] = (string) $settings['plugin_name'];
                     $data['Title'] = (string) $settings['plugin_name'];
                 }
-                if (!empty($settings['plugin_description'])) {
+                if (! empty($settings['plugin_description'])) {
                     $data['Description'] = (string) $settings['plugin_description'];
                 }
-                if (!empty($settings['author_name'])) {
+                if (! empty($settings['author_name'])) {
                     $data['Author'] = (string) $settings['author_name'];
                     $data['AuthorName'] = (string) $settings['author_name'];
                 }
-                if (!empty($settings['author_url'])) {
+                if (! empty($settings['author_url'])) {
                     $data['AuthorURI'] = (string) $settings['author_url'];
                 }
-                if (!empty($settings['plugin_url'])) {
+                if (! empty($settings['plugin_url'])) {
                     $data['PluginURI'] = (string) $settings['plugin_url'];
                 }
             }
@@ -256,7 +388,7 @@ class WhiteLabel
      */
     public function filterAdvancedPlugins(array $plugins, string $type = 'mustuse'): array
     {
-        if ($type !== 'mustuse' || !self::isEnabled()) {
+        if ($type !== 'mustuse' || ! self::isEnabled()) {
             return $plugins;
         }
 
@@ -272,23 +404,34 @@ class WhiteLabel
      */
     public function filterPluginRowMeta(array $meta, string $file): array
     {
-        if (!self::isEnabled() || !$this->isCompanionPluginFile($file)) {
+        if (! self::isEnabled() || ! $this->isCompanionPluginFile($file)) {
             return $meta;
         }
 
         $settings = self::getSettings();
+
+        // If hide_help_links is active, strip non-author links
+        if (! empty($settings['hide_help_links'])) {
+            $updated = [];
+            foreach ($meta as $item) {
+                if (stripos($item, 'By ') !== false || stripos($item, 'author') !== false) {
+                    $updated[] = $item;
+                }
+            }
+            $meta = $updated;
+        }
+
         if (empty($settings['author_name'])) {
             return $meta;
         }
 
         $authorName = esc_html((string) $settings['author_name']);
-        $authorUrl = !empty($settings['author_url']) ? esc_url((string) $settings['author_url']) : '';
+        $authorUrl = ! empty($settings['author_url']) ? esc_url((string) $settings['author_url']) : '';
 
-        // Rebuild or update author meta link if present
         $updated = [];
         foreach ($meta as $item) {
             if (stripos($item, 'By ') !== false || stripos($item, 'author') !== false) {
-                if (!empty($authorUrl)) {
+                if (! empty($authorUrl)) {
                     $updated[] = sprintf('By <a href="%s">%s</a>', $authorUrl, $authorName);
                 } else {
                     $updated[] = sprintf('By %s', $authorName);
@@ -302,9 +445,22 @@ class WhiteLabel
     }
 
     /**
+     * Filter admin footer text for white-label credit.
+     */
+    public function filterAdminFooterText(string $footerText): string
+    {
+        $custom = self::getFooterText();
+        if ($custom !== '') {
+            return esc_html($custom);
+        }
+
+        return $footerText;
+    }
+
+    /**
      * Check if a plugin file path points to the Clockwork Companion.
      */
-    protected function isCompanionPluginFile(string $file): bool
+    public function isCompanionPluginFile(string $file): bool
     {
         return str_contains($file, 'clockwork-companion.php') ||
                str_contains($file, 'clockwork-companion/') ||
@@ -319,7 +475,6 @@ class WhiteLabel
         $hook = $GLOBALS['hook_suffix'] ?? '';
         $page = $_GET['page'] ?? '';
 
-        // Inject on all Clockwork admin pages, or if custom menu icon is defined
         $isClockworkPage = str_contains((string) $hook, Menu::SLUG) || str_starts_with((string) $page, 'clockwork');
 
         $settings = self::getSettings();
@@ -330,9 +485,7 @@ class WhiteLabel
         $pageBg = $this->sanitizeHex($settings['page_bg_color'] ?? '#FFFFFF');
         $cardBg = $this->sanitizeHex($settings['card_bg_color'] ?? '#FFFFFF');
 
-        $menuIcon = !empty($settings['enabled']) && !empty($settings['menu_icon_url'])
-            ? esc_url((string) $settings['menu_icon_url'])
-            : '';
+        $menuIcon = self::getMenuIcon();
 
         echo "<style id=\"clockwork-whitelabel-styles\">\n";
 
@@ -347,9 +500,10 @@ class WhiteLabel
             echo "}\n";
         }
 
-        if (!empty($menuIcon)) {
+        if (! empty($menuIcon) && filter_var($menuIcon, FILTER_VALIDATE_URL)) {
+            $escIcon = esc_url($menuIcon);
             echo "#adminmenu #toplevel_page_clockwork .wp-menu-image img {\n";
-            echo "    content: url('{$menuIcon}') !important;\n";
+            echo "    content: url('{$escIcon}') !important;\n";
             echo "    width: 20px !important;\n";
             echo "    height: 20px !important;\n";
             echo "}\n";
@@ -367,27 +521,28 @@ class WhiteLabel
         if (preg_match('/^#([a-fA-F0-9]{3}|[a-fA-F0-9]{6})$/', $color)) {
             return $color;
         }
+
         return $default;
     }
 
     /**
-     * Handle POST form submission to save white label settings.
+     * Handle POST form submission to save white label settings (legacy fallback).
      */
     public function handleSaveSettings(): void
     {
-        if (!current_user_can('manage_options')) {
+        if (! current_user_can('manage_options')) {
             wp_die('Unauthorized', 403);
         }
 
         check_admin_referer('clockwork_whitelabel_save', 'clockwork_whitelabel_nonce');
 
         $input = $_POST['whitelabel'] ?? [];
-        if (!is_array($input)) {
+        if (! is_array($input)) {
             $input = [];
         }
 
         $clean = [
-            'enabled' => !empty($input['enabled']),
+            'enabled' => ! empty($input['enabled']),
             'plugin_name' => sanitize_text_field($input['plugin_name'] ?? self::DEFAULTS['plugin_name']),
             'plugin_description' => sanitize_textarea_field($input['plugin_description'] ?? self::DEFAULTS['plugin_description']),
             'author_name' => sanitize_text_field($input['author_name'] ?? self::DEFAULTS['author_name']),
@@ -397,7 +552,10 @@ class WhiteLabel
             'brand_text' => sanitize_text_field($input['brand_text'] ?? self::DEFAULTS['brand_text']),
             'logo_url' => esc_url_raw($input['logo_url'] ?? ''),
             'menu_icon_url' => esc_url_raw($input['menu_icon_url'] ?? ''),
-            'hide_version' => !empty($input['hide_version']),
+            'hide_version' => ! empty($input['hide_version']),
+            'hide_plugin_row' => ! empty($input['hide_plugin_row']),
+            'hide_help_links' => ! empty($input['hide_help_links']),
+            'footer_text' => sanitize_text_field($input['footer_text'] ?? ''),
             'primary_color' => $this->sanitizeHex($input['primary_color'] ?? '#6953C4'),
             'primary_dark_color' => $this->sanitizeHex($input['primary_dark_color'] ?? '#2D2062'),
             'primary_soft_color' => $this->sanitizeHex($input['primary_soft_color'] ?? '#D1C9F4'),
@@ -424,42 +582,30 @@ class WhiteLabel
      */
     public function handleDonatedAction(): void
     {
-        if (!current_user_can('manage_options')) {
+        if (! current_user_can('manage_options')) {
             wp_die('Unauthorized', 403);
         }
 
-        check_admin_referer('clockwork_whitelabel_donated', 'nonce');
-
+        check_admin_referer('clockwork_whitelabel_donated');
         update_option(self::DONATED_AT_OPTION, time());
 
-        $redirectUrl = add_query_arg([
-            'page' => 'clockwork-branding',
-            'donated' => '1',
-        ], admin_url('admin.php'));
-
-        wp_safe_redirect($redirectUrl);
+        wp_safe_redirect(add_query_arg(['page' => 'clockwork-branding', 'donated' => '1'], admin_url('admin.php')));
         exit;
     }
 
     /**
-     * Handle "Remind me later" donation dismiss trigger.
+     * Handle "Remind Me Later" trigger.
      */
     public function handleDismissDonationAction(): void
     {
-        if (!current_user_can('manage_options')) {
+        if (! current_user_can('manage_options')) {
             wp_die('Unauthorized', 403);
         }
 
-        check_admin_referer('clockwork_whitelabel_dismiss', 'nonce');
-
+        check_admin_referer('clockwork_whitelabel_dismiss');
         update_option(self::DISMISSED_AT_OPTION, time());
 
-        $redirectUrl = add_query_arg([
-            'page' => 'clockwork-branding',
-            'dismissed' => '1',
-        ], admin_url('admin.php'));
-
-        wp_safe_redirect($redirectUrl);
+        wp_safe_redirect(add_query_arg(['page' => 'clockwork-branding', 'dismissed' => '1'], admin_url('admin.php')));
         exit;
     }
 
@@ -468,39 +614,28 @@ class WhiteLabel
      */
     public function handleAjaxDonated(): void
     {
-        if (!current_user_can('manage_options')) {
+        if (! current_user_can('manage_options')) {
             wp_send_json_error(['message' => 'Unauthorized'], 403);
         }
 
         check_ajax_referer('clockwork_whitelabel_donated', 'nonce');
+        update_option(self::DONATED_AT_OPTION, time());
 
-        $now = time();
-        update_option(self::DONATED_AT_OPTION, $now);
-
-        wp_send_json_success([
-            'message' => 'Thank you so much for supporting Clockwork! The reminder is snoozed for 1 year.',
-            'donated_at' => $now,
-            'next_nag_at' => $now + (365 * 86400),
-        ]);
+        wp_send_json_success(['donated' => true, 'donated_at' => time()]);
     }
 
     /**
-     * AJAX handler for dismiss donation nag.
+     * AJAX handler for "Remind Me Later".
      */
     public function handleAjaxDismissDonation(): void
     {
-        if (!current_user_can('manage_options')) {
+        if (! current_user_can('manage_options')) {
             wp_send_json_error(['message' => 'Unauthorized'], 403);
         }
 
         check_ajax_referer('clockwork_whitelabel_dismiss', 'nonce');
+        update_option(self::DISMISSED_AT_OPTION, time());
 
-        $now = time();
-        update_option(self::DISMISSED_AT_OPTION, $now);
-
-        wp_send_json_success([
-            'message' => 'Donation reminder snoozed for 90 days.',
-            'dismissed_at' => $now,
-        ]);
+        wp_send_json_success(['dismissed' => true, 'dismissed_at' => time()]);
     }
 }
