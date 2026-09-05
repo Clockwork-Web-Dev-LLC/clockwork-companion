@@ -2,6 +2,12 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.31.12 — 2026-08-30
+
+### Added
+
+- **Backups page now shows the 90-day off-host Glacier archive, for Pressable care-plan sites.** A new standalone project archives these sites' backups to S3 Glacier Instant Retrieval twice a week, independent of the on-host backups shown above it. Renders as an informational notice ("Also archived off-host for 90 days") plus, when a currently-valid link exists, real "Download latest filesystem/database backup" buttons — direct links straight to S3, no proxying through this plugin or the agency's monitoring app. Absent entirely for any site not enrolled (no false promise). New `offsite_archive` field on the existing `/backups-report` payload, loosely validated like everything else on that endpoint.
+
 ## 1.31.11 — 2026-08-29
 
 ### Changed

@@ -82,7 +82,60 @@ class BackupsPage
         }
 
         self::renderConfigCard($report);
+        self::renderOffsiteArchiveCard($report);
         self::renderHistoryCard($report);
+    }
+
+    /**
+     * Pressable-only, care-plan-only: a second, independent 90-day copy of
+     * this site's backups, archived off-host to S3 Glacier by a separate
+     * standalone process (not this plugin, not the agency's monitoring app
+     * directly — see that project's docs for why). Purely informational
+     * plus, when a currently-valid link exists, a direct download of the
+     * single most recent archived copy. Omitted entirely for sites not
+     * enrolled — no false promise for a site that doesn't have this.
+     *
+     * @param  array<string, mixed>  $report
+     */
+    private static function renderOffsiteArchiveCard(array $report): void
+    {
+        $archive = $report['offsite_archive'] ?? null;
+        if (! is_array($archive) || empty($archive['active'])) {
+            return;
+        }
+
+        $lastArchivedAt = isset($archive['last_archived_at']) ? (string) $archive['last_archived_at'] : null;
+        $fsUrl = isset($archive['fs_download_url']) ? (string) $archive['fs_download_url'] : null;
+        $dbUrl = isset($archive['db_download_url']) ? (string) $archive['db_download_url'] : null;
+        $expiresAt = isset($archive['download_expires_at']) ? strtotime((string) $archive['download_expires_at']) : false;
+        // A stale/expired link would just fail with an S3 XML error page if
+        // clicked — hide the buttons rather than let that happen. The
+        // pushing job refreshes this at least daily, so this should be rare.
+        $linksValid = $expiresAt !== false && $expiresAt > time();
+        ?>
+        <div class="clockwork-card" style="margin-bottom: 16px;">
+            <div class="clockwork-card__body">
+                <div class="clockwork-notice clockwork-notice--ok">
+                    <strong>Also archived off-host for 90 days.</strong>
+                    Independent of the backups above, your host's backups are additionally copied to secure, encrypted cold storage (Amazon S3 Glacier) twice a week, kept for 90 days — a second copy in case anything ever happened to your host account itself.
+                    <?php if ($lastArchivedAt): ?>
+                        <div style="margin-top: 6px; font-size: 12px; opacity: 0.8;">Last archived: <?php echo esc_html(self::formatTimestamp($lastArchivedAt)); ?></div>
+                    <?php endif; ?>
+                </div>
+                <?php if ($linksValid && ($fsUrl || $dbUrl)): ?>
+                    <div style="margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap;">
+                        <?php if ($fsUrl): ?>
+                            <a href="<?php echo esc_url($fsUrl); ?>" class="button" download>Download latest filesystem backup</a>
+                        <?php endif; ?>
+                        <?php if ($dbUrl): ?>
+                            <a href="<?php echo esc_url($dbUrl); ?>" class="button" download>Download latest database backup</a>
+                        <?php endif; ?>
+                    </div>
+                    <div style="margin-top: 6px; font-size: 11px; opacity: 0.65;">These download links are temporary and refresh automatically — if one doesn't work, check back after the next daily refresh.</div>
+                <?php endif; ?>
+            </div>
+        </div>
+        <?php
     }
 
     private static function renderEmptyState(): void

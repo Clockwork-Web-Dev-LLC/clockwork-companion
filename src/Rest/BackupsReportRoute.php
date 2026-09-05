@@ -34,7 +34,14 @@ use WP_REST_Response;
  *     "retention_days": 90,
  *     "history_files": [...],       // Pressable only — {date, type, bytes, notes} per entry
  *     "history_database": [...],    // same shape, independent cadence
- *     "last_backup_at": "2026-08-29T16:00:00+00:00"
+ *     "last_backup_at": "2026-08-29T16:00:00+00:00",
+ *     "offsite_archive": {          // Pressable + care-plan only, else absent/null
+ *       "active": true,
+ *       "last_archived_at": "2026-08-30T05:14:00+00:00",
+ *       "fs_download_url": "https://...presigned-s3-url...",
+ *       "db_download_url": "https://...presigned-s3-url...",
+ *       "download_expires_at": "2026-09-04T05:14:00+00:00"
+ *     }
  *   }
  *
  * Response: { "ok": true }
@@ -93,6 +100,13 @@ class BackupsReportRoute
             // whatever the host's API currently returns) vs the default
             // 'policy' (SpinupWP — a real 30/90-day window we control).
             'history_scope' => isset($payload['history_scope']) ? (string) $payload['history_scope'] : 'policy',
+            // Pressable + care-plan only: a second, independent 90-day copy
+            // archived off-host to S3 Glacier by a separate standalone
+            // process. Absent/inactive for anything else — BackupsPage
+            // renders nothing at all in that case, not a false promise.
+            'offsite_archive' => isset($payload['offsite_archive']) && is_array($payload['offsite_archive'])
+                ? $payload['offsite_archive']
+                : null,
         ];
 
         update_option(BackupsPage::OPTION, $stored, false);
