@@ -2,11 +2,17 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
-## 1.31.12 — 2026-08-30
+## 1.32.1 — 2026-09-04
 
 ### Added
 
 - **Backups page now shows the 90-day off-host Glacier archive, for Pressable care-plan sites.** A new standalone project archives these sites' backups to S3 Glacier Instant Retrieval twice a week, independent of the on-host backups shown above it. Renders as an informational notice ("Also archived off-host for 90 days") plus, when a currently-valid link exists, real "Download latest filesystem/database backup" buttons — direct links straight to S3, no proxying through this plugin or the agency's monitoring app. Absent entirely for any site not enrolled (no false promise). New `offsite_archive` field on the existing `/backups-report` payload, loosely validated like everything else on that endpoint.
+
+## 1.32.0 — 2026-09-04
+
+### Added
+
+- **Two-factor enrollment nudge with a 30-day grace period, manually adjustable per person.** Agency-visible admins (`TwoFactor\EnrollmentNudge` — same visibility gate as the Clockwork menu itself: agency-domain email + `manage_options`) who haven't set up 2FA now see a dismissible admin notice with a day countdown, starting a per-user grace period (stored as an absolute deadline, not a fixed countdown) the first time they're observed without 2FA. Default length is 30 days, filterable (`clockwork_companion_2fa_grace_days`) or overridable via the `CLOCKWORK_2FA_GRACE_DAYS` wp-config constant, mirroring the existing `CLOCKWORK_2FA_DISABLE` rescue hatch. Once the grace period elapses, the notice becomes non-dismissible and wp-admin is redirect-locked to the Login Security page until enrollment completes. The Login Security page's Team Status table gains a "Grace period" column for every eligible teammate — any agency admin can set a specific person's remaining days directly (extend someone who's out, or cut it short) or reset to the default; a per-target nonce keeps one person's form from being replayed against another's account, and the endpoint independently re-checks the *acting* user's own agency + manage_options standing (`EnrollmentNudge::handleSetGrace()` — deliberately separate from `TwoFactorActions`, which only ever acts on the current user). Deliberately scoped to client-invisible accounts only — client admins get 2FA available but not pushed, since the feature isn't even in their sidebar. Does not touch the wp-login.php flow (that stays LoginInterceptor's job for already-enrolled users) — enrollment needs the interactive QR/confirm flow, which only exists inside an authenticated wp-admin session.
 
 ## 1.31.11 — 2026-08-29
 
@@ -58,9 +64,6 @@ Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earli
 
 ## 1.31.3 — 2026-08-28
 
-### Fixed
-
-- **`wp-force-login` was 401-locking Companion out of its own REST endpoints on a client intranet site.** That plugin hooks `rest_authentication_errors` at priority 99 and rejects any REST request without a live WP session — including every Companion request, which authenticates via HMAC signature, not cookies. Unlike its page-view gate (`template_redirect`), the plugin's REST block has no `v_forcelogin_bypass` filter or any other allowlist hook to extend, and patching the plugin's own file directly would just get overwritten on its next update. Added `Compat/WpForceLoginCompat.php`, which hooks the same filter at priority 10 (ahead of wp-force-login's 99) and short-circuits it to `true` for requests under `clockwork/v1`. This doesn't itself authenticate anything — it only stops the blanket block from firing before WordPress reaches route dispatch; every Companion route's `permission_callback` is still `HmacVerifier::verify`, and that's the check that actually decides whether the request is let through, exactly as on every other site. Same trust model as the existing `PerfmattersCompat` shim.
 
 ## 1.31.2 — 2026-08-28
 
