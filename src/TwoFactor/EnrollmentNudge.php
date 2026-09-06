@@ -11,7 +11,7 @@ use ClockworkCompanion\Admin\Pages\TwoFactorPage;
  *
  * Scope is deliberately narrow: only users the Clockwork menu itself is
  * visible to (Menu::currentUserIsAgency() + the menu's own manage_options
- * capability — i.e. Aaron's own accounts, not client admins) ever see this.
+ * capability — i.e. agency operators, not client admins) ever see this.
  * Client sites get Companion installed with 2FA available but not pushed on
  * them; nagging a client admin to set up a feature their sidebar doesn't
  * even show them would just be confusing (see Menu's docblock on menu

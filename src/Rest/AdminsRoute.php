@@ -23,9 +23,9 @@ use WP_REST_Response;
  *     "admins": [
  *       {
  *         "id": 1,
- *         "login": "aaron",
- *         "email": "aaron@example.com",
- *         "display_name": "Aaron",
+ *         "login": "agency-operator",
+ *         "email": "operator@example.com",
+ *         "display_name": "Agency Operator",
  *         "registered_at": "2024-01-15T12:00:00+00:00",
  *         "last_seen_at": "2026-05-01T18:23:00+00:00" | null,
  *         "active_sessions": 2

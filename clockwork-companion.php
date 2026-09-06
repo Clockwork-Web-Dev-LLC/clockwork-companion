@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Clockwork Companion
  * Description: Companion mu-plugin for the Clockwork monitoring app. Exposes signed REST endpoints under /wp-json/clockwork/v1/ for fleet-wide control of WordPress maintenance tasks (contact-form testing, plugin updates, security scans, etc.).
- * Version: 1.33.0
+ * Version: 1.34.0
  * Author: Clockwork Web Dev, LLC
  * License: MIT
  * License URI: https://opensource.org/licenses/MIT
@@ -16,16 +16,19 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-define('CLOCKWORK_COMPANION_VERSION', '1.33.0');
+define('CLOCKWORK_COMPANION_VERSION', '1.34.0');
 define('CLOCKWORK_COMPANION_DIR', __DIR__ . '/clockwork-companion');
 define('CLOCKWORK_COMPANION_NAMESPACE', 'clockwork/v1');
 
-// Support form — proxies to GF REST API v2 on the Clockwork site.
-// Define these with the keys from clockworkwp.com → Forms → Settings → REST API → Authentication (API version 2):
+// Support form — proxies to the Gravity Forms REST API v2 on the operator's
+// own site. Point CLOCKWORK_SUPPORT_SITE_URL at that site in wp-config.php and
+// supply credentials from its Forms → Settings → REST API → Authentication
+// screen (API version 2):
 //   CLOCKWORK_SUPPORT_GF_KEY    — Consumer Key  (ck_…)
 //   CLOCKWORK_SUPPORT_GF_SECRET — Consumer Secret (cs_…)
+// Left undefined, the in-plugin support form is simply unavailable.
 if (! defined('CLOCKWORK_SUPPORT_SITE_URL')) {
-    define('CLOCKWORK_SUPPORT_SITE_URL', 'https://www.clockworkwp.com');
+    define('CLOCKWORK_SUPPORT_SITE_URL', '');
 }
 
 spl_autoload_register(function (string $class): void {

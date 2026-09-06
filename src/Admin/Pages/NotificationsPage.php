@@ -4,6 +4,7 @@ namespace ClockworkCompanion\Admin\Pages;
 
 use ClockworkCompanion\Admin\Layout;
 use ClockworkCompanion\Notifications\ClientNotifications;
+use ClockworkCompanion\WhiteLabel\WhiteLabel;
 
 /**
  * Notifications settings page — lets Clockwork configure where client-facing
@@ -78,7 +79,7 @@ class NotificationsPage
                         </div>
                     <?php else : ?>
                         <div style="margin-top:8px;padding:10px 14px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;color:#6b7280;">
-                            No webhook URL configured. Alerts will only go to Clockwork Web Dev's internal channel.
+                            No webhook URL configured. Alerts will only go to <?php echo esc_html(WhiteLabel::getAuthorName()); ?>'s internal channel.
                         </div>
                     <?php endif; ?>
                 </div>

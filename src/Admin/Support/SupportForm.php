@@ -8,10 +8,13 @@ use ClockworkCompanion\Admin\Pages\PerformancePage;
 use ClockworkCompanion\Admin\Pages\SecurityPage;
 use ClockworkCompanion\Admin\Pages\TrafficPage;
 use ClockworkCompanion\Admin\Pages\UptimePage;
+use ClockworkCompanion\WhiteLabel\WhiteLabel;
 
 /**
- * Support ticket form — proxies submissions to the Clockwork GravityForms
- * form (form ID 3, site defined by CLOCKWORK_SUPPORT_SITE_URL constant).
+ * Support ticket form — proxies submissions to a Gravity Forms form (form ID
+ * 3) on the operator's own site, defined by the CLOCKWORK_SUPPORT_SITE_URL
+ * constant. Unset, the form reports itself as unconfigured rather than posting
+ * anywhere.
  *
  * Exposes three integration points:
  *  1. Admin-footer modal: output on every wp-admin page so any
@@ -33,8 +36,8 @@ use ClockworkCompanion\Admin\Pages\UptimePage;
  *   input_6_1  = Billing approval checkbox
  *   input_9_1  = Newsletter subscribe checkbox
  *
- * Auth: uses GF REST API v2. Define these constants with the keys from
- * clockworkwp.com → Forms → Settings → REST API → Authentication (API version 2):
+ * Auth: uses GF REST API v2. Define these constants with the keys from that
+ * site's Forms → Settings → REST API → Authentication screen (API version 2):
  *   CLOCKWORK_SUPPORT_GF_KEY    — Consumer Key  (ck_…)
  *   CLOCKWORK_SUPPORT_GF_SECRET — Consumer Secret (cs_…)
  */
@@ -92,7 +95,7 @@ class SupportForm
 
         wp_add_dashboard_widget(
             'clockwork_support_widget',
-            'Clockwork Web Dev',
+            WhiteLabel::getAuthorName(),
             [self::class, 'renderWidget']
         );
     }
@@ -513,7 +516,18 @@ class SupportForm
             $body['input_9_1'] = self::SUBSCRIBE_TEXT;
         }
 
-        $baseUrl      = defined('CLOCKWORK_SUPPORT_SITE_URL') ? (string) CLOCKWORK_SUPPORT_SITE_URL : 'https://www.clockworkwp.com';
+        $baseUrl = defined('CLOCKWORK_SUPPORT_SITE_URL') ? (string) CLOCKWORK_SUPPORT_SITE_URL : '';
+
+        // No support site configured: say so plainly. Without this the empty
+        // base URL would build a relative endpoint, wp_remote_post() would
+        // reject it, and the operator would get a misleading "couldn't reach
+        // the support system" alongside a link to nowhere.
+        if (trim($baseUrl) === '') {
+            wp_send_json_error([
+                'message' => 'The support form isn\'t configured on this site. Set CLOCKWORK_SUPPORT_SITE_URL in wp-config.php, or contact your agency directly.',
+            ], 501);
+        }
+
         $endpoint     = rtrim($baseUrl, '/') . '/wp-json/gf/v2/forms/' . self::GF_FORM_ID . '/submissions';
         $supportUrl   = esc_url(rtrim($baseUrl, '/') . '/support');
         $fallbackLink = ' <a href="' . $supportUrl . '" target="_blank" rel="noopener">Open our support page →</a>';

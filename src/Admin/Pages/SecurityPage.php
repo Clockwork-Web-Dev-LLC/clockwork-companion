@@ -7,13 +7,14 @@ use ClockworkCompanion\Admin\Actions\RunSecurityScanAction;
 use ClockworkCompanion\Admin\Layout;
 use ClockworkCompanion\AuthAudit\Repository as AuthAuditRepository;
 use ClockworkCompanion\SecurityScans\ChecksumsRunner;
+use ClockworkCompanion\WhiteLabel\WhiteLabel;
 
 /**
  * Tools → Clockwork → Security admin page.
  *
  * Two-card layout that mirrors the Clockwork dashboard's per-site Security
  * tab — same shape, same fields, same status pills — so a client clicking
- * around their wp-admin sees the same result Aaron sees in his ops tool.
+ * around their wp-admin sees the same result the agency sees in its ops tool.
  *
  * Card states:
  *   - active            → care plan ON + scan available on this host
@@ -165,7 +166,7 @@ class SecurityPage
                 'runnable' => true,
                 'host_unavailable_note' => $checksumsRunnable
                     ? null
-                    : "This host can't run core checksum verification — wp-cli isn't reachable and the WordPress HTTP API is blocked. Talk to Clockwork Web Dev.",
+                    : "This host can't run core checksum verification — wp-cli isn't reachable and the WordPress HTTP API is blocked. Talk to " . WhiteLabel::getAuthorName() . '.',
             ]);
             ?>
         </div>
@@ -274,13 +275,13 @@ class SecurityPage
                     Failed authentication attempts on the Clockwork REST endpoints.
                     Cryptographic protocol is uncrackable; this catalogues
                     probing, misconfiguration, and stale-secret deployments so
-                    Clockwork Web Dev can investigate when the count spikes.
+                    <?php echo esc_html(WhiteLabel::getAuthorName()); ?> can investigate when the count spikes.
                 </p>
 
                 <?php if ($totalSeen === 0) : ?>
                     <div class="clockwork-notice clockwork-notice--ok">
                         <i class="dashicons dashicons-shield-alt"></i>
-                        No failed attempts have been recorded. Clockwork Web Dev
+                        No failed attempts have been recorded. <?php echo esc_html(WhiteLabel::getAuthorName()); ?>
                         is the only signed caller of these endpoints.
                     </div>
                 <?php else : ?>
@@ -357,7 +358,7 @@ class SecurityPage
                 <?php if ($total === 0) : ?>
                     <div style="padding: 20px;">
                         <div class="clockwork-notice clockwork-notice--muted">
-                            No scans recorded yet. Once Clockwork Web Dev's daily and weekly checks run,
+                            No scans recorded yet. Once <?php echo esc_html(WhiteLabel::getAuthorName()); ?>'s daily and weekly checks run,
                             their history will populate here.
                         </div>
                     </div>
@@ -586,11 +587,11 @@ class SecurityPage
             <div class="clockwork-card" style="border-left: 4px solid #f59e0b;">
                 <div class="clockwork-card__body">
                     <strong>Hosting includes daily blacklist checks. A care plan adds the deeper scans.</strong>
-                    The <strong>domain blacklist check</strong> is already running — Clockwork Web Dev checks every day to make sure
+                    The <strong>domain blacklist check</strong> is already running — <?php echo esc_html(WhiteLabel::getAuthorName()); ?> checks every day to make sure
                     your domain isn't flagged on Spamhaus, URLHaus, or Google Safe Browsing. With a care plan, they also run
                     <strong>weekly Sucuri malware/JavaScript-injection scans</strong> and
                     <strong>daily WordPress core file integrity verification</strong> over SSH.
-                    Talk to Clockwork Web Dev about adding a care plan.
+                    Talk to <?php echo esc_html(WhiteLabel::getAuthorName()); ?> about adding a care plan.
                 </div>
             </div>
             <?php
@@ -661,7 +662,7 @@ class SecurityPage
                 <p class="clockwork-scan-card__empty">
                     <strong>Included with a care plan.</strong>
                     <?php if ($card['scan_type'] === 'sitecheck') : ?>
-                        <?php echo esc_html('Sucuri SiteCheck runs every Monday — scans your homepage for malware, JavaScript injections, and defacement. If anything trips, Clockwork Web Dev gets alerted within minutes.'); ?>
+                        <?php echo esc_html('Sucuri SiteCheck runs every Monday — scans your homepage for malware, JavaScript injections, and defacement. If anything trips, ' . WhiteLabel::getAuthorName() . ' gets alerted within minutes.'); ?>
                     <?php else : ?>
                         <?php echo esc_html('Every WordPress core file is verified against WordPress.org\'s published checksums daily. Catches PHP backdoors, modified core files, and shells dropped into wp-includes — the kind of malware Sucuri\'s public scan can\'t see.'); ?>
                     <?php endif; ?>
@@ -711,8 +712,8 @@ class SecurityPage
                 <?php if ($pill['variant'] === 'red') : ?>
                     <div class="clockwork-scan-card__alert-note">
                         <span class="dashicons dashicons-warning" aria-hidden="true"></span>
-                        <strong>Clockwork Web Dev has been alerted to these findings and is investigating.</strong>
-                        <a href="https://clockworkwd.com/support/" target="_blank" rel="noopener">Reach out</a> if you have questions or haven't heard back.
+                        <strong><?php echo esc_html(WhiteLabel::getAuthorName()); ?> has been alerted to these findings and is investigating.</strong>
+                        <?php echo WhiteLabel::supportLink('Reach out'); ?> if you have questions or haven't heard back.
                     </div>
                 <?php endif; ?>
             <?php endif; ?>

@@ -9,8 +9,7 @@ use ClockworkCompanion\ActionLog\Repository as ActionLogRepository;
  * standalone plugin Wordfence is discontinuing) into Companion's 2FA.
  *
  * Schema facts verified against a live WFLS 1.1.16 install
- * (clockworkwd.com, 2026-07-22) — NOT the folklore floating around
- * support forums:
+ * (2026-07-22) — NOT the folklore floating around support forums:
  *
  *   - {prefix}wfls_2fa_secrets.secret is a RAW BINARY 20-byte tinyblob
  *     (not hex-encoded). Conversion to our format is a straight

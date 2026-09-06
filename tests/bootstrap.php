@@ -73,6 +73,43 @@ if (! function_exists('add_action')) {
     }
 }
 
+if (! function_exists('apply_filters')) {
+    /**
+     * Runs callbacks registered through the add_filter() stub above, in
+     * registration order, so filter-driven behaviour is actually exercised
+     * rather than silently skipped.
+     */
+    function apply_filters(string $tag, mixed $value, mixed ...$args): mixed
+    {
+        foreach ($GLOBALS['wp_test_filters'][$tag] ?? [] as $callback) {
+            $value = $callback($value, ...$args);
+        }
+
+        return $value;
+    }
+}
+
+if (! function_exists('is_email')) {
+    function is_email(string $email): string|false
+    {
+        return filter_var($email, FILTER_VALIDATE_EMAIL) === false ? false : $email;
+    }
+}
+
+if (! function_exists('home_url')) {
+    function home_url(string $path = ''): string
+    {
+        return ($GLOBALS['wp_test_home_url'] ?? 'https://example.test') . $path;
+    }
+}
+
+if (! function_exists('esc_js')) {
+    function esc_js(string $text): string
+    {
+        return addslashes($text);
+    }
+}
+
 if (! function_exists('sanitize_text_field')) {
     function sanitize_text_field(string $str): string
     {

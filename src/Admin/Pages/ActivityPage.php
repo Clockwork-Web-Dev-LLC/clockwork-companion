@@ -4,6 +4,7 @@ namespace ClockworkCompanion\Admin\Pages;
 
 use ClockworkCompanion\ActionLog\Repository;
 use ClockworkCompanion\Admin\Layout;
+use ClockworkCompanion\WhiteLabel\WhiteLabel;
 
 /**
  * Tools → Clockwork → Activity admin page.
@@ -75,7 +76,7 @@ class ActivityPage
 
         Layout::pageHeader(
             'Activity',
-            'A log of the maintenance work Clockwork Web Dev has performed on this site.'
+            'A log of the maintenance work ' . WhiteLabel::getAuthorName() . ' has performed on this site.'
         );
 
         self::renderCarePlanBanner($onCarePlan);
@@ -115,7 +116,7 @@ class ActivityPage
                 </div>
                 <div class="cwk-plan-banner__text">
                     <strong class="cwk-plan-banner__title">You're not on a care plan</strong>
-                    <span class="cwk-plan-banner__sub">Work shown here may be billed separately. A care plan covers updates, scans, and monitoring automatically — <button type="button" class="cwk-support-trigger cwk-link-btn">talk to Clockwork Web Dev</button> about adding one.</span>
+                    <span class="cwk-plan-banner__sub">Work shown here may be billed separately. A care plan covers updates, scans, and monitoring automatically — <button type="button" class="cwk-support-trigger cwk-link-btn">talk to <?php echo esc_html(WhiteLabel::getAuthorName()); ?></button> about adding one.</span>
                 </div>
             </div>
             <?php

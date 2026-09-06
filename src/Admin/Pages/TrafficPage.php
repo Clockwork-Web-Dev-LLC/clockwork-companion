@@ -3,6 +3,7 @@
 namespace ClockworkCompanion\Admin\Pages;
 
 use ClockworkCompanion\Admin\Layout;
+use ClockworkCompanion\WhiteLabel\WhiteLabel;
 
 /**
  * Traffic admin page (1.16.0+).
@@ -133,8 +134,8 @@ class TrafficPage
             <div class="clockwork-card__body">
                 <div class="clockwork-notice">
                     <strong>No traffic report yet.</strong>
-                    Clockwork Web Dev hasn't pushed a traffic report to this site yet.
-                    Reports refresh nightly — please check back tomorrow, or contact Clockwork Web Dev if this persists.
+                    <?php echo esc_html(WhiteLabel::getAuthorName()); ?> hasn't pushed a traffic report to this site yet.
+                    Reports refresh nightly — please check back tomorrow, or contact <?php echo esc_html(WhiteLabel::getAuthorName()); ?> if this persists.
                 </div>
             </div>
         </div>
@@ -150,7 +151,7 @@ class TrafficPage
         ?>
         <div class="clockwork-notice clockwork-notice--muted" style="margin-bottom: 16px;">
             <strong>Refreshed nightly.</strong>
-            These are not live stats — Clockwork Web Dev's monitoring app rolls up your access logs once a day and pushes the result here.
+            These are not live stats — <?php echo esc_html(WhiteLabel::getAuthorName()); ?>'s monitoring app rolls up your access logs once a day and pushes the result here.
             <?php if ($fetchedAt) : ?>
                 Last refreshed <?php echo esc_html($fetchedAt); ?>.
             <?php endif; ?>
@@ -479,7 +480,7 @@ class TrafficPage
                     <?php endforeach; ?>
                 </div>
                 <p style="margin: 10px 0 0; font-size: 12px; color: #6b7280;">
-                    Seeing a spike in 4xx or 5xx errors? <a href="https://clockworkwd.com/support/" target="_blank" rel="noopener">Reach out to Clockwork Web Dev</a> and we can help investigate.
+                    Seeing a spike in 4xx or 5xx errors? <?php echo WhiteLabel::supportLink('Reach out to ' . WhiteLabel::getAuthorName()); ?> and we can help investigate.
                 </p>
             </div>
         </div>

@@ -2,6 +2,22 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.34.0 — 2026-09-06
+
+### Added
+
+- **Agency email domains are now a setting instead of a hard-coded list.** Menu visibility used to be gated on two compiled-in email domains, so any other operator installing Companion got an invisible admin menu with no way to fix it short of editing the source. The domains now come from a new **Agency Email Domains** field under Branding, the `CLOCKWORK_AGENCY_EMAIL_DOMAINS` constant (for deploying one value across a fleet from `wp-config.php`), or the `clockwork_companion_agency_email_domains` filter — in that order of precedence. Entries may be written with or without the leading `@`, as full addresses, or separated by commas, spaces, or newlines. **Leaving the field empty means no gating at all**, so a fresh install shows the menu to every administrator; that is the new default. Gating is deliberately independent of the white-label on/off switch, since it is an access-control decision rather than a cosmetic one, and the configured support address always counts as an agency domain so an operator can't lock themselves out.
+
+### Changed
+
+- **Client-facing copy and support links follow the active branding.** The Performance, Security, Traffic, Backups, Activity, Uptime, Forms, and Notifications pages previously hard-coded one agency's name and `https://…/support/` and `/contact/` URLs, so a white-labelled install still showed — and linked clients to — a third party. Every one of those now resolves through `WhiteLabel::getAuthorName()` and the new `WhiteLabel::supportLink()` helper, which renders a link when a support destination is configured and plain text when it isn't.
+- **Contact-form health checks no longer submit from a hard-coded address.** The synthetic submission now uses the configured support address, falling back to a no-reply on the site's own domain, so a white-labelled site's test mail never reaches someone else's inbox.
+- **`CLOCKWORK_SUPPORT_SITE_URL` now defaults to empty** rather than to one specific agency's site. Set it in `wp-config.php` to enable the in-plugin support form; left unset, the form reports that support isn't configured instead of posting to a stranger's endpoint.
+
+### Internal
+
+- Added a PHPUnit harness (`phpunit.xml`, `require-dev`, `autoload-dev`). The `tests/` directory already existed but nothing could run it, so it had gone unverified. The WordPress function stubs in `tests/bootstrap.php` gained `apply_filters`, `is_email`, `home_url`, and `esc_js`.
+
 ## 1.33.0 — 2026-09-05
 
 ### Added

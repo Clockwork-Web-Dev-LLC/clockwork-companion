@@ -28,29 +28,24 @@ use ClockworkCompanion\WhiteLabel\WhiteLabel;
  * Position 80 puts us between "Settings" (80) and "Tools" (75) in WP's menu —
  * out of the way of common day-to-day items but visible.
  *
- * Menu visibility is gated on the logged-in user's email domain — only Aaron's
- * own accounts (any user whose email ends in one of the agency domains) see
- * the menu in the sidebar. Client admin users see nothing in the sidebar even
- * though Companion is installed. The pages themselves stay registered with WP
- * (admin.php?page=clockwork still works) so Aaron can navigate via direct URL
- * if he ever needs to. The REST endpoints + SSO interceptor are unaffected —
- * they don't depend on the menu.
+ * Menu visibility can be gated on the logged-in user's email domain: when
+ * agency domains are configured, only users whose address ends in one of them
+ * see the menu in the sidebar, so client administrators see nothing there even
+ * though Companion is installed. When none are configured — the default — every
+ * administrator sees it.
+ *
+ * Either way the pages stay registered with WP (admin.php?page=clockwork still
+ * works), so an operator can always navigate by direct URL. The REST endpoints
+ * and SSO interceptor are unaffected; they don't depend on the menu.
+ *
+ * Domains are configured under Branding, via the CLOCKWORK_AGENCY_EMAIL_DOMAINS
+ * constant, or with the `clockwork_companion_agency_email_domains` filter — see
+ * WhiteLabel::getAgencyEmailDomains().
  */
 class Menu
 {
     public const SLUG = 'clockwork';
     public const CAPABILITY = 'manage_options';
-
-    /**
-     * Email-address domains whose users see the Clockwork sidebar menu.
-     * Match is case-insensitive on the suffix.
-     *
-     * @var array<int, string>
-     */
-    public const AGENCY_EMAIL_DOMAINS = [
-        '@clockworkwp.com',
-        '@clockworkwd.com',
-    ];
 
     public function register(): void
     {
@@ -124,6 +119,16 @@ class Menu
      */
     public static function currentUserIsAgency(?\WP_User $user = null): bool
     {
+        $agencyDomains = WhiteLabel::getAgencyEmailDomains();
+
+        // No domains configured means no gating: every user who already
+        // cleared the capability check is treated as agency. This is both the
+        // out-of-the-box default and the single-agency case, where hiding the
+        // menu from your own administrators would be the surprising behaviour.
+        if ($agencyDomains === []) {
+            return true;
+        }
+
         if ($user === null) {
             if (! function_exists('wp_get_current_user')) {
                 return false;
@@ -133,15 +138,18 @@ class Menu
         if (! $user || empty($user->user_email)) {
             return false;
         }
-        $email = strtolower((string) $user->user_email);
-        $agencyDomains = self::AGENCY_EMAIL_DOMAINS;
+
+        // The configured support address is always treated as an agency
+        // domain — an operator who set it up should never lock themselves out.
         $supportEmail = WhiteLabel::getSupportEmail();
-        if (! empty($supportEmail) && str_contains($supportEmail, "@")) {
-            $domain = "@" . strtolower(substr(strrchr($supportEmail, "@"), 1));
+        if (! empty($supportEmail) && str_contains($supportEmail, '@')) {
+            $domain = '@' . strtolower(substr(strrchr($supportEmail, '@'), 1));
             if (! in_array($domain, $agencyDomains, true)) {
                 $agencyDomains[] = $domain;
             }
         }
+
+        $email = strtolower((string) $user->user_email);
         foreach ($agencyDomains as $domain) {
             if (str_ends_with($email, strtolower($domain))) {
                 return true;

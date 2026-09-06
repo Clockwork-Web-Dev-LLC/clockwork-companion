@@ -25,7 +25,7 @@ use WP_REST_Response;
  *     "users": [
  *       {
  *         "id": 1,
- *         "login": "aaron",
+ *         "login": "agency-operator",
  *         "role": "administrator",
  *         "state": "clockwork" | "wfls" | "none",
  *         "backup_codes_remaining": 8    // clockwork state only

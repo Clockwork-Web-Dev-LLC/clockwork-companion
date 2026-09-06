@@ -7,6 +7,7 @@ use ClockworkCompanion\Admin\FormsAjaxHandlers;
 use ClockworkCompanion\Admin\Layout;
 use ClockworkCompanion\ContactForm\DetectedFormsCache;
 use ClockworkCompanion\ContactForm\SubscriptionsService;
+use ClockworkCompanion\WhiteLabel\WhiteLabel;
 
 /**
  * Tools → Clockwork → Forms admin page.
@@ -46,7 +47,7 @@ class FormsPage
     {
         Layout::pageHeader(
             'Forms',
-            'Keep your contact forms working. Clockwork Web Dev periodically submits each monitored form like a real visitor would, verifies the submission email actually leaves your server, and alerts their team immediately if a form starts silently failing.'
+            'Keep your contact forms working. ' . WhiteLabel::getAuthorName() . ' periodically submits each monitored form like a real visitor would, verifies the submission email actually leaves your server, and alerts their team immediately if a form starts silently failing.'
         );
 
         $onCarePlan = Repository::latestCarePlanFlag();
@@ -81,7 +82,7 @@ class FormsPage
             <div class="clockwork-card" style="border-left: 4px solid #65a30d; margin-bottom: 16px;">
                 <div class="clockwork-card__body">
                     <strong>Scheduled form testing is part of your care plan.</strong>
-                    Clockwork Web Dev runs each form you've subscribed below on a weekly cadence, verifies the
+                    <?php echo esc_html(WhiteLabel::getAuthorName()); ?> runs each form you've subscribed below on a weekly cadence, verifies the
                     submission email actually leaves your server, and alerts their team immediately if a form
                     breaks — so you don't hear about it from a frustrated lead first.
                 </div>
@@ -92,11 +93,11 @@ class FormsPage
             <div class="clockwork-card" style="border-left: 4px solid #f59e0b; margin-bottom: 16px;">
                 <div class="clockwork-card__body">
                     <strong>Add a care plan to unlock scheduled form testing.</strong>
-                    With a care plan, every form you flag below gets <strong>tested weekly</strong> by Clockwork
-                    Web Dev — we submit it like a real visitor would, verify the resulting <strong>email actually
+                    With a care plan, every form you flag below gets <strong>tested weekly</strong> by
+                    <?php echo esc_html(WhiteLabel::getAuthorName()); ?> — we submit it like a real visitor would, verify the resulting <strong>email actually
                     leaves your server</strong>, and ping our team the moment a form starts silently failing.
                     No more "did anyone fill out the contact form this month?" guesswork; no more leads lost to
-                    a misconfigured SMTP plugin. Talk to Clockwork Web Dev about adding a care plan.
+                    a misconfigured SMTP plugin. Talk to <?php echo esc_html(WhiteLabel::getAuthorName()); ?> about adding a care plan.
                 </div>
             </div>
             <?php
@@ -190,7 +191,7 @@ class FormsPage
                     <p class="clockwork-empty">No form plugins active, or no forms configured. Install Contact Form 7, WPForms, or Gravity Forms and create a form, then click <em>Re-detect now</em>.</p>
                 <?php else : ?>
                     <?php if ($onCarePlan) : ?>
-                        <p class="clockwork-help">Toggle a form on to have Clockwork Web Dev test it on a schedule (weekly). Up to <?php echo SubscriptionsService::MAX; ?> forms can be monitored at once.</p>
+                        <p class="clockwork-help">Toggle a form on to have <?php echo esc_html(WhiteLabel::getAuthorName()); ?> test it on a schedule (weekly). Up to <?php echo SubscriptionsService::MAX; ?> forms can be monitored at once.</p>
                     <?php else : ?>
                         <p class="clockwork-help">Below is every form we'd test for you on a weekly schedule once your care plan is active. The toggles are locked until then — see the banner above.</p>
                     <?php endif; ?>
@@ -247,7 +248,7 @@ class FormsPage
                     <?php if ($atCap) : ?>
                         <p class="clockwork-help" style="margin-top: 12px;">
                             <strong>You're at the maximum of <?php echo SubscriptionsService::MAX; ?> monitored forms.</strong>
-                            Unsubscribe one below to free up a slot, or contact Clockwork Web Dev to raise the limit.
+                            Unsubscribe one below to free up a slot, or contact <?php echo esc_html(WhiteLabel::getAuthorName()); ?> to raise the limit.
                         </p>
                     <?php endif; ?>
                 <?php endif; ?>
@@ -523,7 +524,7 @@ class FormsPage
                     const action = wantOn ? 'clockwork_companion_subscribe_form' : 'clockwork_companion_unsubscribe_form';
                     const {status, json} = await postForm(action, {form_id: formId, plugin});
                     if (status === 200 && json && json.success) {
-                        setRowStatus(row, wantOn ? 'Monitoring — Clockwork Web Dev will pick this up tonight.' : 'Stopped monitoring.', 'ok');
+                        setRowStatus(row, wantOn ? <?php echo wp_json_encode('Monitoring — ' . WhiteLabel::getAuthorName() . ' will pick this up tonight.'); ?> : 'Stopped monitoring.', 'ok');
                         // Reload the page so the Subscribed section + cap state refresh
                         // cleanly. Keeps the DOM dead-simple — no per-row reconciliation.
                         setTimeout(() => window.location.reload(), 800);

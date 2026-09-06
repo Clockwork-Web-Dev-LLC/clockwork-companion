@@ -7,6 +7,7 @@ use ClockworkCompanion\Admin\Pages\FormsPage;
 use ClockworkCompanion\ContactForm\DetectedFormsCache;
 use ClockworkCompanion\ContactForm\SubscriptionsService;
 use ClockworkCompanion\ContactForm\Tester;
+use ClockworkCompanion\WhiteLabel\WhiteLabel;
 
 /**
  * admin-ajax handlers powering the self-service Forms tab. Every action is
@@ -43,7 +44,7 @@ class FormsAjaxHandlers
         }
         if (SubscriptionsService::atCap() && ! SubscriptionsService::isSubscribed($formId)) {
             wp_send_json_error([
-                'message' => 'You\'re at the maximum of ' . SubscriptionsService::MAX . ' monitored forms. Unsubscribe one to add another, or contact Clockwork Web Dev to raise the limit.',
+                'message' => 'You\'re at the maximum of ' . SubscriptionsService::MAX . ' monitored forms. Unsubscribe one to add another, or contact ' . WhiteLabel::getAuthorName() . ' to raise the limit.',
             ], 409);
         }
         $ok = SubscriptionsService::subscribe($formId, $plugin);
@@ -125,7 +126,7 @@ class FormsAjaxHandlers
     {
         if (! Repository::latestCarePlanFlag()) {
             wp_send_json_error([
-                'message' => 'Form monitoring requires an active care plan. Talk to Clockwork Web Dev about adding one.',
+                'message' => 'Form monitoring requires an active care plan. Talk to ' . WhiteLabel::getAuthorName() . ' about adding one.',
                 'error'   => 'care_plan_required',
             ], 403);
         }

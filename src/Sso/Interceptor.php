@@ -75,7 +75,7 @@ class Interceptor
             return;
         }
 
-        // Re-verify the user is still an admin — Aaron may have demoted them
+        // Re-verify the user is still an admin — the agency may have demoted them
         // between mint and redemption (rare but defensive).
         if (! user_can($user, 'manage_options')) {
             $this->failTo('not_admin');

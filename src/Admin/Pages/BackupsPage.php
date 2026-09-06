@@ -3,6 +3,7 @@
 namespace ClockworkCompanion\Admin\Pages;
 
 use ClockworkCompanion\Admin\Layout;
+use ClockworkCompanion\WhiteLabel\WhiteLabel;
 
 /**
  * Backups admin page.
@@ -145,9 +146,9 @@ class BackupsPage
             <div class="clockwork-card__body">
                 <div class="clockwork-notice">
                     <strong>No backup report yet.</strong>
-                    Clockwork Web Dev hasn't pushed backup configuration to this site yet.
+                    <?php echo esc_html(WhiteLabel::getAuthorName()); ?> hasn't pushed backup configuration to this site yet.
                     This usually means the next scheduled push hasn't run — please check back in a few hours,
-                    or contact Clockwork Web Dev if this persists.
+                    or contact <?php echo esc_html(WhiteLabel::getAuthorName()); ?> if this persists.
                 </div>
             </div>
         </div>
@@ -304,7 +305,7 @@ class BackupsPage
                 <?php else : ?>
                     <div class="clockwork-notice">
                         Your hosting plan includes 30 days of backup history.
-                        <button type="button" class="cwk-support-trigger cwk-link-btn">Talk to Clockwork Web Dev</button> about a care plan to extend retention to 90 days.
+                        <button type="button" class="cwk-support-trigger cwk-link-btn">Talk to <?php echo esc_html(WhiteLabel::getAuthorName()); ?></button> about a care plan to extend retention to 90 days.
                     </div>
                 <?php endif; ?>
             </div>
@@ -312,8 +313,8 @@ class BackupsPage
                 <?php if ($totalRuns === 0) : ?>
                     <div style="padding: 20px;">
                         <div class="clockwork-notice clockwork-notice--muted">
-                            Backup history hasn't been indexed yet. Your backups are still running on Clockwork Web Dev's schedule —
-                            this view will populate within 24 hours of Clockwork Web Dev's next sync. If you don't see runs after that, contact Clockwork Web Dev.
+                            Backup history hasn't been indexed yet. Your backups are still running on <?php echo esc_html(WhiteLabel::getAuthorName()); ?>'s schedule —
+                            this view will populate within 24 hours of <?php echo esc_html(WhiteLabel::getAuthorName()); ?>'s next sync. If you don't see runs after that, contact <?php echo esc_html(WhiteLabel::getAuthorName()); ?>.
                         </div>
                     </div>
                 <?php else : ?>

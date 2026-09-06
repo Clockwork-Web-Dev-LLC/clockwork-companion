@@ -289,6 +289,12 @@ class WhiteLabelPage
                         </div>
 
                         <div style="padding-top:8px;">
+                            <label for="field_agency_email_domains" style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:5px;">Agency Email Domains (Optional)</label>
+                            <input type="text" id="field_agency_email_domains" name="whitelabel[agency_email_domains]" value="<?php echo esc_attr($settings['agency_email_domains'] ?? ''); ?>" placeholder="agency.com, ops.agency.com" class="regular-text" style="width:100%;height:36px;border-radius:6px;">
+                            <span style="font-size:11px;color:#6b7280;">Restrict who sees the admin menu to users with these email domains — useful when client administrators share the site. Comma-separated; the leading <code>@</code> is optional. Leave blank so every administrator sees it. Pages stay reachable by direct URL either way.</span>
+                        </div>
+
+                        <div style="padding-top:8px;">
                             <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#374151;cursor:pointer;">
                                 <input type="checkbox" id="field_hide_version" name="whitelabel[hide_version]" value="1" <?php checked(!empty($settings['hide_version'])); ?>>
                                 <span>Hide version indicator (<code>v<?php echo esc_html(CLOCKWORK_COMPANION_VERSION); ?></code>) from the admin header</span>

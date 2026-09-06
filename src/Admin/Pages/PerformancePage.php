@@ -4,6 +4,7 @@ namespace ClockworkCompanion\Admin\Pages;
 
 use ClockworkCompanion\ActionLog\Repository;
 use ClockworkCompanion\Admin\Layout;
+use ClockworkCompanion\WhiteLabel\WhiteLabel;
 
 /**
  * Tools → Clockwork → Performance admin page.
@@ -91,7 +92,7 @@ class PerformancePage
             <div class="clockwork-card" style="border-left: 4px solid #65a30d;">
                 <div class="clockwork-card__body">
                     <strong>Weekly speed checks are part of your care plan.</strong>
-                    Clockwork Web Dev runs a Lighthouse scan against your homepage every week and
+                    <?php echo esc_html(WhiteLabel::getAuthorName()); ?> runs a Lighthouse scan against your homepage every week and
                     flags regressions in your performance score.
                 </div>
             </div>
@@ -101,12 +102,12 @@ class PerformancePage
             <div class="clockwork-card" style="border-left: 4px solid #f59e0b;">
                 <div class="clockwork-card__body">
                     <strong>Add a care plan to unlock weekly speed checks.</strong>
-                    With a care plan, Clockwork Web Dev runs a weekly Lighthouse scan via GTmetrix — the
+                    With a care plan, <?php echo esc_html(WhiteLabel::getAuthorName()); ?> runs a weekly Lighthouse scan via GTmetrix — the
                     same engine Google uses to evaluate site performance, from a pinned test location with
                     consistent hardware. You'd see your <strong>Performance score</strong>,
                     <strong>Largest Contentful Paint</strong>, <strong>Cumulative Layout Shift</strong>, and
                     <strong>page weight</strong> trended over time, so a slow regression doesn't sneak past you.
-                    <button type="button" class="cwk-support-trigger cwk-link-btn">Talk to Clockwork Web Dev</button> about adding a care plan.
+                    <button type="button" class="cwk-support-trigger cwk-link-btn">Talk to <?php echo esc_html(WhiteLabel::getAuthorName()); ?></button> about adding a care plan.
                 </div>
             </div>
             <?php
@@ -182,7 +183,7 @@ class PerformancePage
                 <?php if ($scoreClass === 'orange' || $scoreClass === 'red') : ?>
                     <p class="clockwork-perf-hero__improve-note">
                         There may be opportunities to improve this score.
-                        <a href="https://clockworkwd.com/contact/" target="_blank" rel="noopener">Talk to Clockwork Web Dev</a>
+                        <?php echo WhiteLabel::supportLink('Talk to ' . WhiteLabel::getAuthorName()); ?>
                         about performance optimization for this site.
                     </p>
                 <?php endif; ?>
@@ -215,7 +216,7 @@ class PerformancePage
                 <?php if (! $onCarePlan) : ?>
                     <div style="padding: 20px;">
                         <div class="clockwork-notice clockwork-notice--muted">
-                            Performance history is part of the care plan. <a href="https://clockworkwd.com/contact/" target="_blank" rel="noopener">Talk to Clockwork Web Dev</a> about adding one.
+                            Performance history is part of the care plan. <?php echo WhiteLabel::supportLink('Talk to ' . WhiteLabel::getAuthorName()); ?> about adding one.
                         </div>
                     </div>
                 <?php elseif ($total === 0) : ?>

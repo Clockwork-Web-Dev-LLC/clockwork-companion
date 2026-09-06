@@ -25,6 +25,11 @@ class WhiteLabel
         'plugin_url' => 'https://www.clockworkwp.com',
         'support_email' => 'support@clockworkcontrol.com',
         'support_url' => '',
+        // Comma/newline-separated email domains whose users see the admin
+        // menu. Empty means no gating — every administrator sees it, which is
+        // the right default for a single-agency install. See
+        // Menu::currentUserIsAgency().
+        'agency_email_domains' => '',
         'menu_title' => 'Clockwork',
         'menu_icon' => '',
         'brand_text' => 'Companion',
@@ -139,6 +144,29 @@ class WhiteLabel
     }
 
     /**
+     * Render $label as a link to the configured support destination, or as
+     * plain text when no support URL is set.
+     *
+     * Client-facing pages use this instead of hard-coding an agency's URL, so
+     * a site running someone else's branding never points its owner at a
+     * third party. Both halves are escaped here; callers echo the result.
+     */
+    public static function supportLink(string $label): string
+    {
+        $url = self::getSupportUrl();
+
+        if ($url === '') {
+            return esc_html($label);
+        }
+
+        return sprintf(
+            '<a href="%s" target="_blank" rel="noopener">%s</a>',
+            esc_url($url),
+            esc_html($label)
+        );
+    }
+
+    /**
      * Get the active author/company URL.
      */
     public static function getAuthorUrl(): string
@@ -160,6 +188,98 @@ class WhiteLabel
         return (! empty($settings['enabled']) && ! empty($settings['support_email']))
             ? (string) $settings['support_email']
             : (string) self::DEFAULTS['support_email'];
+    }
+
+    /**
+     * Email domains whose users may see the admin menu, normalised to
+     * lowercase "@domain.tld" form.
+     *
+     * Resolution order, first non-empty wins: the
+     * `clockwork_companion_agency_email_domains` filter, the
+     * CLOCKWORK_AGENCY_EMAIL_DOMAINS constant (for wp-config deployment
+     * across a fleet), then the saved branding setting.
+     *
+     * Deliberately independent of the `enabled` flag: menu gating is an
+     * access-control decision, not a cosmetic one, so it must work whether or
+     * not white labeling is switched on.
+     *
+     * An empty result means "no gating" — see Menu::currentUserIsAgency().
+     *
+     * @return array<int, string>
+     */
+    public static function getAgencyEmailDomains(): array
+    {
+        $raw = '';
+
+        if (defined('CLOCKWORK_AGENCY_EMAIL_DOMAINS')) {
+            $raw = (string) constant('CLOCKWORK_AGENCY_EMAIL_DOMAINS');
+        }
+
+        $settings = self::getSettings();
+
+        if ($raw === '') {
+            $raw = (string) ($settings['agency_email_domains'] ?? '');
+        }
+
+        $domains = self::parseAgencyEmailDomains($raw);
+
+        // With no explicit list, a white-labelled install that set its own
+        // support address has still declared who "the agency" is, so gate on
+        // that domain — this is what makes hide_plugin_row work for an
+        // operator who only filled in the branding fields. The stock support
+        // address is deliberately excluded: on a fresh install it would gate
+        // the menu to a domain nobody on the site has, hiding the plugin from
+        // the administrator who just installed it.
+        if (
+            $domains === []
+            && ! empty($settings['enabled'])
+            && ! empty($settings['support_email'])
+            && $settings['support_email'] !== self::DEFAULTS['support_email']
+        ) {
+            $domains = self::parseAgencyEmailDomains((string) $settings['support_email']);
+        }
+
+        if (function_exists('apply_filters')) {
+            $filtered = apply_filters('clockwork_companion_agency_email_domains', $domains);
+            if (is_array($filtered)) {
+                $domains = self::parseAgencyEmailDomains(implode(',', $filtered));
+            }
+        }
+
+        return $domains;
+    }
+
+    /**
+     * Split a comma/newline/space-separated domain list into normalised
+     * "@domain.tld" entries. Accepts entries with or without the leading "@",
+     * and tolerates a full email address by keeping only its domain part.
+     *
+     * @return array<int, string>
+     */
+    private static function parseAgencyEmailDomains(string $raw): array
+    {
+        $parts = preg_split('/[\s,;]+/', strtolower(trim($raw))) ?: [];
+        $domains = [];
+
+        foreach ($parts as $part) {
+            if ($part === '') {
+                continue;
+            }
+            // "ops@agency.com" and "agency.com" both mean "@agency.com".
+            if (str_contains($part, '@')) {
+                $part = substr(strrchr($part, '@'), 1);
+            }
+            $part = ltrim($part, '@');
+            if ($part === '' || ! str_contains($part, '.')) {
+                continue;
+            }
+            $domain = '@' . $part;
+            if (! in_array($domain, $domains, true)) {
+                $domains[] = $domain;
+            }
+        }
+
+        return $domains;
     }
 
     /**
@@ -564,6 +684,10 @@ class WhiteLabel
             'card_bg_color' => $this->sanitizeHex($input['card_bg_color'] ?? '#FFFFFF'),
             'support_button_label' => sanitize_text_field($input['support_button_label'] ?? 'Get Support'),
             'support_url' => esc_url_raw($input['support_url'] ?? ''),
+            'agency_email_domains' => implode(
+                ', ',
+                self::parseAgencyEmailDomains(sanitize_text_field($input['agency_email_domains'] ?? ''))
+            ),
         ];
 
         update_option(self::OPTION_KEY, $clean);

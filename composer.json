@@ -6,9 +6,23 @@
     "require": {
         "php": ">=8.2"
     },
+    "require-dev": {
+        "phpunit/phpunit": "^11.5"
+    },
     "autoload": {
         "psr-4": {
             "ClockworkCompanion\\": "src/"
         }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "ClockworkCompanion\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit"
+    },
+    "config": {
+        "sort-packages": true
     }
 }
