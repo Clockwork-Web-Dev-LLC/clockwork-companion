@@ -217,6 +217,115 @@ if (! class_exists('WP_REST_Request')) {
         public function get_json_params(): ?array { return $this->jsonParams; }
         public function get_header(string $header): ?string { return $this->headers[strtolower($header)] ?? null; }
         public function get_body(): string { return $this->body; }
+        public function get_param(string $key): mixed { return $this->jsonParams[$key] ?? null; }
+        public function get_params(): array { return (array) $this->jsonParams; }
+    }
+}
+
+// WordPress Comments stubs
+$GLOBALS['wp_test_comments'] = [];
+
+if (! function_exists('get_comments')) {
+    function get_comments(array $args = []): array
+    {
+        $all = $GLOBALS['wp_test_comments'] ?? [];
+        $status = $args['status'] ?? 'all';
+        $filtered = [];
+        foreach ($all as $c) {
+            if ($status === 'all' || ($c->comment_approved ?? '') === $status) {
+                $filtered[] = $c;
+            }
+        }
+        $offset = (int) ($args['offset'] ?? 0);
+        $number = (int) ($args['number'] ?? 20);
+        return array_slice($filtered, $offset, $number);
+    }
+}
+
+if (! function_exists('wp_count_comments')) {
+    function wp_count_comments(): object
+    {
+        $counts = (object) [
+            'approved' => 0,
+            'moderated' => 0,
+            'spam' => 0,
+            'trash' => 0,
+            'total_comments' => 0,
+        ];
+        foreach ($GLOBALS['wp_test_comments'] ?? [] as $c) {
+            $counts->total_comments++;
+            if (($c->comment_approved ?? '') === '1' || ($c->comment_approved ?? '') === 'approve') {
+                $counts->approved++;
+            } elseif (($c->comment_approved ?? '') === '0' || ($c->comment_approved ?? '') === 'hold') {
+                $counts->moderated++;
+            } elseif (($c->comment_approved ?? '') === 'spam') {
+                $counts->spam++;
+            } elseif (($c->comment_approved ?? '') === 'trash') {
+                $counts->trash++;
+            }
+        }
+        return $counts;
+    }
+}
+
+if (! function_exists('wp_set_comment_status')) {
+    function wp_set_comment_status(int $comment_id, string $status): bool
+    {
+        foreach ($GLOBALS['wp_test_comments'] ?? [] as $c) {
+            if ((int) $c->comment_ID === $comment_id) {
+                $c->comment_approved = ($status === 'approve') ? '1' : (($status === 'hold') ? '0' : $status);
+                return true;
+            }
+        }
+        return false;
+    }
+}
+
+if (! function_exists('wp_trash_comment')) {
+    function wp_trash_comment(int $comment_id): bool
+    {
+        return wp_set_comment_status($comment_id, 'trash');
+    }
+}
+
+if (! function_exists('wp_spam_comment')) {
+    function wp_spam_comment(int $comment_id): bool
+    {
+        return wp_set_comment_status($comment_id, 'spam');
+    }
+}
+
+if (! function_exists('wp_delete_comment')) {
+    function wp_delete_comment(int $comment_id, bool $force = false): bool
+    {
+        foreach ($GLOBALS['wp_test_comments'] ?? [] as $k => $c) {
+            if ((int) $c->comment_ID === $comment_id) {
+                unset($GLOBALS['wp_test_comments'][$k]);
+                return true;
+            }
+        }
+        return false;
+    }
+}
+
+if (! function_exists('get_the_title')) {
+    function get_the_title(int $post_id): string
+    {
+        return 'Post #' . $post_id;
+    }
+}
+
+if (! function_exists('get_permalink')) {
+    function get_permalink(int $post_id): string
+    {
+        return 'https://example.com/?p=' . $post_id;
+    }
+}
+
+if (! function_exists('esc_sql')) {
+    function esc_sql(string $data): string
+    {
+        return addslashes($data);
     }
 }
 

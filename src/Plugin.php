@@ -104,6 +104,9 @@ class Plugin
         // Login Security plugin.
         'two-factor',
         'white-label',
+        'comments-moderation',
+        'maintenance-mode',
+        'code-snippets',
     ];
 
     public function boot(): void
@@ -121,6 +124,7 @@ class Plugin
         \ClockworkCompanion\Compat\PerfmattersCompat::register();
         \ClockworkCompanion\Compat\ElementorCacheGuard::register();
         \ClockworkCompanion\Compat\WpForceLoginCompat::register();
+        \ClockworkCompanion\Maintenance\MaintenanceGuard::register();
 
         // Register the per-request CPU/memory sampler IMMEDIATELY (not on a
         // hook). The sampler snapshots getrusage() at construction time and
@@ -157,6 +161,9 @@ class Plugin
             (new \ClockworkCompanion\Rest\TwoFactorStatusRoute())->register();
             (new \ClockworkCompanion\Rest\TwoFactorMigrateRoute())->register();
             (new BrandingRoute())->register();
+            (new \ClockworkCompanion\Rest\CommentsActionRoute())->register();
+            (new \ClockworkCompanion\Rest\MaintenanceModeRoute())->register();
+            (new \ClockworkCompanion\Rest\CodeSnippetRoute())->register();
         });
 
         // Self-service Forms tab AJAX. Capability + nonce gated; distinct
