@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Pre-commit guard for the Companion repo, mirroring the one in
+# clockwork-control. Two layers:
+#   1. Client-identifier denylist — greps staged ADDED lines against
+#      ~/.config/clockwork/client-denylist.txt. The list lives outside the
+#      repo on purpose: committing it would itself leak the names it exists
+#      to protect. Absent file = layer disabled.
+#   2. gitleaks (default ruleset) over staged changes, if installed.
+#
+# One-time setup per clone: git config core.hooksPath .githooks
+
+set -euo pipefail
+
+# NB: '+' is a literal in BRE, so these patterns stay un-escaped — BSD grep
+# rejects '\+' escapes ("repetition-operator operand invalid"), and under
+# '|| true' that failure would silently disable this whole layer.
+DENYLIST="${HOME}/.config/clockwork/client-denylist.txt"
+if [ -f "$DENYLIST" ]; then
+    matches="$(git diff --cached --no-color --unified=0 --diff-filter=ACM \
+        | grep '^+' | grep -v '^+++' \
+        | grep -iE -f "$DENYLIST" || true)"
+    if [ -n "$matches" ]; then
+        echo "BLOCKED: staged changes match the client-identifier denylist (~/.config/clockwork/client-denylist.txt):" >&2
+        echo "$matches" | head -20 >&2
+        echo "  Anonymize the reference (e.g. 'a client site') before committing." >&2
+        exit 1
+    fi
+fi
+
+if command -v gitleaks >/dev/null 2>&1; then
+    repo_root="$(git rev-parse --show-toplevel)"
+    if ! gitleaks git --staged --no-banner "$repo_root"; then
+        echo "BLOCKED: gitleaks found a likely secret in staged changes (see above)." >&2
+        exit 1
+    fi
+else
+    echo "WARNING: gitleaks not installed — skipping secret-content scan (denylist check still ran). Install with: brew install gitleaks" >&2
+fi
+
+exit 0

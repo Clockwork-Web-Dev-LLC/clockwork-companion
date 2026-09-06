@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Companion to .githooks/pre-commit's client-identifier layer: the same
+# denylist, applied to the commit MESSAGE. Client names have leaked through
+# messages as well as file contents ("Fix traffic chart on <client>"), and
+# pre-commit hooks never see the message. The pattern file lives outside the
+# repo on purpose — committing it would itself leak the names.
+#
+# One-time setup per clone: git config core.hooksPath .githooks
+
+set -euo pipefail
+
+DENYLIST="${HOME}/.config/clockwork/client-denylist.txt"
+if [ -f "$DENYLIST" ]; then
+    matches="$(grep -iE -f "$DENYLIST" "$1" || true)"
+    if [ -n "$matches" ]; then
+        echo "BLOCKED: commit message matches the client-identifier denylist (~/.config/clockwork/client-denylist.txt):" >&2
+        echo "$matches" | head -5 >&2
+        echo "  Reword the message (e.g. 'a client site') before committing." >&2
+        exit 1
+    fi
+fi
+
+exit 0
