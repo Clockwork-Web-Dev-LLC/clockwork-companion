@@ -91,7 +91,7 @@ class WhiteLabelTest extends TestCase
         ];
 
         // Simulate agency user viewing plugins
-        $GLOBALS['wp_test_current_user'] = new WP_User('dev@clockworkwp.com');
+        $GLOBALS['wp_test_current_user'] = new WP_User('dev@clockworkwd.com');
 
         $filtered = $whiteLabel->filterAllPlugins($plugins);
 
@@ -140,7 +140,7 @@ class WhiteLabelTest extends TestCase
         $whiteLabel = new WhiteLabel();
         $meta = [
             '<a href="https://clockworkcontrol.com/docs">Documentation</a>',
-            'By <a href="https://clockworkwp.com">Clockwork Web Dev, LLC</a>',
+            'By <a href="https://clockworkwd.com">Clockwork Web Dev, LLC</a>',
             '<a href="https://clockworkcontrol.com/support">Support</a>',
         ];
 

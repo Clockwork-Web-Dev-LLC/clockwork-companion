@@ -20,9 +20,9 @@ class WhiteLabel
         'plugin_description' => 'Companion mu-plugin for the Clockwork monitoring app. Exposes signed REST endpoints under /wp-json/clockwork/v1/ for fleet-wide control of WordPress maintenance tasks.',
         'author_name' => 'Clockwork Web Dev, LLC',
         'company_name' => 'Clockwork Web Dev, LLC',
-        'author_url' => 'https://www.clockworkwp.com',
-        'company_url' => 'https://www.clockworkwp.com',
-        'plugin_url' => 'https://www.clockworkwp.com',
+        'author_url' => 'https://www.clockworkwd.com',
+        'company_url' => 'https://www.clockworkwd.com',
+        'plugin_url' => 'https://www.clockworkwd.com',
         'support_email' => 'support@clockworkcontrol.com',
         'support_url' => '',
         // Comma/newline-separated email domains whose users see the admin

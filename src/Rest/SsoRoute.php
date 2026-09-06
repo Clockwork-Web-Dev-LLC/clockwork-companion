@@ -16,7 +16,7 @@ use WP_REST_Response;
  *
  * Request body:
  *   {
- *     "user_login": "clockworkwp",        // required
+ *     "user_login": "clockworkwd",        // required
  *     "ttl_seconds": 60,                   // optional, default 60, max 300
  *     "redirect_to": "/wp-admin/"          // optional, default /wp-admin/
  *   }
