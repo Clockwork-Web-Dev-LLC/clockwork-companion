@@ -2,7 +2,7 @@
     "name": "clockwork/companion",
     "description": "Companion mu-plugin for the Clockwork monitoring app. Signed REST endpoints under /wp-json/clockwork/v1/.",
     "type": "wordpress-muplugin",
-    "license": "proprietary",
+    "license": "MIT",
     "require": {
         "php": ">=8.2"
     },
