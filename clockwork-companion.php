@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Clockwork Companion
  * Description: Companion mu-plugin for the Clockwork monitoring app. Exposes signed REST endpoints under /wp-json/clockwork/v1/ for fleet-wide control of WordPress maintenance tasks (contact-form testing, plugin updates, security scans, etc.).
- * Version: 1.34.0
+ * Version: 1.36.0
  * Author: Clockwork Web Dev, LLC
  * License: MIT
  * License URI: https://opensource.org/licenses/MIT
@@ -16,8 +16,17 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-define('CLOCKWORK_COMPANION_VERSION', '1.34.0');
-define('CLOCKWORK_COMPANION_DIR', __DIR__ . '/clockwork-companion');
+define('CLOCKWORK_COMPANION_VERSION', '1.36.0');
+if (! defined('CLOCKWORK_COMPANION_DIR')) {
+    if (is_dir(__DIR__ . '/src')) {
+        define('CLOCKWORK_COMPANION_DIR', __DIR__);
+    } else {
+        define('CLOCKWORK_COMPANION_DIR', __DIR__ . '/clockwork-companion');
+    }
+}
+if (! defined('CLOCKWORK_COMPANION_FILE')) {
+    define('CLOCKWORK_COMPANION_FILE', __FILE__);
+}
 define('CLOCKWORK_COMPANION_NAMESPACE', 'clockwork/v1');
 
 // Support form — proxies to the Gravity Forms REST API v2 on the operator's

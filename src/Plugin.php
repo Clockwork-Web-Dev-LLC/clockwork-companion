@@ -107,6 +107,9 @@ class Plugin
         'comments-moderation',
         'maintenance-mode',
         'code-snippets',
+        'cache-flush',
+        'backup-create',
+        'connection-key',
     ];
 
     public function boot(): void
@@ -164,6 +167,8 @@ class Plugin
             (new \ClockworkCompanion\Rest\CommentsActionRoute())->register();
             (new \ClockworkCompanion\Rest\MaintenanceModeRoute())->register();
             (new \ClockworkCompanion\Rest\CodeSnippetRoute())->register();
+            (new \ClockworkCompanion\Rest\CacheFlushRoute())->register();
+            (new \ClockworkCompanion\Rest\BackupCreateRoute())->register();
         });
 
         // Self-service Forms tab AJAX. Capability + nonce gated; distinct

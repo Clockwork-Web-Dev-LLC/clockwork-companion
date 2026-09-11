@@ -36,6 +36,7 @@ class WhiteLabelTest extends TestCase
             'plugin_name' => 'Prime Guardian',
             'plugin_description' => 'Security & performance monitor.',
             'menu_title' => 'Prime Guardian',
+            'brand_text' => 'Companion',
             'menu_icon' => 'dashicons-shield',
             'logo_url' => 'https://agencyprime.com/logo.svg',
             'hide_plugin_row' => true,
@@ -47,6 +48,7 @@ class WhiteLabelTest extends TestCase
         $this->assertSame('Agency Prime', WhiteLabel::getAuthorName());
         $this->assertSame('Prime Guardian', WhiteLabel::getPluginName());
         $this->assertSame('Prime Guardian', WhiteLabel::getMenuTitle());
+        $this->assertSame('Companion', WhiteLabel::getBrandText());
         $this->assertSame('dashicons-shield', WhiteLabel::getMenuIcon());
         $this->assertSame('https://agencyprime.com/logo.svg', WhiteLabel::getLogoUrl());
         $this->assertTrue(WhiteLabel::isPluginRowHidden());
@@ -164,5 +166,81 @@ class WhiteLabelTest extends TestCase
         // When disabled
         update_option(WhiteLabel::OPTION_KEY, ['enabled' => false, 'footer_text' => 'Custom Footer']);
         $this->assertSame('Default WP Footer', $whiteLabel->filterAdminFooterText('Default WP Footer'));
+    }
+
+    public function testBrandTextStaysIndependentOfMenuTitle(): void
+    {
+        update_option(WhiteLabel::OPTION_KEY, [
+            'enabled' => true,
+            'menu_title' => 'Clockwork',
+            'brand_text' => 'Companion',
+        ]);
+
+        $settings = WhiteLabel::getSettings();
+
+        $this->assertSame('Clockwork', $settings['menu_title']);
+        $this->assertSame('Companion', $settings['brand_text']);
+        $this->assertSame('Clockwork', WhiteLabel::getMenuTitle());
+        $this->assertSame('Companion', WhiteLabel::getBrandText());
+    }
+
+    public function testInjectBrandingCssDoesNothingWhenDisabled(): void
+    {
+        update_option(WhiteLabel::OPTION_KEY, [
+            'enabled' => false,
+            'primary_color' => '#0F172A',
+        ]);
+
+        $GLOBALS['hook_suffix'] = 'toplevel_page_clockwork';
+        $whiteLabel = new WhiteLabel();
+
+        ob_start();
+        $whiteLabel->injectBrandingCss();
+        $output = ob_get_clean();
+
+        $this->assertEmpty($output);
+    }
+
+    public function testInjectBrandingCssPreservesTwoToneHierarchyAndDerivesSoftColor(): void
+    {
+        update_option(WhiteLabel::OPTION_KEY, [
+            'enabled' => true,
+            'primary_color' => '#2D2062',
+            'primary_dark_color' => '#2D2062',
+            'accent_color' => '#7EFF83',
+        ]);
+
+        $GLOBALS['hook_suffix'] = 'toplevel_page_clockwork';
+        $whiteLabel = new WhiteLabel();
+
+        ob_start();
+        $whiteLabel->injectBrandingCss();
+        $output = ob_get_clean();
+
+        $this->assertStringContainsString('--cwk-primary-dark: #2D2062;', $output);
+        $this->assertStringContainsString('--cwk-accent: #7EFF83;', $output);
+        $this->assertStringNotContainsString('--cwk-primary: #2D2062;', $output);
+        $this->assertStringNotContainsString('--cwk-primary-soft: #D1C9F4;', $output);
+    }
+
+    public function testColorDerivationHelpers(): void
+    {
+        $dark = '#2D2062';
+        $soft = WhiteLabel::deriveSoftColor($dark);
+        $this->assertMatchesRegularExpression('/^#[0-9A-F]{6}$/', $soft);
+        $this->assertNotSame('#D1C9F4', $soft);
+
+        $medium = WhiteLabel::deriveMediumTone($dark);
+        $this->assertMatchesRegularExpression('/^#[0-9A-F]{6}$/', $medium);
+        $this->assertNotSame($dark, $medium);
+
+        // Medium tone must be measurably brighter than the dark primary input
+        $darkSum = hexdec(substr($dark, 1, 2)) + hexdec(substr($dark, 3, 2)) + hexdec(substr($dark, 5, 2));
+        $mediumSum = hexdec(substr($medium, 1, 2)) + hexdec(substr($medium, 3, 2)) + hexdec(substr($medium, 5, 2));
+        $this->assertGreaterThan($darkSum, $mediumSum);
+
+        // Soft color must be a high-key pastel tint (RGB sum > 600)
+        $softSum = hexdec(substr($soft, 1, 2)) + hexdec(substr($soft, 3, 2)) + hexdec(substr($soft, 5, 2));
+        $this->assertGreaterThan(600, $softSum);
     }
 }

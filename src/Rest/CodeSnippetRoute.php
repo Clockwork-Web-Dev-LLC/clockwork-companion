@@ -4,6 +4,7 @@ namespace ClockworkCompanion\Rest;
 
 use ClockworkCompanion\ActionLog\Repository as ActionLogRepository;
 use ClockworkCompanion\Auth\HmacVerifier;
+use ClockworkCompanion\Support\OperationLock;
 use Throwable;
 use WP_REST_Request;
 use WP_REST_Response;
@@ -21,6 +22,14 @@ class CodeSnippetRoute
 
     public function handle(WP_REST_Request $request): WP_REST_Response
     {
+        if (self::isDisabled()) {
+            return new WP_REST_Response([
+                'ok' => false,
+                'error' => 'disabled',
+                'message' => 'Code snippets are disabled on this site (CLOCKWORK_COMPANION_DISABLE_CODE_SNIPPETS).',
+            ], 403);
+        }
+
         $params = (array) $request->get_json_params();
         $code = trim((string) ($params['code'] ?? ''));
         $timeout = min(60, max(5, (int) ($params['timeout'] ?? 30)));
@@ -43,6 +52,14 @@ class CodeSnippetRoute
         $startTime = microtime(true);
         $startMemory = memory_get_usage();
 
+        if (! OperationLock::acquire('code_snippet', $timeout + 5)) {
+            return new WP_REST_Response([
+                'ok' => false,
+                'error' => 'busy',
+                'message' => 'Another code snippet is already running',
+            ], 429);
+        }
+
         if (function_exists('set_time_limit')) {
             @set_time_limit($timeout);
         }
@@ -52,7 +69,8 @@ class CodeSnippetRoute
         $error = null;
 
         try {
-            // Execute in an isolated closure
+            // Isolated closure only scopes the variable. eval() still runs
+            // with full WordPress privileges — HMAC is the gate.
             $runner = function () use ($code) {
                 return eval($code);
             };
@@ -64,6 +82,8 @@ class CodeSnippetRoute
                 'line' => $t->getLine(),
                 'class' => get_class($t),
             ];
+        } finally {
+            OperationLock::release('code_snippet');
         }
 
         $output = (string) ob_get_clean();
@@ -102,5 +122,11 @@ class CodeSnippetRoute
             'duration_ms' => $durationMs,
             'memory_bytes' => $memoryBytes,
         ]);
+    }
+
+    public static function isDisabled(): bool
+    {
+        return defined('CLOCKWORK_COMPANION_DISABLE_CODE_SNIPPETS')
+            && constant('CLOCKWORK_COMPANION_DISABLE_CODE_SNIPPETS');
     }
 }

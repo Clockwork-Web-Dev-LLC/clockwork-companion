@@ -16,7 +16,9 @@ use WP_REST_Request;
  * - BODY is the raw request body (empty string for GET).
  *
  * Replay window: 5 minutes. Requests outside the window are rejected even
- * if the signature is valid. Defends against captured-request replay.
+ * if the signature is valid. Successful mutating requests (POST/PUT/PATCH/
+ * DELETE) are also consumed for that window so a captured signed body
+ * cannot be replayed. GETs are left idempotent.
  *
  * Result codes — return one of these to keep the WP_Error response shape
  * stable for Clockwork to switch on:
@@ -24,6 +26,7 @@ use WP_REST_Request;
  *   - 'stale_timestamp'   (401)
  *   - 'no_secret'         (500) — plugin loaded without a secret; should not happen
  *   - 'invalid_signature' (401)
+ *   - 'replayed_request'  (401) — mutating request already consumed
  *   - 'rate_limited'      (429) — too many failed verifications from this IP
  *
  * Rate limit: 256-bit HMAC is uncrackable, so the threat we're defending
@@ -46,7 +49,7 @@ class HmacVerifier
 
     private const RATE_WINDOW = 60;
 
-    public static function verify(WP_REST_Request $request): true|\WP_Error
+    public static function verify(WP_REST_Request $request): bool|\WP_Error
     {
         $ip = self::clientIp();
 
@@ -92,7 +95,39 @@ class HmacVerifier
             return new \WP_Error('invalid_signature', 'Signature mismatch', ['status' => 401]);
         }
 
+        // Mutating methods only: consume this exact signed payload so a
+        // captured POST/DELETE cannot be replayed inside the 5-minute window.
+        // GETs stay idempotent — Clockwork polls /health and /snapshot with
+        // empty bodies, and two calls in the same second would otherwise
+        // collide on an identical signature.
+        if (self::isMutating($request) && self::alreadyConsumed($expected, $tsInt)) {
+            self::noteFailure($ip, 'replayed_request', $request);
+
+            return new \WP_Error('replayed_request', 'Request already consumed', ['status' => 401]);
+        }
+
+        if (function_exists('update_option')) {
+            update_option('clockwork_companion_last_contact_at', time(), false);
+        }
+
         return true;
+    }
+
+    private static function isMutating(WP_REST_Request $request): bool
+    {
+        return in_array(strtoupper($request->get_method()), ['POST', 'PUT', 'PATCH', 'DELETE'], true);
+    }
+
+    private static function alreadyConsumed(string $signature, int $timestamp): bool
+    {
+        $key = 'clockwork_hmac_used_'.substr(hash('sha256', $signature."\n".$timestamp), 0, 32);
+        if (get_transient($key)) {
+            return true;
+        }
+
+        set_transient($key, 1, self::REPLAY_WINDOW_SECONDS);
+
+        return false;
     }
 
     private static function clientIp(): string

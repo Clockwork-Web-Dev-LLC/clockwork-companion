@@ -3,6 +3,7 @@
 namespace ClockworkCompanion\Admin;
 
 use ClockworkCompanion\Admin\Pages\ActivityPage;
+use ClockworkCompanion\Admin\Pages\ConnectionPage;
 use ClockworkCompanion\Admin\Pages\BackupsPage;
 use ClockworkCompanion\Admin\Pages\FormsPage;
 use ClockworkCompanion\Admin\Pages\PerformancePage;
@@ -162,7 +163,7 @@ class Menu
     public function addMenu(): void
     {
         $customIcon = WhiteLabel::getMenuIcon();
-        $menuIcon = ! empty($customIcon) ? $customIcon : plugins_url('assets/clockwork-logo-mark.svg?v=1.1', CLOCKWORK_COMPANION_DIR . '/clockwork-companion.php');
+        $menuIcon = ! empty($customIcon) ? $customIcon : WhiteLabel::bundledAssetUrl('assets/clockwork-logo-mark.svg').'?v=1.1';
         $menuTitle = WhiteLabel::getMenuTitle();
         $pluginName = WhiteLabel::getPluginName();
 
@@ -280,6 +281,15 @@ class Menu
             [WhiteLabelPage::class, 'render']
         );
 
+        add_submenu_page(
+            self::SLUG,
+            'Connection',
+            'Connection',
+            self::CAPABILITY,
+            ConnectionPage::SLUG,
+            [ConnectionPage::class, 'render']
+        );
+
         if (defined('CLOCKWORK_UNLOCK_HUB') && CLOCKWORK_UNLOCK_HUB) {
             add_submenu_page(
                 self::SLUG,
@@ -302,7 +312,7 @@ class Menu
 
         wp_enqueue_style(
             'clockwork-companion-admin',
-            plugins_url('assets/admin.css', CLOCKWORK_COMPANION_DIR . '/clockwork-companion.php'),
+            WhiteLabel::bundledAssetUrl('assets/admin.css'),
             [],
             CLOCKWORK_COMPANION_VERSION
         );
@@ -312,7 +322,7 @@ class Menu
         if (str_contains($hookSuffix, TwoFactorPage::SLUG)) {
             wp_enqueue_script(
                 'clockwork-companion-qrcode',
-                plugins_url('assets/qrcode.js', CLOCKWORK_COMPANION_DIR . '/clockwork-companion.php'),
+                WhiteLabel::bundledAssetUrl('assets/qrcode.js'),
                 [],
                 CLOCKWORK_COMPANION_VERSION,
                 false

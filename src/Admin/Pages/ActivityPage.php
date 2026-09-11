@@ -79,6 +79,7 @@ class ActivityPage
             'A log of the maintenance work ' . WhiteLabel::getAuthorName() . ' has performed on this site.'
         );
 
+        self::renderConnectionNotice();
         self::renderCarePlanBanner($onCarePlan);
         self::renderMonthPicker($month, $earliest);
         self::renderTotals($totalsRows, $monthTotal, $month, $onCarePlan);
@@ -92,6 +93,28 @@ class ActivityPage
         );
 
         self::renderInlineStyles();
+    }
+
+    private static function renderConnectionNotice(): void
+    {
+        $lastContact = (int) get_option('clockwork_companion_last_contact_at', 0);
+        if ($lastContact > 0) {
+            return;
+        }
+
+        $connectionUrl = function_exists('admin_url') ? admin_url('admin.php?page=' . \ClockworkCompanion\Admin\Pages\ConnectionPage::SLUG) : '#';
+        ?>
+        <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+            <div style="display:flex;align-items:center;gap:12px;">
+                <span style="display:inline-flex;width:32px;height:32px;border-radius:50%;background:#dbeafe;color:#2563eb;align-items:center;justify-content:center;font-size:16px;font-weight:bold;">⚡</span>
+                <div>
+                    <strong style="color:#1e3a8a;font-size:14px;">Pair with Clockwork Control:</strong>
+                    <span style="color:#1e40af;font-size:13px;margin-left:4px;">This site is ready to connect. Copy your Connection Key to start monitoring and backups.</span>
+                </div>
+            </div>
+            <a href="<?php echo esc_url($connectionUrl); ?>" style="background:#2563eb;color:#ffffff;text-decoration:none;font-weight:600;font-size:13px;padding:8px 16px;border-radius:6px;display:inline-block;">View Connection Key</a>
+        </div>
+        <?php
     }
 
     private static function renderCarePlanBanner(bool $onCarePlan): void

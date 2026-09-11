@@ -113,23 +113,35 @@ class BackupsPage
         // clicked — hide the buttons rather than let that happen. The
         // pushing job refreshes this at least daily, so this should be rare.
         $linksValid = $expiresAt !== false && $expiresAt > time();
+
+        // Two distinct pipelines share this card. Host-copy mode (Pressable):
+        // the host's own backups are mirrored off twice a week. Direct mode
+        // (source=clockwork-companion, unhosted/custom sites): this plugin
+        // itself takes a full files+database backup on the site's own
+        // schedule and streams it straight to Glacier. The copy must not
+        // promise the other pipeline's mechanics or cadence.
+        $directArchive = (string) ($report['source'] ?? '') === 'clockwork-companion';
         ?>
         <div class="clockwork-card" style="margin-bottom: 16px;">
             <div class="clockwork-card__body">
                 <div class="clockwork-notice clockwork-notice--ok">
                     <strong>Also archived off-host for 90 days.</strong>
-                    Independent of the backups above, your host's backups are additionally copied to secure, encrypted cold storage (Amazon S3 Glacier) twice a week, kept for 90 days — a second copy in case anything ever happened to your host account itself.
+                    <?php if ($directArchive): ?>
+                        A full backup of this site (files and database) is taken on a regular schedule and stored in secure, encrypted cold storage (Amazon S3 Glacier), kept for 90 days — an independent off-site copy in case anything ever happened to the site or its hosting.
+                    <?php else: ?>
+                        Independent of the backups above, your host's backups are additionally copied to secure, encrypted cold storage (Amazon S3 Glacier) twice a week, kept for 90 days — a second copy in case anything ever happened to your host account itself.
+                    <?php endif; ?>
                     <?php if ($lastArchivedAt): ?>
                         <div style="margin-top: 6px; font-size: 12px; opacity: 0.8;">Last archived: <?php echo esc_html(self::formatTimestamp($lastArchivedAt)); ?></div>
                     <?php endif; ?>
                 </div>
                 <?php if ($linksValid && ($fsUrl || $dbUrl)): ?>
                     <div style="margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap;">
-                        <?php if ($fsUrl): ?>
+                        <?php if ($fsUrl && $dbUrl): ?>
                             <a href="<?php echo esc_url($fsUrl); ?>" class="button" download>Download latest filesystem backup</a>
-                        <?php endif; ?>
-                        <?php if ($dbUrl): ?>
                             <a href="<?php echo esc_url($dbUrl); ?>" class="button" download>Download latest database backup</a>
+                        <?php else: ?>
+                            <a href="<?php echo esc_url($fsUrl ?: $dbUrl); ?>" class="button" download>Download latest backup</a>
                         <?php endif; ?>
                     </div>
                     <div style="margin-top: 6px; font-size: 11px; opacity: 0.65;">These download links are temporary and refresh automatically — if one doesn't work, check back after the next daily refresh.</div>
@@ -263,6 +275,7 @@ class BackupsPage
 
         $history = is_array($report['history'] ?? null) ? $report['history'] : [];
         $totalRuns = count($history);
+        $combined = self::historyIsCombinedArchive($report, $history);
 
         // Care plan determines the retention window the report was filtered to
         // before it was pushed (see Clockwork's PushCompanionBackupsReport).
@@ -323,9 +336,13 @@ class BackupsPage
                             <tr>
                                 <th>Date</th>
                                 <th>Type</th>
-                                <th>Database</th>
-                                <th>Files</th>
-                                <th>Notes</th>
+                                <?php if ($combined) : ?>
+                                    <th>Size</th>
+                                <?php else : ?>
+                                    <th>Database</th>
+                                    <th>Files</th>
+                                    <th>Notes</th>
+                                <?php endif; ?>
                             </tr>
                         </thead>
                         <tbody>
@@ -338,9 +355,13 @@ class BackupsPage
                                             <?php echo esc_html(ucfirst((string) ($row['type'] ?? 'daily'))); ?>
                                         </span>
                                     </td>
-                                    <td class="mono"><?php echo esc_html(self::formatBytes($row['database_bytes'] ?? null)); ?></td>
-                                    <td class="mono"><?php echo esc_html(self::formatBytes($row['files_bytes'] ?? null)); ?></td>
-                                    <td><?php echo esc_html((string) ($row['notes'] ?? '—')); ?></td>
+                                    <?php if ($combined) : ?>
+                                        <td class="mono"><?php echo esc_html(self::formatBytes(self::combinedArchiveBytes($row))); ?></td>
+                                    <?php else : ?>
+                                        <td class="mono"><?php echo esc_html(self::formatBytes($row['database_bytes'] ?? null)); ?></td>
+                                        <td class="mono"><?php echo esc_html(self::formatBytes($row['files_bytes'] ?? null)); ?></td>
+                                        <td><?php echo esc_html((string) ($row['notes'] ?? '—')); ?></td>
+                                    <?php endif; ?>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>
@@ -458,6 +479,57 @@ class BackupsPage
             </span>
         </div>
         <?php
+    }
+
+    /**
+     * Companion/Glacier archives are one zip (database dump + files). SpinupWP
+     * history still splits database_bytes vs files_bytes. Combined reports
+     * use history_scope=combined, type=full, or a single size_bytes field.
+     *
+     * @param  array<string, mixed>  $report
+     * @param  array<int, mixed>  $history
+     */
+    private static function historyIsCombinedArchive(array $report, array $history): bool
+    {
+        $scope = (string) ($report['history_scope'] ?? '');
+        if (in_array($scope, ['combined', 'full'], true)) {
+            return true;
+        }
+        if (($report['source'] ?? '') === 'clockwork-companion') {
+            return true;
+        }
+        if ($history === []) {
+            return false;
+        }
+
+        foreach ($history as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $type = strtolower((string) ($row['type'] ?? ''));
+            $hasSplitDb = array_key_exists('database_bytes', $row) && $row['database_bytes'] !== null;
+            $isFull = in_array($type, ['full', 'archive', 'combined'], true)
+                || array_key_exists('size_bytes', $row);
+            if (! $isFull || $hasSplitDb) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private static function combinedArchiveBytes(array $row): mixed
+    {
+        foreach (['size_bytes', 'files_bytes', 'database_bytes'] as $key) {
+            if (isset($row[$key]) && is_numeric($row[$key]) && (int) $row[$key] > 0) {
+                return $row[$key];
+            }
+        }
+
+        return null;
     }
 
     /**

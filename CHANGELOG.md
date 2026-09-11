@@ -2,6 +2,28 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## 1.36.0 — 2026-09-11
+
+### Added
+
+- **`POST /backup/create`** (capability `backup-create`). Takes a full site backup — pure-PHP database dump via `$wpdb` (500-row chunks, streamed to `.sql.gz`, no `mysqldump`/`exec`) plus a zip of `wp-content/` and `wp-config.php` (caches, logs, other backup plugins' folders, and `.git` excluded) — and streams it directly to a presigned S3 PUT URL (`x-amz-storage-class: GLACIER_IR`) with zero local RAM buffering. Temp files cleaned in `finally`. Powers Clockwork's per-site off-site backups for unhosted/custom sites.
+- **Connection screen** (`Tools → Clockwork → Connection`, capability `connection-key`): live connection status, copyable base64 Connection Key, and manual domain+secret fallback — the ManageWP-style pairing flow for sites Clockwork doesn't host.
+- **Dual loader**: the plugin now resolves its own directory correctly whether installed as a regular plugin (`wp-content/plugins/`) or an mu-plugin (`wp-content/mu-plugins/`).
+
+### Fixed
+
+- **PHP 8.1 compatibility**: `HmacVerifier::verify()` used a PHP 8.2-only `true|\WP_Error` return type, fataling every signed REST call on 8.1 hosts. Now `bool|\WP_Error`.
+- **`plugins.php` white screen**: `WhiteLabel` hooked `show_advanced_plugins` as though it received a plugin list; WordPress passes a boolean. Hook removed.
+- **Missing header logo on regular-plugin installs**: assets were always resolved via `WPMU_PLUGIN_URL` (defined even when unused), 404ing on non-mu installs. New `WhiteLabel::bundledAssetUrl()` resolves against the actual install location.
+- **Backup zip on hosts without php-zip**: `BackupArchiver` falls back to a one-shot PclZip create (per-file `add()` was O(n²) and 504'd behind ~60s gateways).
+- **Backups page copy**: the off-site archive card no longer promises the host-copy pipeline's "copied twice a week" wording on sites where this plugin itself takes the backup directly (`source=clockwork-companion`); history table renders combined Date · Type · Size rows for full archives.
+
+## 1.35.0 — 2026-09-10
+
+### Added
+
+- **`POST /cache/flush`** (capability `cache-flush`). Flushes the WordPress object cache, Spinup page cache helpers when present, and WP Engine varnish/memcached helpers when present. Clockwork calls this once per site when an update batch for that site finishes.
+
 ## 1.34.0 — 2026-09-06
 
 ### Added

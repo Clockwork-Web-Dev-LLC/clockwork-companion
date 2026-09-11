@@ -68,7 +68,7 @@ class SupportForm
 
         wp_enqueue_script(
             'clockwork-support-form',
-            plugins_url('assets/support-form.js', CLOCKWORK_COMPANION_DIR . '/clockwork-companion.php'),
+            WhiteLabel::bundledAssetUrl('assets/support-form.js'),
             [],
             CLOCKWORK_COMPANION_VERSION,
             true
