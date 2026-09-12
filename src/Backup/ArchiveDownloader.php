@@ -5,12 +5,32 @@ namespace ClockworkCompanion\Backup;
 /**
  * Downloads an off-site archive from a presigned HTTPS URL to a local destination file.
  * Memory efficient: streams directly to disk via curl (CURLOPT_FILE).
- * Supports resuming partial downloads when a temp file already exists.
+ *
+ * Resume support: the in-progress download is written to a partial file keyed by the
+ * archive key (restore-dl-<md5(archive_key)>.zip.part next to the destination), so a
+ * failed download leaves a resumable partial behind. A later download call for the
+ * same archive key finds the partial and resumes with a Range header from its size.
+ * Only on a completed download is the partial renamed to the final destination path.
  */
 class ArchiveDownloader
 {
-    /** @var callable|null Test callback: fn(string $url, string $destPath, ?callable $progressCallback, ?string $archiveKey): array{ok: bool, http_code: int, bytes_downloaded: int, sha256: string, error?: string} */
+    /** @var callable|null Test callback: fn(string $url, string $destPath, ?callable $progressCallback, ?string $archiveKey, string $partialPath, int $resumeOffset): array{ok: bool, http_code: int, bytes_downloaded: int, sha256: string, error?: string} */
     public static $testDownloader = null;
+
+    /**
+     * Compute the resumable partial-file path for a download.
+     * Keyed by the archive key so a re-staged download of the same archive can
+     * resume, regardless of the per-request staged id embedded in $destPath.
+     * The "restore-" prefix keeps it inside Paths::sweepStale()'s cleanup patterns.
+     */
+    public static function partialPath(string $destPath, ?string $archiveKey = null): string
+    {
+        if ($archiveKey !== null && $archiveKey !== '') {
+            return rtrim(dirname($destPath), '/\\').'/restore-dl-'.md5($archiveKey).'.zip.part';
+        }
+
+        return $destPath.'.part';
+    }
 
     /**
      * Download an archive to the target destination path.
@@ -33,10 +53,22 @@ class ArchiveDownloader
             ];
         }
 
+        $partialPath = self::partialPath($destPath, $archiveKey);
+        $resumeOffset = file_exists($partialPath) ? (int) filesize($partialPath) : 0;
+
         if (is_callable(self::$testDownloader)) {
-            $testRes = call_user_func(self::$testDownloader, $url, $destPath, $progressCallback, $archiveKey);
+            $testRes = call_user_func(self::$testDownloader, $url, $destPath, $progressCallback, $archiveKey, $partialPath, $resumeOffset);
+
             if (is_array($testRes)) {
+                if (($testRes['ok'] ?? false) && ! file_exists($destPath) && file_exists($partialPath)) {
+                    @rename($partialPath, $destPath);
+                }
+
                 return $testRes;
+            }
+
+            if ((bool) $testRes && ! file_exists($destPath) && file_exists($partialPath)) {
+                @rename($partialPath, $destPath);
             }
 
             $size = file_exists($destPath) ? (int) filesize($destPath) : 0;
@@ -60,26 +92,17 @@ class ArchiveDownloader
             ];
         }
 
-        $existingBytes = 0;
-        $fileMode = 'wb';
-        $rangeHeader = [];
+        $fileMode = $resumeOffset > 0 ? 'ab' : 'wb';
+        $rangeHeader = $resumeOffset > 0 ? ["Range: bytes={$resumeOffset}-"] : [];
 
-        if (file_exists($destPath)) {
-            $existingBytes = (int) filesize($destPath);
-            if ($existingBytes > 0) {
-                $fileMode = 'ab';
-                $rangeHeader = ["Range: bytes={$existingBytes}-"];
-            }
-        }
-
-        $fp = @fopen($destPath, $fileMode);
+        $fp = @fopen($partialPath, $fileMode);
         if (! $fp) {
             return [
                 'ok' => false,
                 'http_code' => 0,
                 'bytes_downloaded' => 0,
                 'sha256' => '',
-                'error' => "Failed to open destination file for writing: {$destPath}",
+                'error' => "Failed to open download file for writing: {$partialPath}",
             ];
         }
 
@@ -97,10 +120,10 @@ class ArchiveDownloader
 
         if ($progressCallback !== null) {
             curl_setopt($ch, CURLOPT_NOPROGRESS, false);
-            curl_setopt($ch, CURLOPT_PROGRESSFUNCTION, function ($resource, $totalDownload, $downloaded) use ($progressCallback, $existingBytes) {
+            curl_setopt($ch, CURLOPT_PROGRESSFUNCTION, function ($resource, $totalDownload, $downloaded) use ($progressCallback, $resumeOffset) {
                 if ($totalDownload > 0 || $downloaded > 0) {
-                    $total = (int) $totalDownload + $existingBytes;
-                    $current = (int) $downloaded + $existingBytes;
+                    $total = (int) $totalDownload + $resumeOffset;
+                    $current = (int) $downloaded + $resumeOffset;
                     $progressCallback($current, $total);
                 }
             });
@@ -112,20 +135,42 @@ class ArchiveDownloader
         fclose($fp);
         curl_close($ch);
 
-        // If server replied 416 (Range Not Satisfiable), existing file might already be complete or invalid.
-        if ($httpCode === 416 && $existingBytes > 0) {
-            @unlink($destPath);
+        // If server replied 416 (Range Not Satisfiable), the partial is unusable: discard and restart.
+        if ($httpCode === 416 && $resumeOffset > 0) {
+            @unlink($partialPath);
+
+            return $this->download($url, $destPath, $progressCallback, $archiveKey);
+        }
+
+        // Server ignored our Range and replied 200 with the full body, which we appended
+        // after the partial bytes. The file is corrupt: truncate (discard) and restart
+        // from zero. Never keep a full body appended after a partial.
+        if ($httpCode === 200 && $resumeOffset > 0) {
+            @unlink($partialPath);
+
             return $this->download($url, $destPath, $progressCallback, $archiveKey);
         }
 
         $success = in_array($httpCode, [200, 206], true);
         if (! $success) {
+            // Keep the partial file on disk so a later attempt can resume.
             return [
                 'ok' => false,
                 'http_code' => $httpCode,
-                'bytes_downloaded' => (int) (file_exists($destPath) ? filesize($destPath) : 0),
+                'bytes_downloaded' => (int) (file_exists($partialPath) ? filesize($partialPath) : 0),
                 'sha256' => '',
                 'error' => "Archive download failed (HTTP {$httpCode}): {$curlError}",
+            ];
+        }
+
+        // Completed download: promote the partial to the final destination path.
+        if (! @rename($partialPath, $destPath)) {
+            return [
+                'ok' => false,
+                'http_code' => $httpCode,
+                'bytes_downloaded' => (int) (file_exists($partialPath) ? filesize($partialPath) : 0),
+                'sha256' => '',
+                'error' => "Failed to move completed download into place: {$destPath}",
             ];
         }
 

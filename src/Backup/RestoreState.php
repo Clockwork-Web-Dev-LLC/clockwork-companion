@@ -24,6 +24,7 @@ class RestoreState
                 'has_files' => false,
                 'table_prefix' => null,
                 'skipped_tables' => 0,
+                'skipped_statements' => 0,
                 'error' => null,
                 'error_detail' => null,
                 'updated_at' => null,

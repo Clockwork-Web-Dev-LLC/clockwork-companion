@@ -15,8 +15,18 @@ Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earli
 
 ### Changed
 
-- Reconciled PHP requirement to `php: >=8.1` in `composer.json` and added `Requires PHP: 8.1` to the plugin header in `clockwork-companion.php`.
+- **PHP 8.0 – 8.5 support**: minimum PHP lowered to 8.0 (`composer.json` `php: >=8.0`, plugin header `Requires PHP: 8.0`); the two 8.1-only constructs in the codebase (a `readonly` promoted constructor, one `array_is_list()` call) were rewritten, and the source was audited clean of 8.1+/8.2+ syntax.
 - Updated test bootstrap to dynamically read `CLOCKWORK_COMPANION_VERSION` from `clockwork-companion.php`.
+
+### Fixed (post-review hardening of the restore endpoints)
+
+- **Apply no longer reports success on a missing staging area**: before touching maintenance mode, apply verifies the staged directory, database dump, and `wp-content/` payload still exist; otherwise it returns 409 `staging_missing` without enabling maintenance.
+- **Resumable downloads**: interrupted archive downloads keep a partial file keyed to the archive and resume with an HTTP `Range` request on the next stage call (restarting cleanly if the server ignores Range); download failures now record the HTTP status (e.g. `HTTP 403`) for diagnosability.
+- **SQL import is whitelist-only**: only `SET`, and prefix-scoped `DROP TABLE`/`CREATE TABLE`/`INSERT INTO`, ever execute; any other statement (e.g. a foreign dump's `LOCK TABLES`/`ALTER`) is skipped and counted (`skipped_statements`), and dumps with single lines over 64KB no longer split mid-statement.
+- **File apply corrections**: theme/plugin `index.php` files are restored again (the old exclude filtered them tree-wide), `wp-config.php` is never copied even if present inside the archive's `wp-content`, and the Companion self-preservation match no longer catches sibling directories.
+- **Zip-slip guard**: archive entries are validated on both extraction engines (ZipArchive and PclZip); any `../`, absolute, or drive-prefixed entry aborts the restore as `unsafe_archive`.
+- **Apply identity check**: apply accepts the expected `archive_key` and 409s (`archive_mismatch`) if it doesn't match the staged state, preventing a stale stage from being applied as the wrong archive.
+- Download-progress writes to `wp_options` are throttled (≥5MB or ≥3s between persists); all `database/*.sql*` files in an archive are imported, not just the first; a `.gz` dump on a host without zlib fails with a clear `zlib_missing` error instead of being parsed as binary.
 
 ## 1.36.0 — 2026-09-11
 

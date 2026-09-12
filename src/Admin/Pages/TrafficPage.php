@@ -510,7 +510,8 @@ class TrafficPage
         }
 
         // Tolerate the legacy flat-list shape — fold into pages.
-        if (array_is_list($top)) {
+        // (array_values() comparison instead of array_is_list() for PHP 8.0 compat.)
+        if (array_values($top) === $top) {
             $top = ['pages' => $top, 'api' => [], 'uploads' => []];
         }
 

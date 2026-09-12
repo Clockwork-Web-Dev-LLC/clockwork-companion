@@ -98,13 +98,24 @@ class BackupRestoreRoute
                 'has_files' => false,
                 'table_prefix' => null,
                 'skipped_tables' => 0,
+                'skipped_statements' => 0,
                 'error' => null,
                 'error_detail' => null,
             ]);
 
-            // 1. Download archive
+            // 1. Download archive. Progress persistence is throttled so the curl
+            // progress callback (which fires every ~16KB) does not hammer wp_options:
+            // persist only after >= 5MB of new bytes or >= 3s since the last persist.
+            $lastPersistedBytes = 0;
+            $lastPersistedAt = 0.0;
             $downloader = new ArchiveDownloader();
-            $downloadResult = $downloader->download($downloadUrl, $archivePath, function (int $done, int $total) {
+            $downloadResult = $downloader->download($downloadUrl, $archivePath, function (int $done, int $total) use (&$lastPersistedBytes, &$lastPersistedAt) {
+                $now = microtime(true);
+                if ($done - $lastPersistedBytes < 5 * 1024 * 1024 && ($now - $lastPersistedAt) < 3.0) {
+                    return;
+                }
+                $lastPersistedBytes = $done;
+                $lastPersistedAt = $now;
                 RestoreState::update([
                     'bytes_done' => $done,
                     'bytes_total' => $total,
@@ -112,16 +123,23 @@ class BackupRestoreRoute
             }, $archiveKey);
 
             if (! ($downloadResult['ok'] ?? false)) {
+                // Keep the .part file (keyed by archive_key) on disk so a retry of the
+                // same archive can resume; only remove a (never expected) completed zip.
                 if (file_exists($archivePath)) {
                     @unlink($archivePath);
+                }
+                $httpCode = (int) ($downloadResult['http_code'] ?? 0);
+                $detail = (string) ($downloadResult['error'] ?? 'Download failed');
+                if ($httpCode > 0) {
+                    $detail = "HTTP {$httpCode}: {$detail}";
                 }
                 RestoreState::update([
                     'status' => 'failed',
                     'error' => 'download_failed',
-                    'error_detail' => $downloadResult['error'] ?? 'Download failed',
+                    'error_detail' => $detail,
                 ]);
 
-                return new WP_Error('download_failed', $downloadResult['error'] ?? 'Archive download failed', ['status' => 502]);
+                return new WP_Error('download_failed', $detail, ['status' => 502]);
             }
 
             // 2. Verify SHA-256
@@ -171,6 +189,7 @@ class BackupRestoreRoute
             RestoreState::update(['status' => 'scanning']);
             $hasFiles = is_dir($extractDir.'/wp-content');
             $dbFiles = glob($extractDir.'/database/*.sql*') ?: [];
+            sort($dbFiles, SORT_STRING);
             $hasSql = ! empty($dbFiles);
             $tablePrefix = null;
 
@@ -246,9 +265,37 @@ class BackupRestoreRoute
                 return new WP_Error('hash_not_verified', 'Archive integrity hash was never verified.', ['status' => 422]);
             }
 
+            // Optional identity check: Control sends the archive_key it expects to apply.
+            $requestArchiveKey = trim((string) ($params['archive_key'] ?? ''));
+            if ($requestArchiveKey !== '' && $requestArchiveKey !== (string) ($state['archive_key'] ?? '')) {
+                return new WP_Error('archive_mismatch', 'Provided archive_key does not match the staged archive.', ['status' => 409]);
+            }
+
             $stagingBase = Paths::stagingDir();
             $extractDir = $stagingBase."/restore-{$stagedId}";
             $archivePath = $stagingBase."/restore-archive-{$stagedId}.zip";
+
+            // Verify the staged payload still exists BEFORE touching maintenance mode:
+            // Paths::sweepStale() may have removed a staging dir older than 24h, and
+            // applying against a missing dir would otherwise report a fake success.
+            $stagingProblem = null;
+            if (! is_dir($extractDir)) {
+                $stagingProblem = "Staging directory is missing: {$extractDir}";
+            } elseif (! empty($state['has_sql']) && empty(glob($extractDir.'/database/*.sql*') ?: [])) {
+                $stagingProblem = 'Staged database dump files are missing.';
+            } elseif (! empty($state['has_files']) && ! is_dir($extractDir.'/wp-content')) {
+                $stagingProblem = 'Staged wp-content directory is missing.';
+            }
+
+            if ($stagingProblem !== null) {
+                RestoreState::update([
+                    'status' => 'failed',
+                    'error' => 'staging_missing',
+                    'error_detail' => $stagingProblem,
+                ]);
+
+                return new WP_Error('staging_missing', $stagingProblem.' Re-stage the archive before applying.', ['status' => 409]);
+            }
 
             // 1. Enter Maintenance Mode (D7)
             $maint = MaintenanceGuard::getConfig();
@@ -263,23 +310,37 @@ class BackupRestoreRoute
 
             if (! empty($state['has_sql'])) {
                 $dbFiles = glob($extractDir.'/database/*.sql*') ?: [];
+                sort($dbFiles, SORT_STRING);
+
                 if (! empty($dbFiles)) {
                     $importer = new SqlImporter();
-                    $importResult = $importer->import($dbFiles[0]);
+                    $totalSkippedTables = 0;
+                    $totalSkippedStatements = 0;
 
-                    if (! ($importResult['ok'] ?? false)) {
-                        RestoreState::update([
-                            'status' => 'failed',
-                            'error' => $importResult['error'] ?? 'sql_failed',
-                            'error_detail' => $importResult['detail'] ?? 'Database import failed',
-                            'skipped_tables' => $importResult['skipped_tables'] ?? 0,
-                        ]);
+                    // Import every database/*.sql* file in sorted order, aggregating counters.
+                    foreach ($dbFiles as $dbFile) {
+                        $importResult = $importer->import($dbFile);
+                        $totalSkippedTables += (int) ($importResult['skipped_tables'] ?? 0);
+                        $totalSkippedStatements += (int) ($importResult['skipped_statements'] ?? 0);
 
-                        // Fail-closed: Maintenance mode stays ENABLED!
-                        return new WP_Error($importResult['error'] ?? 'sql_failed', $importResult['detail'] ?? 'Database import failed', ['status' => 500]);
+                        if (! ($importResult['ok'] ?? false)) {
+                            RestoreState::update([
+                                'status' => 'failed',
+                                'error' => $importResult['error'] ?? 'sql_failed',
+                                'error_detail' => $importResult['detail'] ?? 'Database import failed',
+                                'skipped_tables' => $totalSkippedTables,
+                                'skipped_statements' => $totalSkippedStatements,
+                            ]);
+
+                            // Fail-closed: Maintenance mode stays ENABLED!
+                            return new WP_Error($importResult['error'] ?? 'sql_failed', $importResult['detail'] ?? 'Database import failed', ['status' => 500]);
+                        }
                     }
 
-                    RestoreState::update(['skipped_tables' => $importResult['skipped_tables'] ?? 0]);
+                    RestoreState::update([
+                        'skipped_tables' => $totalSkippedTables,
+                        'skipped_statements' => $totalSkippedStatements,
+                    ]);
                 }
             }
 
@@ -341,9 +402,20 @@ class BackupRestoreRoute
         }
     }
 
+    /**
+     * Detect the table prefix by scanning the FIRST database dump file only.
+     * (Apply imports every database/*.sql* file in sorted order; a multi-file
+     * dump is assumed to share one prefix, so scanning the first is enough.)
+     */
     private function detectTablePrefix(string $sqlFilePath): ?string
     {
-        $isGz = str_ends_with($sqlFilePath, '.gz') && function_exists('gzopen');
+        $isGz = str_ends_with(strtolower($sqlFilePath), '.gz');
+        if ($isGz && ! function_exists('gzopen')) {
+            // zlib missing: never fopen() gzip bytes as SQL — prefix simply stays unknown
+            // here; SqlImporter fails the apply with a clear 'zlib_missing' error.
+            return null;
+        }
+
         $handle = $isGz ? @gzopen($sqlFilePath, 'rb') : @fopen($sqlFilePath, 'rb');
 
         if (! $handle) {
