@@ -5,7 +5,11 @@ if (! defined('ABSPATH')) {
 }
 
 if (! defined('CLOCKWORK_COMPANION_VERSION')) {
-    define('CLOCKWORK_COMPANION_VERSION', '1.33.0');
+    if (preg_match("/define\\('CLOCKWORK_COMPANION_VERSION',\\s*'([^\x27]+)'\\)/", file_get_contents(dirname(__DIR__) . '/clockwork-companion.php'), $matches)) {
+        define('CLOCKWORK_COMPANION_VERSION', $matches[1]);
+    } else {
+        define('CLOCKWORK_COMPANION_VERSION', '1.36.0');
+    }
 }
 
 if (! defined('CLOCKWORK_COMPANION_DIR')) {

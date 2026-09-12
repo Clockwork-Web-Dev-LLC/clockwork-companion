@@ -2,6 +2,13 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## [Unreleased]
+
+### Changed
+
+- Reconciled PHP requirement to `php: >=8.1` in `composer.json` and added `Requires PHP: 8.1` to the plugin header in `clockwork-companion.php` (aligning package metadata with the PHP 8.1 compatibility fixes in 1.36.0).
+- Updated test bootstrap to dynamically read `CLOCKWORK_COMPANION_VERSION` from `clockwork-companion.php`.
+
 ## 1.36.0 — 2026-09-11
 
 ### Added

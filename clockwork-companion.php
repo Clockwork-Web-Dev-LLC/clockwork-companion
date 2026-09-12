@@ -3,6 +3,7 @@
  * Plugin Name: Clockwork Companion
  * Description: Companion mu-plugin for the Clockwork monitoring app. Exposes signed REST endpoints under /wp-json/clockwork/v1/ for fleet-wide control of WordPress maintenance tasks (contact-form testing, plugin updates, security scans, etc.).
  * Version: 1.36.0
+ * Requires PHP: 8.1
  * Author: Clockwork Web Dev, LLC
  * License: MIT
  * License URI: https://opensource.org/licenses/MIT
