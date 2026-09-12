@@ -110,6 +110,7 @@ class Plugin
         'cache-flush',
         'backup-create',
         'connection-key',
+        'backup-restore', // 1.37.0
     ];
 
     public function boot(): void
@@ -169,6 +170,7 @@ class Plugin
             (new \ClockworkCompanion\Rest\CodeSnippetRoute())->register();
             (new \ClockworkCompanion\Rest\CacheFlushRoute())->register();
             (new \ClockworkCompanion\Rest\BackupCreateRoute())->register();
+            (new \ClockworkCompanion\Rest\BackupRestoreRoute())->register();
         });
 
         // Self-service Forms tab AJAX. Capability + nonce gated; distinct

@@ -4,9 +4,18 @@ Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earli
 
 ## [Unreleased]
 
+## 1.37.0 — 2026-09-11
+
+### Added
+
+- **Backup Restore Endpoints** (capability `backup-restore`):
+  - `POST /backup/restore/stage`: downloads an off-site archive via presigned HTTPS URL, verifies SHA-256 integrity hash, unpacks archive (ZipArchive or one-shot PclZip for hosts without php-zip), pre-scans database dump and wp-content, and prepares staging state.
+  - `GET /backup/restore/status`: non-mutating status polling endpoint (does not burn HMAC replay guard) returning live restore progress and staging sanity checks.
+  - `POST /backup/restore/apply`: flips maintenance mode in-process, imports database dump with strict `$wpdb->prefix` statement scoping (fails closed on prefix mismatch, leaving maintenance mode enabled), copies `wp-content/` files over live directory while excluding caches/staging, flushes origin caches, lifts maintenance mode on full success, and unlinks staging files.
+
 ### Changed
 
-- Reconciled PHP requirement to `php: >=8.1` in `composer.json` and added `Requires PHP: 8.1` to the plugin header in `clockwork-companion.php` (aligning package metadata with the PHP 8.1 compatibility fixes in 1.36.0).
+- Reconciled PHP requirement to `php: >=8.1` in `composer.json` and added `Requires PHP: 8.1` to the plugin header in `clockwork-companion.php`.
 - Updated test bootstrap to dynamically read `CLOCKWORK_COMPANION_VERSION` from `clockwork-companion.php`.
 
 ## 1.36.0 — 2026-09-11

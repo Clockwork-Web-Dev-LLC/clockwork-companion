@@ -4,6 +4,7 @@ namespace ClockworkCompanion\Rest;
 
 use ClockworkCompanion\Auth\HmacVerifier;
 use ClockworkCompanion\Backup\BackupArchiver;
+use ClockworkCompanion\Backup\Paths;
 use ClockworkCompanion\Backup\DatabaseDumper;
 use ClockworkCompanion\Backup\S3DirectUploader;
 use WP_Error;
@@ -51,14 +52,7 @@ class BackupCreateRoute
         $includeFiles = (bool) ($params['include_files'] ?? true);
         $customExcludes = is_array($params['paths_to_exclude'] ?? null) ? $params['paths_to_exclude'] : [];
 
-        // Temporary storage directory
-        $uploadDirInfo = function_exists('wp_upload_dir') ? wp_upload_dir() : ['basedir' => sys_get_temp_dir()];
-        $tempDir = rtrim($uploadDirInfo['basedir'], '/').'/clockwork-backups';
-        if (! is_dir($tempDir)) {
-            @mkdir($tempDir, 0755, true);
-            @file_put_contents($tempDir.'/index.php', '<?php // Silence is golden.');
-            @file_put_contents($tempDir.'/.htaccess', "Deny from all\n");
-        }
+        $tempDir = Paths::stagingDir();
 
         $token = bin2hex(random_bytes(8));
         $dbDumpFile = $tempDir."/db-{$token}.sql.gz";

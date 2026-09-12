@@ -4,6 +4,13 @@ if (! defined('ABSPATH')) {
     define('ABSPATH', '/tmp/wordpress/');
 }
 
+if (! defined('WP_CONTENT_DIR')) {
+    define('WP_CONTENT_DIR', ABSPATH . 'wp-content');
+    if (! is_dir(WP_CONTENT_DIR)) {
+        @mkdir(WP_CONTENT_DIR, 0755, true);
+    }
+}
+
 if (! defined('CLOCKWORK_COMPANION_VERSION')) {
     if (preg_match("/define\\('CLOCKWORK_COMPANION_VERSION',\\s*'([^\x27]+)'\\)/", file_get_contents(dirname(__DIR__) . '/clockwork-companion.php'), $matches)) {
         define('CLOCKWORK_COMPANION_VERSION', $matches[1]);
