@@ -80,13 +80,39 @@ class MaintenanceModeTest extends TestCase
         $this->assertTrue(true);
     }
 
-    public function testInterceptBypassesHmacSignedRequests(): void
+    /**
+     * shouldBypass() is tested directly rather than through intercept():
+     * the non-bypass path renders the 503 page and exit()s, which would
+     * kill the whole PHPUnit process (this literally happened — the suite
+     * silently ended mid-run printing the maintenance HTML).
+     */
+    public function testClockworkApiPathBypassesMaintenance(): void
     {
         update_option(MaintenanceGuard::OPTION_KEY, ['enabled' => true]);
-        $_SERVER['HTTP_X_CLOCKWORK_SIGNATURE'] = 'test-sig';
-        
+        $_SERVER['REQUEST_URI'] = '/wp-json/clockwork/v1/health';
+
         $guard = new MaintenanceGuard();
-        $guard->intercept();
-        $this->assertTrue(true);
+        $this->assertTrue($guard->shouldBypass(MaintenanceGuard::getConfig()));
+    }
+
+    public function testClockworkHeadersAloneDoNotBypassMaintenance(): void
+    {
+        // Pre-1.36 behavior: any request carrying X-Clockwork-* headers was
+        // waved through, letting anyone skip the 503 by sending junk header
+        // values. The bypass is path-based now (those routes still HMAC-gate
+        // themselves), so a junk header on a normal front-end URL must NOT
+        // bypass.
+        update_option(MaintenanceGuard::OPTION_KEY, ['enabled' => true]);
+        $_SERVER['HTTP_X_CLOCKWORK_SIGNATURE'] = 'junk';
+        $_SERVER['REQUEST_URI'] = '/some-page/';
+
+        $guard = new MaintenanceGuard();
+        $this->assertFalse($guard->shouldBypass(MaintenanceGuard::getConfig()));
+    }
+
+    protected function tearDown(): void
+    {
+        unset($_SERVER['HTTP_X_CLOCKWORK_SIGNATURE'], $_SERVER['REQUEST_URI']);
+        parent::tearDown();
     }
 }

@@ -4,8 +4,19 @@ if (! defined('ABSPATH')) {
     define('ABSPATH', '/tmp/wordpress/');
 }
 
+if (! defined('WP_CONTENT_DIR')) {
+    define('WP_CONTENT_DIR', ABSPATH . 'wp-content');
+    if (! is_dir(WP_CONTENT_DIR)) {
+        @mkdir(WP_CONTENT_DIR, 0755, true);
+    }
+}
+
 if (! defined('CLOCKWORK_COMPANION_VERSION')) {
-    define('CLOCKWORK_COMPANION_VERSION', '1.33.0');
+    if (preg_match("/define\\('CLOCKWORK_COMPANION_VERSION',\\s*'([^\x27]+)'\\)/", file_get_contents(dirname(__DIR__) . '/clockwork-companion.php'), $matches)) {
+        define('CLOCKWORK_COMPANION_VERSION', $matches[1]);
+    } else {
+        define('CLOCKWORK_COMPANION_VERSION', '1.36.0');
+    }
 }
 
 if (! defined('CLOCKWORK_COMPANION_DIR')) {
@@ -56,6 +67,30 @@ if (! function_exists('delete_option')) {
         return true;
     }
 }
+
+if (! function_exists('get_transient')) {
+    function get_transient(string $transient): mixed
+    {
+        return $GLOBALS['wp_test_transients'][$transient] ?? false;
+    }
+}
+
+if (! function_exists('set_transient')) {
+    function set_transient(string $transient, mixed $value, int $expiration = 0): bool
+    {
+        $GLOBALS['wp_test_transients'][$transient] = $value;
+        return true;
+    }
+}
+
+if (! function_exists('delete_transient')) {
+    function delete_transient(string $transient): bool
+    {
+        unset($GLOBALS['wp_test_transients'][$transient]);
+        return true;
+    }
+}
+
 
 if (! function_exists('add_filter')) {
     function add_filter(string $tag, callable $callback, int $priority = 10, int $accepted_args = 1): bool
@@ -215,7 +250,15 @@ if (! class_exists('WP_REST_Request')) {
         public function get_method(): string { return $this->method; }
         public function get_route(): string { return $this->route; }
         public function get_json_params(): ?array { return $this->jsonParams; }
-        public function get_header(string $header): ?string { return $this->headers[strtolower($header)] ?? null; }
+        public function get_header(string $header): ?string {
+            $normalized = str_replace('-', '_', strtolower($header));
+            foreach ($this->headers as $k => $v) {
+                if (str_replace('-', '_', strtolower($k)) === $normalized) {
+                    return $v;
+                }
+            }
+            return null;
+        }
         public function get_body(): string { return $this->body; }
         public function get_param(string $key): mixed { return $this->jsonParams[$key] ?? null; }
         public function get_params(): array { return (array) $this->jsonParams; }
@@ -365,3 +408,33 @@ spl_autoload_register(function (string $class): void {
         require_once $path;
     }
 });
+
+if (! class_exists('WP_Error')) {
+    class WP_Error
+    {
+        public function __construct(
+            protected string $code = '',
+            protected string $message = '',
+            protected mixed $data = null
+        ) {}
+
+        public function get_error_code(): string { return $this->code; }
+        public function get_error_message(): string { return $this->message; }
+        public function get_error_data(): mixed { return $this->data; }
+    }
+}
+
+if (! function_exists('wp_json_encode')) {
+    function wp_json_encode(mixed $data, int $options = 0, int $depth = 512): string|false
+    {
+        return json_encode($data, $options, $depth);
+    }
+}
+
+if (! defined('ARRAY_A')) {
+    define('ARRAY_A', 'ARRAY_A');
+}
+
+if (! defined('ARRAY_N')) {
+    define('ARRAY_N', 'ARRAY_N');
+}

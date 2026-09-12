@@ -65,7 +65,19 @@ class BrandingRoute
         $sanitized['author_name'] = $sanitized['company_name'];
         $sanitized['author_url'] = $sanitized['company_url'];
         $sanitized['plugin_url'] = $sanitized['company_url'];
-        $sanitized['brand_text'] = $sanitized['menu_title'] ?: 'Companion';
+        $sanitized['brand_text'] = ! empty($payload['brand_text']) ? sanitize_text_field((string) $payload['brand_text']) : 'Companion';
+
+        if (! empty($payload['primary_color'])) {
+            $sanitized['primary_color'] = WhiteLabel::sanitizeHexColor((string) $payload['primary_color']);
+        }
+        if (! empty($payload['primary_dark_color'])) {
+            $sanitized['primary_dark_color'] = WhiteLabel::sanitizeHexColor((string) $payload['primary_dark_color'], '#2D2062');
+        } elseif (! empty($sanitized['primary_color'])) {
+            $sanitized['primary_dark_color'] = $sanitized['primary_color'];
+        }
+        if (! empty($payload['accent_color'])) {
+            $sanitized['accent_color'] = WhiteLabel::sanitizeHexColor((string) $payload['accent_color'], '#7EFF83');
+        }
 
         update_option(WhiteLabel::OPTION_KEY, $sanitized, false);
 

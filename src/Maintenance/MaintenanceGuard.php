@@ -2,7 +2,7 @@
 
 namespace ClockworkCompanion\Maintenance;
 
-use ClockworkCompanion\Auth\HmacVerifier;
+use ClockworkCompanion\Updates\TransientRefresher;
 
 class MaintenanceGuard
 {
@@ -35,34 +35,83 @@ class MaintenanceGuard
     public function intercept(): void
     {
         $config = self::getConfig();
-        if (empty($config['enabled'])) {
-            return;
-        }
-
-        // Bypasses:
-        // 1. Logged-in admin
-        if (function_exists('is_user_logged_in') && is_user_logged_in() && function_exists('current_user_can') && current_user_can('manage_options')) {
-            return;
-        }
-
-        // 2. Allowlisted IP
-        $clientIp = $_SERVER['REMOTE_ADDR'] ?? '';
-        if (! empty($config['allowed_ips']) && is_array($config['allowed_ips']) && in_array($clientIp, $config['allowed_ips'], true)) {
-            return;
-        }
-
-        // 3. HMAC-authenticated Clockwork Control API requests must never be blocked
-        if (! empty($_SERVER['HTTP_X_CLOCKWORK_SIGNATURE']) || ! empty($_SERVER['HTTP_X_CLOCKWORK_TIMESTAMP'])) {
-            return;
-        }
-
-        // Do not block WP login page itself so operators can log in
-        $uri = $_SERVER['REQUEST_URI'] ?? '';
-        if (str_contains($uri, 'wp-login.php') || str_contains($uri, 'wp-admin')) {
+        if (empty($config['enabled']) || $this->shouldBypass($config)) {
             return;
         }
 
         $this->render503($config);
+    }
+
+    /**
+     * True when this request should see the live site even though maintenance
+     * mode is on. Clockwork API traffic is allowed by *path* (those routes
+     * still HMAC-gate themselves). Presence of Clockwork headers alone is
+     * not enough — that used to let anyone skip the 503 by sending junk
+     * X-Clockwork-* values.
+     *
+     * @param  array<string, mixed>  $config
+     */
+    public function shouldBypass(array $config): bool
+    {
+        if (function_exists('is_user_logged_in') && is_user_logged_in() && function_exists('current_user_can') && current_user_can('manage_options')) {
+            return true;
+        }
+
+        $clientIp = $_SERVER['REMOTE_ADDR'] ?? '';
+        if (! empty($config['allowed_ips']) && is_array($config['allowed_ips']) && in_array($clientIp, $config['allowed_ips'], true)) {
+            return true;
+        }
+
+        if (self::isClockworkApiRequest()) {
+            return true;
+        }
+
+        $uri = $_SERVER['REQUEST_URI'] ?? '';
+        $path = (string) (parse_url($uri, PHP_URL_PATH) ?: $uri);
+        if (str_contains($path, 'wp-login.php')) {
+            return true;
+        }
+
+        // wp-admin (except the Clockwork ajax action, already handled above)
+        // so operators can still sign in and work.
+        if (str_contains($path, 'wp-admin')) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Clockwork Control talks to /wp-json/clockwork/... (pretty permalinks)
+     * or ?rest_route=/clockwork/... (plain permalinks), plus the signed
+     * admin-ajax loopback that refreshes premium update transients.
+     */
+    public static function isClockworkApiRequest(): bool
+    {
+        $uri = $_SERVER['REQUEST_URI'] ?? '';
+        $path = (string) (parse_url($uri, PHP_URL_PATH) ?: '');
+        $query = (string) (parse_url($uri, PHP_URL_QUERY) ?: '');
+
+        if (str_contains($path, '/wp-json/clockwork/')) {
+            return true;
+        }
+
+        if ($query !== '') {
+            parse_str($query, $params);
+            $restRoute = isset($params['rest_route']) ? (string) $params['rest_route'] : '';
+            if (str_starts_with($restRoute, '/clockwork/')) {
+                return true;
+            }
+        }
+
+        if (str_contains($path, 'admin-ajax.php')) {
+            $action = (string) ($_REQUEST['action'] ?? $_GET['action'] ?? $_POST['action'] ?? '');
+            if ($action === TransientRefresher::AJAX_ACTION) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function render503(array $config): void

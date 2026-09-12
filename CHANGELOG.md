@@ -2,6 +2,54 @@
 
 Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earlier releases (1.0.0 → 1.16.8) predate this file; treat the git log as authoritative for those.
 
+## [Unreleased]
+
+## 1.37.0 — 2026-09-11
+
+### Added
+
+- **Backup Restore Endpoints** (capability `backup-restore`):
+  - `POST /backup/restore/stage`: downloads an off-site archive via presigned HTTPS URL, verifies SHA-256 integrity hash, unpacks archive (ZipArchive or one-shot PclZip for hosts without php-zip), pre-scans database dump and wp-content, and prepares staging state.
+  - `GET /backup/restore/status`: non-mutating status polling endpoint (does not burn HMAC replay guard) returning live restore progress and staging sanity checks.
+  - `POST /backup/restore/apply`: flips maintenance mode in-process, imports database dump with strict `$wpdb->prefix` statement scoping (fails closed on prefix mismatch, leaving maintenance mode enabled), copies `wp-content/` files over live directory while excluding caches/staging, flushes origin caches, lifts maintenance mode on full success, and unlinks staging files.
+
+### Changed
+
+- **PHP 8.0 – 8.5 support**: minimum PHP lowered to 8.0 (`composer.json` `php: >=8.0`, plugin header `Requires PHP: 8.0`); the two 8.1-only constructs in the codebase (a `readonly` promoted constructor, one `array_is_list()` call) were rewritten, and the source was audited clean of 8.1+/8.2+ syntax.
+- Updated test bootstrap to dynamically read `CLOCKWORK_COMPANION_VERSION` from `clockwork-companion.php`.
+
+### Fixed (post-review hardening of the restore endpoints)
+
+- **Apply no longer reports success on a missing staging area**: before touching maintenance mode, apply verifies the staged directory, database dump, and `wp-content/` payload still exist; otherwise it returns 409 `staging_missing` without enabling maintenance.
+- **Resumable downloads**: interrupted archive downloads keep a partial file keyed to the archive and resume with an HTTP `Range` request on the next stage call (restarting cleanly if the server ignores Range); download failures now record the HTTP status (e.g. `HTTP 403`) for diagnosability.
+- **SQL import is whitelist-only**: only `SET`, and prefix-scoped `DROP TABLE`/`CREATE TABLE`/`INSERT INTO`, ever execute; any other statement (e.g. a foreign dump's `LOCK TABLES`/`ALTER`) is skipped and counted (`skipped_statements`), and dumps with single lines over 64KB no longer split mid-statement.
+- **File apply corrections**: theme/plugin `index.php` files are restored again (the old exclude filtered them tree-wide), `wp-config.php` is never copied even if present inside the archive's `wp-content`, and the Companion self-preservation match no longer catches sibling directories.
+- **Zip-slip guard**: archive entries are validated on both extraction engines (ZipArchive and PclZip); any `../`, absolute, or drive-prefixed entry aborts the restore as `unsafe_archive`.
+- **Apply identity check**: apply accepts the expected `archive_key` and 409s (`archive_mismatch`) if it doesn't match the staged state, preventing a stale stage from being applied as the wrong archive.
+- Download-progress writes to `wp_options` are throttled (≥5MB or ≥3s between persists); all `database/*.sql*` files in an archive are imported, not just the first; a `.gz` dump on a host without zlib fails with a clear `zlib_missing` error instead of being parsed as binary.
+
+## 1.36.0 — 2026-09-11
+
+### Added
+
+- **`POST /backup/create`** (capability `backup-create`). Takes a full site backup — pure-PHP database dump via `$wpdb` (500-row chunks, streamed to `.sql.gz`, no `mysqldump`/`exec`) plus a zip of `wp-content/` and `wp-config.php` (caches, logs, other backup plugins' folders, and `.git` excluded) — and streams it directly to a presigned S3 PUT URL (`x-amz-storage-class: GLACIER_IR`) with zero local RAM buffering. Temp files cleaned in `finally`. Powers Clockwork's per-site off-site backups for unhosted/custom sites.
+- **Connection screen** (`Tools → Clockwork → Connection`, capability `connection-key`): live connection status, copyable base64 Connection Key, and manual domain+secret fallback — the ManageWP-style pairing flow for sites Clockwork doesn't host.
+- **Dual loader**: the plugin now resolves its own directory correctly whether installed as a regular plugin (`wp-content/plugins/`) or an mu-plugin (`wp-content/mu-plugins/`).
+
+### Fixed
+
+- **PHP 8.1 compatibility**: `HmacVerifier::verify()` used a PHP 8.2-only `true|\WP_Error` return type, fataling every signed REST call on 8.1 hosts. Now `bool|\WP_Error`.
+- **`plugins.php` white screen**: `WhiteLabel` hooked `show_advanced_plugins` as though it received a plugin list; WordPress passes a boolean. Hook removed.
+- **Missing header logo on regular-plugin installs**: assets were always resolved via `WPMU_PLUGIN_URL` (defined even when unused), 404ing on non-mu installs. New `WhiteLabel::bundledAssetUrl()` resolves against the actual install location.
+- **Backup zip on hosts without php-zip**: `BackupArchiver` falls back to a one-shot PclZip create (per-file `add()` was O(n²) and 504'd behind ~60s gateways).
+- **Backups page copy**: the off-site archive card no longer promises the host-copy pipeline's "copied twice a week" wording on sites where this plugin itself takes the backup directly (`source=clockwork-companion`); history table renders combined Date · Type · Size rows for full archives.
+
+## 1.35.0 — 2026-09-10
+
+### Added
+
+- **`POST /cache/flush`** (capability `cache-flush`). Flushes the WordPress object cache, Spinup page cache helpers when present, and WP Engine varnish/memcached helpers when present. Clockwork calls this once per site when an update batch for that site finishes.
+
 ## 1.34.0 — 2026-09-06
 
 ### Added

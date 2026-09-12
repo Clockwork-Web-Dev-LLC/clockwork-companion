@@ -500,7 +500,7 @@ class WhiteLabelPage
             const previewPluginDesc = document.getElementById('preview-plugin-desc');
             const previewPluginAuthor = document.getElementById('preview-plugin-author');
             const previewSidebarLabel = document.getElementById('preview-sidebar-label');
-            const defaultLogo = '<?php echo esc_url(plugins_url('assets/clockwork-logo.png', CLOCKWORK_COMPANION_DIR . '/clockwork-companion.php')); ?>';
+            const defaultLogo = '<?php echo esc_url(WhiteLabel::bundledAssetUrl('assets/clockwork-logo.png')); ?>';
 
             // Sync Color Pickers with Text Inputs
             function bindColorPair(picker, textInput, onChange) {

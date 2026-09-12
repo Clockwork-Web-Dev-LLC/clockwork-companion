@@ -42,6 +42,8 @@ class Layout
             $all[] = ['slug' => 'unlock', 'label' => 'Unlock', 'page' => \ClockworkCompanion\Admin\Pages\UnlockPage::SLUG];
         }
 
+        $all[] = ['slug' => 'connection', 'label' => 'Connection', 'page' => \ClockworkCompanion\Admin\Pages\ConnectionPage::SLUG];
+
         return $all;
     }
 

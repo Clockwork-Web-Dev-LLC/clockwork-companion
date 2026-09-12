@@ -10,10 +10,10 @@ namespace ClockworkCompanion\ContactForm;
 class StrategyResult
 {
     public function __construct(
-        public readonly bool $accepted,
-        public readonly ?string $error = null,
-        public readonly ?string $pluginStatus = null,
-        public readonly ?string $logExcerpt = null,
+        public bool $accepted,
+        public ?string $error = null,
+        public ?string $pluginStatus = null,
+        public ?string $logExcerpt = null
     ) {}
 
     public static function accepted(?string $pluginStatus = null): self

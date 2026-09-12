@@ -88,4 +88,50 @@ class BrandingRouteTest extends TestCase
         $this->assertSame('Active Brand', $data['branding']['company_name']);
         $this->assertSame('Active Companion', $data['branding']['plugin_name']);
     }
+
+    public function testHandlePostPersistsCustomColors(): void
+    {
+        $route = new BrandingRoute();
+        $payload = [
+            'enabled' => true,
+            'company_name' => 'Clockwork Web Dev',
+            'primary_color' => '#2D2062',
+            'accent_color' => '#7EFF83',
+        ];
+
+        $request = new WP_REST_Request('POST', '/clockwork/v1/branding', $payload);
+        $response = $route->handlePost($request);
+
+        $this->assertSame(200, $response->get_status());
+        $saved = get_option(WhiteLabel::OPTION_KEY);
+        $this->assertSame('#2D2062', $saved['primary_color']);
+        $this->assertSame('#2D2062', $saved['primary_dark_color']);
+        $this->assertSame('#7EFF83', $saved['accent_color']);
+    }
+
+    public function testHandlePostKeepsBrandTextSeparateFromMenuTitle(): void
+    {
+        $route = new BrandingRoute();
+        $payload = [
+            'enabled' => true,
+            'menu_title' => 'Clockwork',
+            'brand_text' => 'Companion',
+            'primary_color' => '#0F172A',
+            'accent_color' => '#38BDF8',
+        ];
+
+        $request = new WP_REST_Request('POST', '/clockwork/v1/branding', $payload);
+        $response = $route->handlePost($request);
+
+        $this->assertSame(200, $response->get_status());
+
+        $saved = get_option(WhiteLabel::OPTION_KEY);
+        $this->assertSame('Clockwork', $saved['menu_title']);
+        $this->assertSame('Companion', $saved['brand_text']);
+
+        $settings = WhiteLabel::getSettings();
+        $this->assertSame('Clockwork', $settings['menu_title']);
+        $this->assertSame('Companion', $settings['brand_text']);
+    }
+
 }
