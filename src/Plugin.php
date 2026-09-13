@@ -24,6 +24,10 @@ use ClockworkCompanion\Rest\LockoutsRoute;
 use ClockworkCompanion\Rest\MalwareScanRoute;
 use ClockworkCompanion\Rest\CoreUpdateRoute;
 use ClockworkCompanion\Rest\TranslationsUpdateRoute;
+use ClockworkCompanion\Rest\DatabaseRoute;
+use ClockworkCompanion\Rest\PluginLifecycleRoute;
+use ClockworkCompanion\Rest\DebugLogRoute;
+use ClockworkCompanion\Rest\EnvironmentRoute;
 use ClockworkCompanion\Rest\PluginsRoute;
 use ClockworkCompanion\Rest\PluginUpdateRoute;
 use ClockworkCompanion\Rest\ThemesRoute;
@@ -112,6 +116,10 @@ class Plugin
         'backup-create',
         'connection-key',
         'backup-restore', // 1.37.0
+        'database-optimize',
+        'plugin-lifecycle',
+        'debug-log',
+        'environment',
     ];
 
     public function boot(): void
@@ -173,6 +181,10 @@ class Plugin
             (new \ClockworkCompanion\Rest\CacheFlushRoute())->register();
             (new \ClockworkCompanion\Rest\BackupCreateRoute())->register();
             (new \ClockworkCompanion\Rest\BackupRestoreRoute())->register();
+            (new DatabaseRoute())->register();
+            (new PluginLifecycleRoute())->register();
+            (new DebugLogRoute())->register();
+            (new EnvironmentRoute())->register();
         });
 
         // Self-service Forms tab AJAX. Capability + nonce gated; distinct

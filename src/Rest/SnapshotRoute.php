@@ -54,6 +54,8 @@ class SnapshotRoute
             'comments_summary' => (new CommentsSummaryRoute())->payload(),
             'two_factor'            => (new TwoFactorStatusRoute())->payload(),
             'translations'          => $this->translationsPayload(),
+            'environment'           => (new EnvironmentRoute())->summaryPayload(),
+            'database'              => (new DatabaseRoute())->summaryPayload(),
             'client_notifications'  => ClientNotifications::payload(),
         ]);
     }
