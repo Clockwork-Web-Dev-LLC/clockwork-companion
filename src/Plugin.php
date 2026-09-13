@@ -23,6 +23,7 @@ use ClockworkCompanion\Rest\HealthRoute;
 use ClockworkCompanion\Rest\LockoutsRoute;
 use ClockworkCompanion\Rest\MalwareScanRoute;
 use ClockworkCompanion\Rest\CoreUpdateRoute;
+use ClockworkCompanion\Rest\TranslationsUpdateRoute;
 use ClockworkCompanion\Rest\PluginsRoute;
 use ClockworkCompanion\Rest\PluginUpdateRoute;
 use ClockworkCompanion\Rest\ThemesRoute;
@@ -147,6 +148,7 @@ class Plugin
             (new PluginUpdateRoute())->register();
             (new ThemeUpdateRoute())->register();
             (new CoreUpdateRoute())->register();
+            (new TranslationsUpdateRoute())->register();
             (new AdminsRoute())->register();
             (new CronRoute())->register();
             (new CommentsSummaryRoute())->register();

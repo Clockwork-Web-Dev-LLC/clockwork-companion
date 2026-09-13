@@ -53,6 +53,7 @@ class SnapshotRoute
             'wp_cron'          => (new CronRoute())->payload(),
             'comments_summary' => (new CommentsSummaryRoute())->payload(),
             'two_factor'            => (new TwoFactorStatusRoute())->payload(),
+            'translations'          => $this->translationsPayload(),
             'client_notifications'  => ClientNotifications::payload(),
         ]);
     }
@@ -96,6 +97,43 @@ class SnapshotRoute
             'current_version'  => $currentVersion,
             'new_version'      => $newVersion,
             'is_minor_update'  => $isMinorUpdate,
+        ];
+    }
+
+    /**
+     * WP translations update status. Reads pending translation updates from core.
+     *
+     * @return array{count: int, update_available: bool, items: array<int, array<string, mixed>>}
+     */
+    private function translationsPayload(): array
+    {
+        if (! function_exists('wp_get_translation_updates') && defined('ABSPATH')) {
+            require_once ABSPATH . 'wp-includes/update.php';
+        }
+
+        $updates = function_exists('wp_get_translation_updates') ? wp_get_translation_updates() : [];
+        $count   = is_array($updates) ? count($updates) : 0;
+
+        $items = [];
+        if (is_array($updates)) {
+            foreach ($updates as $u) {
+                if (is_object($u)) {
+                    $items[] = [
+                        'type'     => (string) ($u->type ?? ''),
+                        'slug'     => (string) ($u->slug ?? ''),
+                        'language' => (string) ($u->language ?? ''),
+                        'version'  => (string) ($u->version ?? ''),
+                        'updated'  => (string) ($u->updated ?? ''),
+                        'package'  => (string) ($u->package ?? ''),
+                    ];
+                }
+            }
+        }
+
+        return [
+            'count'            => $count,
+            'update_available' => $count > 0,
+            'items'            => $items,
         ];
     }
 }

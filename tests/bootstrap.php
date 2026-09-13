@@ -438,3 +438,208 @@ if (! defined('ARRAY_A')) {
 if (! defined('ARRAY_N')) {
     define('ARRAY_N', 'ARRAY_N');
 }
+
+if (! is_dir(ABSPATH . 'wp-admin/includes')) {
+    @mkdir(ABSPATH . 'wp-admin/includes', 0755, true);
+}
+if (! is_dir(ABSPATH . 'wp-includes')) {
+    @mkdir(ABSPATH . 'wp-includes', 0755, true);
+}
+foreach ([
+    'file.php',
+    'misc.php',
+    'class-wp-upgrader.php',
+    'class-language-pack-upgrader.php',
+    'class-wp-upgrader-skin.php',
+    'class-automatic-upgrader-skin.php',
+    'plugin.php',
+    'theme.php',
+    'class-core-upgrader.php',
+    'class-wp-ajax-upgrader-skin.php',
+    'update.php',
+] as $stubFile) {
+    if (! file_exists(ABSPATH . 'wp-admin/includes/' . $stubFile)) {
+        @touch(ABSPATH . 'wp-admin/includes/' . $stubFile);
+    }
+}
+if (! file_exists(ABSPATH . 'wp-includes/update.php')) {
+    @touch(ABSPATH . 'wp-includes/update.php');
+}
+
+if (! function_exists('wp_get_translation_updates')) {
+    function wp_get_translation_updates(): array
+    {
+        return $GLOBALS['wp_test_translation_updates'] ?? [];
+    }
+}
+
+if (! function_exists('WP_Filesystem')) {
+    function WP_Filesystem(): bool
+    {
+        return true;
+    }
+}
+
+if (! class_exists('Automatic_Upgrader_Skin')) {
+    class Automatic_Upgrader_Skin
+    {
+        public array $messages = [];
+        public function get_upgrade_messages(): array
+        {
+            return $this->messages;
+        }
+        public function get_errors(): object
+        {
+            return new class {
+                public function has_errors(): bool { return false; }
+                public function get_error_messages(): array { return []; }
+            };
+        }
+    }
+}
+
+if (! class_exists('Language_Pack_Upgrader')) {
+    class Language_Pack_Upgrader
+    {
+        public function __construct(public mixed $skin = null) {}
+
+        public function bulk_upgrade(array $language_updates = [], array $args = []): mixed
+        {
+            if (isset($GLOBALS['wp_test_bulk_upgrade_result'])) {
+                return $GLOBALS['wp_test_bulk_upgrade_result'];
+            }
+            return [true];
+        }
+    }
+}
+
+if (! function_exists('is_wp_error')) {
+    function is_wp_error(mixed $thing): bool
+    {
+        return $thing instanceof WP_Error;
+    }
+}
+
+if (! function_exists('get_site_transient')) {
+    function get_site_transient(string $transient): mixed
+    {
+        return get_transient($transient);
+    }
+}
+
+if (! function_exists('get_plugins')) {
+    function get_plugins(): array
+    {
+        return [];
+    }
+}
+
+if (! function_exists('wp_get_themes')) {
+    function wp_get_themes(): array
+    {
+        return [];
+    }
+}
+
+if (! function_exists('get_bloginfo')) {
+    function get_bloginfo(string $show = 'name'): string
+    {
+        return '6.7';
+    }
+}
+
+if (! function_exists('wp_get_theme')) {
+    function wp_get_theme(): object
+    {
+        return new class {
+            public function get(string $header): string { return '1.0'; }
+        };
+    }
+}
+
+if (! function_exists('get_site_option')) {
+    function get_site_option(string $option, mixed $default = false): mixed
+    {
+        return get_option($option, $default);
+    }
+}
+
+if (! function_exists('get_stylesheet')) {
+    function get_stylesheet(): string
+    {
+        return 'twentytwentyfive';
+    }
+}
+
+if (! function_exists('get_template')) {
+    function get_template(): string
+    {
+        return 'twentytwentyfive';
+    }
+}
+
+if (! function_exists('get_users')) {
+    function get_users(): array
+    {
+        return [];
+    }
+}
+
+if (! function_exists('_get_cron_array')) {
+    function _get_cron_array(): array
+    {
+        return [];
+    }
+}
+
+if (! function_exists('is_plugin_active')) {
+    function is_plugin_active(string $plugin): bool
+    {
+        return false;
+    }
+}
+
+if (! defined('WP_PLUGIN_DIR')) {
+    define('WP_PLUGIN_DIR', WP_CONTENT_DIR . '/plugins');
+}
+
+if (! class_exists('wpdb')) {
+    class wpdb
+    {
+        public string $prefix = 'wp_';
+        public string $options = 'wp_options';
+        public string $comments = 'wp_comments';
+        public array $queries = [];
+
+        public function query(string $query): int
+        {
+            $this->queries[] = $query;
+            return 1;
+        }
+
+        public function prepare(string $query, mixed ...$args): string
+        {
+            foreach ($args as $arg) {
+                $query = preg_replace('/%s/', "'".addslashes((string) $arg)."'", $query, 1);
+            }
+
+            return $query;
+        }
+
+        public function esc_like(string $text): string
+        {
+            return addcslashes($text, '_%\\');
+        }
+
+        public function get_var(?string $query = null, int $x = 0, int $y = 0): mixed
+        {
+            return null;
+        }
+
+        public function get_results(?string $query = null, string $output = 'ARRAY_A'): array
+        {
+            return [];
+        }
+    }
+}
+$GLOBALS['wpdb'] = new wpdb();
