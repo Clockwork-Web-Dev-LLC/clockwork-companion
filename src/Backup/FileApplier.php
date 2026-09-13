@@ -76,6 +76,9 @@ class FileApplier
         foreach ($iterator as $item) {
             $subPath = substr($item->getPathname(), strlen(rtrim($stagingContentDir, '/\\')) + 1);
             $normalizedSubPath = str_replace('\\', '/', $subPath);
+            if (ArchiveExtractor::isUnsafeEntryName($normalizedSubPath)) {
+                continue;
+            }
             $parts = explode('/', $normalizedSubPath);
 
             $skip = false;

@@ -17,6 +17,9 @@ class ArchiveDownloader
     /** @var callable|null Test callback: fn(string $url, string $destPath, ?callable $progressCallback, ?string $archiveKey, string $partialPath, int $resumeOffset): array{ok: bool, http_code: int, bytes_downloaded: int, sha256: string, error?: string} */
     public static $testDownloader = null;
 
+    /** @var list<string>|null Hosts treated as public in tests (skip DNS). */
+    public static ?array $testAllowHosts = null;
+
     /**
      * Compute the resumable partial-file path for a download.
      * Keyed by the archive key so a re-staged download of the same archive can
@@ -43,13 +46,13 @@ class ArchiveDownloader
      */
     public function download(string $url, string $destPath, ?callable $progressCallback = null, ?string $archiveKey = null): array
     {
-        if (filter_var($url, FILTER_VALIDATE_URL) === false || ! str_starts_with(strtolower($url), 'https://')) {
+        if (! self::isSafeHttpsDownloadUrl($url)) {
             return [
                 'ok' => false,
                 'http_code' => 0,
                 'bytes_downloaded' => 0,
                 'sha256' => '',
-                'error' => 'Valid HTTPS URL is required for archive download.',
+                'error' => 'Valid public HTTPS URL is required for archive download.',
             ];
         }
 
@@ -108,11 +111,15 @@ class ArchiveDownloader
 
         $ch = curl_init($url);
         curl_setopt($ch, CURLOPT_FILE, $fp);
-        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-        curl_setopt($ch, CURLOPT_MAXREDIRS, 5);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, false);
         curl_setopt($ch, CURLOPT_TIMEOUT, 900);
         curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 30);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
+        if (defined('CURLPROTO_HTTPS')) {
+            curl_setopt($ch, CURLOPT_PROTOCOLS, CURLPROTO_HTTPS);
+            curl_setopt($ch, CURLOPT_REDIR_PROTOCOLS, CURLPROTO_HTTPS);
+        }
 
         if (! empty($rangeHeader)) {
             curl_setopt($ch, CURLOPT_HTTPHEADER, $rangeHeader);
@@ -151,6 +158,18 @@ class ArchiveDownloader
             return $this->download($url, $destPath, $progressCallback, $archiveKey);
         }
 
+        if (in_array($httpCode, [301, 302, 303, 307, 308], true)) {
+            @unlink($partialPath);
+
+            return [
+                'ok' => false,
+                'http_code' => $httpCode,
+                'bytes_downloaded' => 0,
+                'sha256' => '',
+                'error' => 'Archive download refused a redirect. Use a direct HTTPS object URL.',
+            ];
+        }
+
         $success = in_array($httpCode, [200, 206], true);
         if (! $success) {
             // Keep the partial file on disk so a later attempt can resume.
@@ -183,5 +202,64 @@ class ArchiveDownloader
             'bytes_downloaded' => $finalSize,
             'sha256' => $finalSha256,
         ];
+    }
+
+    /**
+     * HTTPS only, and the host must not resolve (or be) a private / reserved
+     * address. HMAC already gates this route; this stops a stolen secret from
+     * turning Companion into a metadata/SSRF client.
+     */
+    public static function isSafeHttpsDownloadUrl(string $url): bool
+    {
+        if (filter_var($url, FILTER_VALIDATE_URL) === false || ! str_starts_with(strtolower($url), 'https://')) {
+            return false;
+        }
+
+        $host = parse_url($url, PHP_URL_HOST);
+        if (! is_string($host) || $host === '') {
+            return false;
+        }
+
+        if (self::$testAllowHosts !== null && in_array(strtolower($host), self::$testAllowHosts, true)) {
+            return true;
+        }
+
+        $ips = filter_var($host, FILTER_VALIDATE_IP) !== false
+            ? [$host]
+            : self::resolveHostIps($host);
+
+        if ($ips === []) {
+            return false;
+        }
+
+        foreach ($ips as $ip) {
+            if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /** @return list<string> */
+    private static function resolveHostIps(string $host): array
+    {
+        $records = @dns_get_record($host, DNS_A + DNS_AAAA);
+        if (! is_array($records)) {
+            return [];
+        }
+
+        $ips = [];
+        foreach ($records as $record) {
+            if (! is_array($record)) {
+                continue;
+            }
+            $ip = $record['ip'] ?? $record['ipv6'] ?? null;
+            if (is_string($ip) && $ip !== '') {
+                $ips[] = $ip;
+            }
+        }
+
+        return array_values(array_unique($ips));
     }
 }

@@ -4,6 +4,15 @@ Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earli
 
 ## [Unreleased]
 
+## 1.37.1 — 2026-09-12
+
+### Security
+- **Restore download SSRF**: archive GETs are HTTPS-only, refuse private/reserved IPs, do not follow redirects, and verify TLS hostnames. File apply skips zip-slip paths even if extraction missed one.
+- **Backup upload SSRF**: `POST /backup/create` rejects non-public `upload_url` values before dumping the site, and the S3 uploader refuses CR/LF header injection, private HTTPS targets, and redirects.
+
+### Documentation
+- README now documents HMAC replay consume / rate limit and the public-HTTPS rules for backup create and restore URLs.
+
 ## 1.37.0 — 2026-09-11
 
 ### Added

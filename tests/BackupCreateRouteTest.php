@@ -2,6 +2,7 @@
 
 namespace ClockworkCompanion\Tests;
 
+use ClockworkCompanion\Backup\ArchiveDownloader;
 use ClockworkCompanion\Backup\S3DirectUploader;
 use ClockworkCompanion\Rest\BackupCreateRoute;
 use PHPUnit\Framework\TestCase;
@@ -15,12 +16,27 @@ class BackupCreateRouteTest extends TestCase
         parent::setUp();
         $GLOBALS['wp_test_options'] = [];
         S3DirectUploader::$testUploader = null;
+        ArchiveDownloader::$testAllowHosts = ['bucket.s3.amazonaws.com', 's3.amazonaws.com'];
     }
 
     protected function tearDown(): void
     {
         S3DirectUploader::$testUploader = null;
+        ArchiveDownloader::$testAllowHosts = null;
         parent::tearDown();
+    }
+
+    public function testHandleRejectsPrivateUploadUrl(): void
+    {
+        $route = new BackupCreateRoute();
+        $request = new WP_REST_Request('POST', '/clockwork/v1/backup/create', [
+            'upload_url' => 'https://127.0.0.1/latest/meta-data',
+        ]);
+
+        $response = $route->handle($request);
+        $this->assertInstanceOf(WP_Error::class, $response);
+        $this->assertSame('invalid_upload_url', $response->get_error_code());
+        $this->assertSame(400, $response->get_error_data()['status']);
     }
 
     public function testHandleRejectsMissingUploadUrl(): void

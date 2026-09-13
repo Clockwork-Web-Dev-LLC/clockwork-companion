@@ -63,8 +63,8 @@ class BackupRestoreRoute
             }
 
             $downloadUrl = trim((string) ($params['download_url'] ?? ''));
-            if ($downloadUrl === '' || filter_var($downloadUrl, FILTER_VALIDATE_URL) === false || ! str_starts_with(strtolower($downloadUrl), 'https://')) {
-                return new WP_Error('invalid_download_url', 'Valid HTTPS download_url is required.', ['status' => 400]);
+            if ($downloadUrl === '' || ! ArchiveDownloader::isSafeHttpsDownloadUrl($downloadUrl)) {
+                return new WP_Error('invalid_download_url', 'Valid public HTTPS download_url is required.', ['status' => 400]);
             }
 
             $archiveKey = trim((string) ($params['archive_key'] ?? ''));

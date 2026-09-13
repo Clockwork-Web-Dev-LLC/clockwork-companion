@@ -3,6 +3,7 @@
 namespace ClockworkCompanion\Rest;
 
 use ClockworkCompanion\Auth\HmacVerifier;
+use ClockworkCompanion\Backup\ArchiveDownloader;
 use ClockworkCompanion\Backup\BackupArchiver;
 use ClockworkCompanion\Backup\Paths;
 use ClockworkCompanion\Backup\DatabaseDumper;
@@ -43,8 +44,8 @@ class BackupCreateRoute
         }
 
         $uploadUrl = trim((string) ($params['upload_url'] ?? ''));
-        if ($uploadUrl === '' || filter_var($uploadUrl, FILTER_VALIDATE_URL) === false) {
-            return new WP_Error('invalid_upload_url', 'Valid upload_url parameter is required.', ['status' => 400]);
+        if ($uploadUrl === '' || ! ArchiveDownloader::isSafeHttpsDownloadUrl($uploadUrl)) {
+            return new WP_Error('invalid_upload_url', 'Valid public HTTPS upload_url is required.', ['status' => 400]);
         }
 
         $headers = is_array($params['headers'] ?? null) ? $params['headers'] : [];

@@ -22,6 +22,16 @@ class S3DirectUploader
      */
     public function upload(string $filePath, string $uploadUrl, array $headers = []): array
     {
+        if (! ArchiveDownloader::isSafeHttpsDownloadUrl($uploadUrl)) {
+            return [
+                'ok' => false,
+                'http_code' => 0,
+                'size_bytes' => 0,
+                'sha256' => '',
+                'error' => 'Valid public HTTPS URL is required for archive upload.',
+            ];
+        }
+
         if (! file_exists($filePath)) {
             return [
                 'ok' => false,
@@ -75,7 +85,20 @@ class S3DirectUploader
 
         $headerList = [];
         foreach ($headers as $k => $v) {
-            $headerList[] = "{$k}: {$v}";
+            $name = (string) $k;
+            $value = (string) $v;
+            if ($name === '' || strpbrk($name, "\r\n:") !== false || strpbrk($value, "\r\n") !== false) {
+                fclose($fp);
+
+                return [
+                    'ok' => false,
+                    'http_code' => 0,
+                    'size_bytes' => $size,
+                    'sha256' => $sha256,
+                    'error' => 'Refusing upload headers that contain CR, LF, or a colon in the name.',
+                ];
+            }
+            $headerList[] = "{$name}: {$value}";
         }
         $headerList[] = 'Content-Length: '.$size;
 
@@ -85,9 +108,15 @@ class S3DirectUploader
         curl_setopt($ch, CURLOPT_INFILESIZE, $size);
         curl_setopt($ch, CURLOPT_HTTPHEADER, $headerList);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, false);
         curl_setopt($ch, CURLOPT_TIMEOUT, 900);
         curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 30);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
+        if (defined('CURLPROTO_HTTPS')) {
+            curl_setopt($ch, CURLOPT_PROTOCOLS, CURLPROTO_HTTPS);
+            curl_setopt($ch, CURLOPT_REDIR_PROTOCOLS, CURLPROTO_HTTPS);
+        }
 
         $response = curl_exec($ch);
         $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);

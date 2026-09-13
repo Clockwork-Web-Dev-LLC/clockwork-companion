@@ -27,6 +27,7 @@ class BackupRestoreRouteTest extends TestCase
         $GLOBALS['wp_test_transients'] = [];
 
         ArchiveDownloader::$testDownloader = null;
+        ArchiveDownloader::$testAllowHosts = ['s3.amazonaws.com'];
         ArchiveExtractor::$testExtractor = null;
         SqlImporter::$testImporter = null;
         FileApplier::$testApplier = null;
@@ -38,6 +39,7 @@ class BackupRestoreRouteTest extends TestCase
     protected function tearDown(): void
     {
         ArchiveDownloader::$testDownloader = null;
+        ArchiveDownloader::$testAllowHosts = null;
         ArchiveExtractor::$testExtractor = null;
         SqlImporter::$testImporter = null;
         FileApplier::$testApplier = null;
@@ -61,6 +63,29 @@ class BackupRestoreRouteTest extends TestCase
         $this->assertInstanceOf(WP_Error::class, $response);
         $this->assertSame('invalid_download_url', $response->get_error_code());
         $this->assertSame(400, $response->get_error_data()['status']);
+    }
+
+    public function testHandleStageRejectsPrivateDownloadUrl(): void
+    {
+        $route = new BackupRestoreRoute();
+        $request = new WP_REST_Request('POST', '/clockwork/v1/backup/restore/stage', [
+            'download_url' => 'https://127.0.0.1/latest/meta-data',
+            'archive_key' => 'archives/example.com/2026-09-11.zip',
+            'expected_sha256' => str_repeat('a', 64),
+        ]);
+
+        $response = $route->handleStage($request);
+        $this->assertInstanceOf(WP_Error::class, $response);
+        $this->assertSame('invalid_download_url', $response->get_error_code());
+    }
+
+    public function testIsSafeHttpsDownloadUrlRejectsLoopbackAndHttp(): void
+    {
+        $this->assertFalse(ArchiveDownloader::isSafeHttpsDownloadUrl('http://s3.amazonaws.com/x'));
+        $this->assertFalse(ArchiveDownloader::isSafeHttpsDownloadUrl('https://127.0.0.1/x'));
+        $this->assertFalse(ArchiveDownloader::isSafeHttpsDownloadUrl('https://169.254.169.254/latest/meta-data'));
+        $this->assertFalse(ArchiveDownloader::isSafeHttpsDownloadUrl('https://10.0.0.5/backup.zip'));
+        $this->assertTrue(ArchiveDownloader::isSafeHttpsDownloadUrl('https://s3.amazonaws.com/bucket/backup.zip'));
     }
 
     public function testHandleStageRejectsMissingArchiveKey(): void

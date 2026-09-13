@@ -28,6 +28,12 @@ METHOD\n/wp-json/<route>\n<timestamp>\n<body>
 
 Body is the empty string for GET. The replay window is 300 seconds; requests outside it are rejected even with valid signatures.
 
+Mutating requests (POST/PUT/PATCH/DELETE) also consume the exact signature for that window so a captured body cannot be replayed. Failed verifications are rate-limited per IP (30 / 60s).
+
+## Backup URL rules (create + restore)
+
+`POST /backup/create` (`upload_url`) and `POST /backup/restore/stage` (`download_url`) accept **public HTTPS only**. Private/reserved IPs are refused, redirects are not followed, TLS hostname is verified, and upload headers cannot contain CR/LF. HMAC already gates the route; this stops a stolen secret from turning Companion into an SSRF / metadata client. Zip entries with `../` or absolute paths abort extract and are skipped again on file apply.
+
 ## Capabilities advertised by `/health`
 
 ```json
