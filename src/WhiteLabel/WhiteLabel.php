@@ -482,8 +482,12 @@ class WhiteLabel
      * @param array<string, array<string, mixed>> $plugins
      * @return array<string, array<string, mixed>>
      */
-    public function filterAllPlugins(array $plugins): array
+    public function filterAllPlugins(?array $plugins): array
     {
+        // Nullable: filters receive whatever the previous callback returned —
+        // never trust the type (see filterAdminFooterText).
+        $plugins ??= [];
+
         if (! self::isEnabled()) {
             return $plugins;
         }
@@ -529,9 +533,13 @@ class WhiteLabel
      * @param string $file
      * @return string[]
      */
-    public function filterPluginRowMeta(array $meta, string $file): array
+    public function filterPluginRowMeta(?array $meta, ?string $file): array
     {
-        if (! self::isEnabled() || ! $this->isCompanionPluginFile($file)) {
+        // Nullable: filters receive whatever the previous callback returned —
+        // never trust the type (see filterAdminFooterText).
+        $meta ??= [];
+
+        if (! self::isEnabled() || $file === null || ! $this->isCompanionPluginFile($file)) {
             return $meta;
         }
 
@@ -573,15 +581,20 @@ class WhiteLabel
 
     /**
      * Filter admin footer text for white-label credit.
+     *
+     * $footerText is nullable: any earlier callback on `admin_footer_text`
+     * can return null (seen live on a client site, 2026-09-15, where a strict
+     * string type here fataled every wp-admin page footer). Filters receive
+     * whatever the previous callback returned — never trust the type.
      */
-    public function filterAdminFooterText(string $footerText): string
+    public function filterAdminFooterText(?string $footerText): string
     {
         $custom = self::getFooterText();
         if ($custom !== '') {
             return esc_html($custom);
         }
 
-        return $footerText;
+        return $footerText ?? '';
     }
 
     /**

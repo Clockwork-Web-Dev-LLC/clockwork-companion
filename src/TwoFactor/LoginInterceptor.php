@@ -172,8 +172,13 @@ class LoginInterceptor
      * Shown on wp-login.php after a challenge expired (TTL or attempt cap).
      * Mirrors the Sso\Interceptor error pattern.
      */
-    public function maybeShowExpiredNotice(string $message): string
+    public function maybeShowExpiredNotice(?string $message): string
     {
+        // Nullable: an earlier login_message callback can return null — a
+        // strict string here fatals the login screen (same class of bug as
+        // WhiteLabel::filterAdminFooterText on a client site, 2026-09-15).
+        $message ??= '';
+
         if (empty($_GET['clockwork_2fa_expired'])) {
             return $message;
         }

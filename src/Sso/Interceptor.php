@@ -106,8 +106,13 @@ class Interceptor
         exit;
     }
 
-    public function maybeShowError(string $message): string
+    public function maybeShowError(?string $message): string
     {
+        // Nullable: an earlier login_message callback can return null — a
+        // strict string here fatals the login screen (same class of bug as
+        // WhiteLabel::filterAdminFooterText on a client site, 2026-09-15).
+        $message ??= '';
+
         if (! isset($_GET['clockwork_sso_error'])) {
             return $message;
         }

@@ -168,6 +168,28 @@ class WhiteLabelTest extends TestCase
         $this->assertSame('Default WP Footer', $whiteLabel->filterAdminFooterText('Default WP Footer'));
     }
 
+    /**
+     * Any earlier admin_footer_text callback can return null; a strict
+     * string parameter fataled every wp-admin footer on a live site
+     * (a client site, 2026-09-15). Null must coerce, never throw.
+     */
+    public function testFilterCallbacksTolerateNullFromEarlierCallbacks(): void
+    {
+        update_option(WhiteLabel::OPTION_KEY, ['enabled' => false]);
+
+        $whiteLabel = new WhiteLabel();
+        $this->assertSame('', $whiteLabel->filterAdminFooterText(null));
+        $this->assertSame([], $whiteLabel->filterAllPlugins(null));
+        $this->assertSame([], $whiteLabel->filterPluginRowMeta(null, null));
+
+        // With white-label enabled, a null input still yields the custom text.
+        update_option(WhiteLabel::OPTION_KEY, [
+            'enabled' => true,
+            'footer_text' => 'Custom Agency Footer Credit',
+        ]);
+        $this->assertSame('Custom Agency Footer Credit', $whiteLabel->filterAdminFooterText(null));
+    }
+
     public function testBrandTextStaysIndependentOfMenuTitle(): void
     {
         update_option(WhiteLabel::OPTION_KEY, [
