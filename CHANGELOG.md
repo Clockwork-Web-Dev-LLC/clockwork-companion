@@ -4,6 +4,13 @@ Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earli
 
 ## [Unreleased]
 
+## 1.37.2 — 2026-09-15
+
+### Fixed
+
+- **wp-admin fatal on filtered footer text**: `WhiteLabel::filterAdminFooterText()` declared a strict `string` parameter, so any earlier `admin_footer_text` callback returning `null` fataled every wp-admin page footer (seen live on a client site running WP 7.1). The callback now accepts `?string` and coerces to `''`.
+- **Same hardening applied to every other typed filter callback** — `login_message` (2FA expired notice, SSO error), `all_plugins`, and `plugin_row_meta` now tolerate `null` from earlier callbacks instead of fataling. Filters receive whatever the previous callback returned; never trust the type.
+
 ## 1.37.1 — 2026-09-12
 
 ### Security
