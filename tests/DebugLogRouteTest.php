@@ -101,4 +101,35 @@ Another error line
         $this->assertTrue($data['cleared']);
         $this->assertSame(0, filesize($this->logFile));
     }
+    public function testAuthorizeLogPathRejectsWpConfigAndPathsOutsideContent(): void
+    {
+        $route = new DebugLogRoute();
+
+        $this->assertNull($route->authorizeLogPath(ABSPATH . 'wp-config.php'));
+        $this->assertNull($route->authorizeLogPath('/tmp/not-wp-content/debug.log'));
+        $this->assertNotNull($route->authorizeLogPath(WP_CONTENT_DIR . '/debug.log'));
+    }
+
+    public function testHandleGetMasksAdditionalSecretsAndBoundsHugeLines(): void
+    {
+        $huge = str_repeat('A', 600000);
+        $secret = "[13-Sep-2026 12:02:00 UTC] Authorization: Basic YWRtaW46c2VjcmV0 and x-clockwork-signature: abcdef0123456789ffff AKIAIOSFODNN7EXAMPLE from /var/www/html/app.php";
+        file_put_contents($this->logFile, $huge . "\n" . $secret . "\n");
+
+        $route = new DebugLogRoute();
+        $request = new WP_REST_Request('GET', '/clockwork-companion/v1/debug-log', ['lines' => 50]);
+        $response = $route->handleGet($request);
+        $data = $response->get_data();
+
+        $this->assertTrue($data['ok']);
+        $joined = implode("\n", $data['lines']);
+        $this->assertLessThan(600000, strlen($joined));
+        $this->assertStringContainsString('Authorization: Basic [REDACTED]', $joined);
+        $this->assertStringContainsString('x-clockwork-signature: [REDACTED]', $joined);
+        $this->assertStringContainsString('[REDACTED_AWS_KEY]', $joined);
+        $this->assertStringContainsString('/[WEBROOT]/', $joined);
+        $this->assertStringNotContainsString('AKIAIOSFODNN7EXAMPLE', $joined);
+        $this->assertStringNotContainsString('/var/www/html/app.php', $joined);
+    }
 }
+

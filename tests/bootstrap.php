@@ -122,6 +122,15 @@ if (! function_exists('delete_transient')) {
 }
 
 
+
+if (! function_exists('delete_site_transient')) {
+    function delete_site_transient(string $transient): bool
+    {
+        unset($GLOBALS['wp_test_transients']['site_' . $transient]);
+        return true;
+    }
+}
+
 if (! function_exists('add_filter')) {
     function add_filter(string $tag, callable $callback, int $priority = 10, int $accepted_args = 1): bool
     {
@@ -508,6 +517,8 @@ if (! class_exists('wpdb')) {
         public string $posts = 'wp_posts';
         public string $postmeta = 'wp_postmeta';
         public string $commentmeta = 'wp_commentmeta';
+        public string $termmeta = 'wp_termmeta';
+        public string $terms = 'wp_terms';
         public string $users = 'wp_users';
         public array $queries = [];
 
@@ -902,6 +913,27 @@ if (! class_exists('Plugin_Upgrader')) {
         {
             return 'classic-editor/classic-editor.php';
         }
+    }
+}
+
+if (! function_exists('get_temp_dir')) {
+    function get_temp_dir(): string
+    {
+        return sys_get_temp_dir();
+    }
+}
+
+if (! function_exists('wp_generate_password')) {
+    function wp_generate_password(int $length = 12, bool $special_chars = true, bool $extra_special_chars = false): string
+    {
+        return substr(bin2hex(random_bytes(8)), 0, $length);
+    }
+}
+
+if (! function_exists('trailingslashit')) {
+    function trailingslashit(string $value): string
+    {
+        return rtrim($value, '/\\') . '/';
     }
 }
 

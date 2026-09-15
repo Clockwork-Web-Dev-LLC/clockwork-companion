@@ -10,9 +10,10 @@ use WP_REST_Response;
 /**
  * GET /wp-json/clockwork/v1/snapshot
  *
- * One HMAC call returns the full Round-1 snapshot: plugins + admins + cron
- * + comments_summary. Saves three round trips when refreshing every site
- * on a schedule.
+ * One HMAC call returns the Round-1 snapshot: plugins, admins, cron,
+ * comments_summary, plus lightweight database telemetry (SHOW TABLE STATUS
+ * only — full bloat COUNTs stay on GET /database/summary). Saves round
+ * trips when refreshing every site on a schedule.
  *
  * Each sub-payload is composed in-process by calling the corresponding
  * route's payload() method — no internal HTTP call, no extra signature
@@ -55,7 +56,7 @@ class SnapshotRoute
             'two_factor'            => (new TwoFactorStatusRoute())->payload(),
             'translations'          => $this->translationsPayload(),
             'environment'           => (new EnvironmentRoute())->summaryPayload(),
-            'database'              => (new DatabaseRoute())->summaryPayload(),
+            'database'              => (new DatabaseRoute())->snapshotPayload(),
             'client_notifications'  => ClientNotifications::payload(),
         ]);
     }

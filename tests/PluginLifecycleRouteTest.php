@@ -34,6 +34,8 @@ class PluginLifecycleRouteTest extends TestCase
         unset($GLOBALS['wp_test_delete_plugins_result']);
         unset($GLOBALS['wp_test_plugins_api_result']);
         unset($GLOBALS['wp_test_plugin_upgrader_install_result']);
+        \ClockworkCompanion\Backup\ArchiveDownloader::$testDownloader = null;
+        \ClockworkCompanion\Backup\ArchiveDownloader::$testAllowHosts = null;
         parent::tearDown();
     }
 
@@ -158,4 +160,93 @@ class PluginLifecycleRouteTest extends TestCase
         $this->assertSame('1.6.5', $data['version']);
         $this->assertTrue($data['activated']);
     }
+    public function testToggleRefusesDeactivatingConnectorPlugin(): void
+    {
+        $GLOBALS['wp_test_plugins']['clockwork-companion/clockwork-companion.php'] = [
+            'Name' => 'Clockwork Companion',
+        ];
+        $GLOBALS['wp_test_active_plugins'][] = 'clockwork-companion/clockwork-companion.php';
+
+        $route = new PluginLifecycleRoute();
+        $req = new WP_REST_Request('POST', '/clockwork-companion/v1/plugins/toggle', [
+            'slug'   => 'clockwork-companion/clockwork-companion.php',
+            'action' => 'deactivate',
+        ]);
+        $res = $route->handleToggle($req);
+
+        $this->assertInstanceOf(\WP_Error::class, $res);
+        $this->assertSame('protected_plugin', $res->get_error_code());
+        $this->assertContains('clockwork-companion/clockwork-companion.php', $GLOBALS['wp_test_active_plugins']);
+    }
+
+    public function testDeleteRefusesConnectorPlugin(): void
+    {
+        $GLOBALS['wp_test_plugins']['clockwork-renegade/clockwork-renegade.php'] = [
+            'Name' => 'Clockwork Renegade',
+        ];
+
+        $route = new PluginLifecycleRoute();
+        $req = new WP_REST_Request('POST', '/clockwork-companion/v1/plugins/delete', [
+            'slug' => 'clockwork-renegade/clockwork-renegade.php',
+        ]);
+        $res = $route->handleDelete($req);
+
+        $this->assertInstanceOf(\WP_Error::class, $res);
+        $this->assertSame('protected_plugin', $res->get_error_code());
+        $this->assertArrayHasKey('clockwork-renegade/clockwork-renegade.php', $GLOBALS['wp_test_plugins']);
+    }
+
+    public function testInstallFromControlPackageDownloadsAndActivates(): void
+    {
+        \ClockworkCompanion\Backup\ArchiveDownloader::$testAllowHosts = ['packages.clockwork.test'];
+        $payload = 'pkg-bytes';
+        $digest = hash('sha256', $payload);
+        \ClockworkCompanion\Backup\ArchiveDownloader::$testDownloader = static function (string $url, string $destPath) use ($payload, $digest): array {
+            file_put_contents($destPath, $payload);
+
+            return [
+                'ok' => true,
+                'http_code' => 200,
+                'bytes_downloaded' => strlen($payload),
+                'sha256' => $digest,
+            ];
+        };
+
+        $route = new PluginLifecycleRoute();
+        $req = new WP_REST_Request('POST', '/clockwork-companion/v1/plugins/install', [
+            'package_url' => 'https://packages.clockwork.test/private-plugin.zip',
+            'sha256' => $digest,
+            'activate' => true,
+        ]);
+        $res = $route->handleInstall($req);
+        $data = $res->get_data();
+
+        $this->assertTrue($data['ok']);
+        $this->assertSame('control_package', $data['source']);
+        $this->assertTrue($data['activated']);
+    }
+
+    public function testInstallFromControlPackageRejectsMissingSha256(): void
+    {
+        $route = new PluginLifecycleRoute();
+        $req = new WP_REST_Request('POST', '/clockwork-companion/v1/plugins/install', [
+            'package_url' => 'https://packages.clockwork.test/private-plugin.zip',
+        ]);
+        $res = $route->handleInstall($req);
+        $this->assertInstanceOf(\WP_Error::class, $res);
+        $this->assertSame('invalid_input', $res->get_error_code());
+    }
+
+    public function testInstallFromControlPackageRejectsPrivateUrl(): void
+    {
+        $route = new PluginLifecycleRoute();
+        $req = new WP_REST_Request('POST', '/clockwork-companion/v1/plugins/install', [
+            'package_url' => 'https://127.0.0.1/evil.zip',
+            'sha256' => str_repeat('a', 64),
+        ]);
+        $res = $route->handleInstall($req);
+        $this->assertInstanceOf(\WP_Error::class, $res);
+        $this->assertSame('invalid_package_url', $res->get_error_code());
+    }
 }
+
