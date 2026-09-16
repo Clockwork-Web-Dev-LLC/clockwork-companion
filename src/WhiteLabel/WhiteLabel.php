@@ -62,7 +62,6 @@ class WhiteLabel
         add_action('admin_head', [$this, 'injectBrandingCss']);
 
         // Form post and AJAX handlers for settings and donation state
-        add_action('admin_post_clockwork_whitelabel_save', [$this, 'handleSaveSettings']);
         add_action('admin_post_clockwork_whitelabel_donated', [$this, 'handleDonatedAction']);
         add_action('admin_post_clockwork_whitelabel_dismiss_donation', [$this, 'handleDismissDonationAction']);
         add_action('wp_ajax_clockwork_whitelabel_donated', [$this, 'handleAjaxDonated']);
@@ -786,55 +785,11 @@ class WhiteLabel
      */
     public function handleSaveSettings(): void
     {
-        if (! current_user_can('manage_options')) {
-            wp_die('Unauthorized', 403);
-        }
-
-        check_admin_referer('clockwork_whitelabel_save', 'clockwork_whitelabel_nonce');
-
-        $input = $_POST['whitelabel'] ?? [];
-        if (! is_array($input)) {
-            $input = [];
-        }
-
-        $clean = [
-            'enabled' => ! empty($input['enabled']),
-            'plugin_name' => sanitize_text_field($input['plugin_name'] ?? self::DEFAULTS['plugin_name']),
-            'plugin_description' => sanitize_textarea_field($input['plugin_description'] ?? self::DEFAULTS['plugin_description']),
-            'author_name' => sanitize_text_field($input['author_name'] ?? self::DEFAULTS['author_name']),
-            'author_url' => esc_url_raw($input['author_url'] ?? ''),
-            'plugin_url' => esc_url_raw($input['plugin_url'] ?? ''),
-            'menu_title' => sanitize_text_field($input['menu_title'] ?? self::DEFAULTS['menu_title']),
-            'brand_text' => sanitize_text_field($input['brand_text'] ?? self::DEFAULTS['brand_text']),
-            'logo_url' => esc_url_raw($input['logo_url'] ?? ''),
-            'menu_icon_url' => esc_url_raw($input['menu_icon_url'] ?? ''),
-            'hide_version' => ! empty($input['hide_version']),
-            'hide_plugin_row' => ! empty($input['hide_plugin_row']),
-            'hide_help_links' => ! empty($input['hide_help_links']),
-            'footer_text' => sanitize_text_field($input['footer_text'] ?? ''),
-            'primary_color' => self::sanitizeHexColor($input['primary_color'] ?? '#6953C4'),
-            'primary_dark_color' => self::sanitizeHexColor($input['primary_dark_color'] ?? '#2D2062'),
-            'primary_soft_color' => self::sanitizeHexColor($input['primary_soft_color'] ?? '#D1C9F4'),
-            'accent_color' => self::sanitizeHexColor($input['accent_color'] ?? '#7EFF83'),
-            'page_bg_color' => self::sanitizeHexColor($input['page_bg_color'] ?? '#FFFFFF'),
-            'card_bg_color' => self::sanitizeHexColor($input['card_bg_color'] ?? '#FFFFFF'),
-            'support_button_label' => sanitize_text_field($input['support_button_label'] ?? 'Get Support'),
-            'support_url' => esc_url_raw($input['support_url'] ?? ''),
-            'agency_email_domains' => implode(
-                ', ',
-                self::parseAgencyEmailDomains(sanitize_text_field($input['agency_email_domains'] ?? ''))
-            ),
-        ];
-
-        update_option(self::OPTION_KEY, $clean);
-
-        $redirectUrl = add_query_arg([
-            'page' => 'clockwork-branding',
-            'saved' => '1',
-        ], admin_url('admin.php'));
-
-        wp_safe_redirect($redirectUrl);
-        exit;
+        wp_die(
+            esc_html__('Branding is managed centrally in Clockwork Control and cannot be edited locally.', 'clockwork-companion'),
+            esc_html__('Forbidden', 'clockwork-companion'),
+            ['response' => 403]
+        );
     }
 
     /**

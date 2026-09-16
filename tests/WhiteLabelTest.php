@@ -265,4 +265,24 @@ class WhiteLabelTest extends TestCase
         $softSum = hexdec(substr($soft, 1, 2)) + hexdec(substr($soft, 3, 2)) + hexdec(substr($soft, 5, 2));
         $this->assertGreaterThan(600, $softSum);
     }
+
+    public function testBrandingPageAndLocalSaveAreLockedDownWith403(): void
+    {
+        // 1. Layout tabs must never include branding
+        $tabs = \ClockworkCompanion\Admin\Layout::tabs();
+        $tabSlugs = array_column($tabs, 'slug');
+        $this->assertNotContains('branding', $tabSlugs);
+
+        // 2. Direct render must die with 403
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage("wp_die [403]");
+        \ClockworkCompanion\Admin\Pages\WhiteLabelPage::render();
+    }
+
+    public function testLocalSaveHandlerDiesWith403(): void
+    {
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage("wp_die [403]");
+        (new WhiteLabel())->handleSaveSettings();
+    }
 }

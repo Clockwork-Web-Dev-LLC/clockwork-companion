@@ -13,7 +13,6 @@ use ClockworkCompanion\Admin\Pages\TwoFactorPage;
 use ClockworkCompanion\Admin\Pages\NotificationsPage;
 use ClockworkCompanion\Admin\Pages\UnlockPage;
 use ClockworkCompanion\Admin\Pages\UptimePage;
-use ClockworkCompanion\Admin\Pages\WhiteLabelPage;
 use ClockworkCompanion\WhiteLabel\WhiteLabel;
 
 /**
@@ -274,15 +273,6 @@ class Menu
 
         add_submenu_page(
             self::SLUG,
-            'Branding',
-            'Branding',
-            self::CAPABILITY,
-            WhiteLabelPage::SLUG,
-            [WhiteLabelPage::class, 'render']
-        );
-
-        add_submenu_page(
-            self::SLUG,
             'Connection',
             'Connection',
             self::CAPABILITY,
@@ -329,10 +319,6 @@ class Menu
             );
         }
 
-        // WP Media uploader for white-label logo selector
-        if (str_contains($hookSuffix, WhiteLabelPage::SLUG)) {
-            wp_enqueue_media();
-        }
     }
 
 }

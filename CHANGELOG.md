@@ -4,6 +4,12 @@ Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earli
 
 ## [Unreleased]
 
+## 1.37.3 — 2026-09-15
+
+### Security & Hardening
+
+- **Lock down white-label branding**: Removed the in-admin "Branding" customizer submenu and top tab from wp-admin. White-label branding is managed centrally from Clockwork Control and pushed to sites via HMAC-signed REST endpoint (`/wp-json/clockwork/v1/branding`). Direct URL access to `admin.php?page=clockwork-branding` and local POST save requests are now hard-blocked with HTTP 403.
+
 ## 1.37.2 — 2026-09-15
 
 ### Fixed
