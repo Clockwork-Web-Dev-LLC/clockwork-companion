@@ -971,3 +971,10 @@ if (! function_exists('wp_remote_get')) {
         return ['response' => ['code' => 200]];
     }
 }
+
+if (! function_exists('wp_die')) {
+    function wp_die($message = '', $title = '', $args = []) {
+        $status = is_array($args) && isset($args['response']) ? $args['response'] : 500;
+        throw new RuntimeException("wp_die [{$status}]: " . (is_scalar($message) ? $message : ''));
+    }
+}

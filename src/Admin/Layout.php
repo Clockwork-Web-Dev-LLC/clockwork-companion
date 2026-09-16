@@ -34,10 +34,6 @@ class Layout
         $all[] = ['slug' => 'backups', 'label' => 'Backups', 'page' => \ClockworkCompanion\Admin\Pages\BackupsPage::SLUG];
         $all[] = ['slug' => 'notifications', 'label' => 'Notifications', 'page' => \ClockworkCompanion\Admin\Pages\NotificationsPage::SLUG];
 
-        if (! WhiteLabel::isEnabled()) {
-            $all[] = ['slug' => 'branding', 'label' => 'Branding', 'page' => \ClockworkCompanion\Admin\Pages\WhiteLabelPage::SLUG];
-        }
-
         if (defined('CLOCKWORK_UNLOCK_HUB') && CLOCKWORK_UNLOCK_HUB) {
             $all[] = ['slug' => 'unlock', 'label' => 'Unlock', 'page' => \ClockworkCompanion\Admin\Pages\UnlockPage::SLUG];
         }
