@@ -4,6 +4,25 @@ Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earli
 
 ## [Unreleased]
 
+## 1.38.0 — 2026-09-17
+
+### Added
+
+- **Admin control of other users' two-factor** (Clockwork → Login Security → Team Status). Each administrator/editor row gains a **Manage** column with one applicable action:
+  - **Require 2FA** — flags the user as required and drops their grace period to zero, so their next wp-admin request is redirect-locked to the Login Security page until they enroll. This is deliberately *not* enrollment-on-behalf: the target still scans their own QR code, and the acting admin never sees their secret or backup codes. A second factor a second person holds isn't a second factor.
+  - **Stop requiring** — drops the requirement and restores a full default grace window.
+  - **Turn off 2FA** — the lockout-recovery path for someone who lost both their phone and their backup codes. Deletes their secret, backup codes and pending enrollment; they re-enroll from scratch.
+- Requiring reaches accounts the automatic nudge never covered (client-domain administrators, editors) but stays strictly **per user** — requiring one client admin does not start nagging their colleagues.
+- All three operations write an action-log row (`2fa_required`, `2fa_unrequired`, `2fa_disabled_by_admin`) naming both the target and the acting admin. Removing another administrator's second factor is exactly the move a compromised admin account would make, so it is never silent.
+- `GET /two-factor` now reports a per-user `required` boolean, letting the monitoring app distinguish "nobody has chased this account" from "already chased, still not enrolled".
+
+### Changed
+
+- **Login Security is now reachable below `manage_options`** (`TwoFactorPage::SELF_CAPABILITY = 'read'`). It is the only Clockwork page registered below the menu's own capability, because it is where a user sets up their own second factor and where grace enforcement redirect-locks them. Without this, requiring 2FA of an editor would have locked their wp-admin to a page they'd get a 403 on. The page gates Team Status and the Wordfence-removal button on `canManageOthers()` (`manage_options` + agency domain), so a user below that bar sees only their own enrollment card, and the tab strip collapses to the one tab they can open. The parent menu is still `manage_options`, so nobody gains a sidebar entry they didn't have.
+- `TwoFactorActions` (the current-user-only enroll/confirm/disable/regenerate/migrate handler) now gates on "is logged in" rather than `manage_options` — every op there mutates only the caller's own meta, and a required editor has to be able to finish enrolling. Its one site-wide op, `remove_wfls`, keeps the full `manage_options` + agency-domain gate.
+- Grace enforcement never redirect-locks a user who cannot load the page it redirects to; such a user gets the non-dismissible banner instead of a bounce loop.
+- Team Status shows a **"Required — not yet enrolled"** state, and the roll-call's role list is now a single shared constant (`UserSettings::TEAM_ROLES`) used by the table, the HMAC status route, and the admin action guard, so the rows rendered and the rows actionable cannot drift apart.
+
 ## 1.37.1 — 2026-09-12
 
 ### Security

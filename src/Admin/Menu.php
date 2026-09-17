@@ -213,11 +213,21 @@ class Menu
         );
 
         // Login Security sits right after Security — same mental bucket.
+        //
+        // The one page registered BELOW self::CAPABILITY. It is where a user
+        // sets up their own second factor, and EnrollmentNudge redirect-locks
+        // wp-admin to it once a grace period expires, so anyone an admin can
+        // require 2FA of — editors included — has to be able to open it.
+        // The page gates its own site-wide sections on
+        // TwoFactorPage::canManageOthers(); a user below manage_options sees
+        // only their own enrollment card. Note this does NOT put the item in
+        // anyone's sidebar who couldn't already see it: the parent menu is
+        // still manage_options, and WP doesn't render orphaned submenus.
         add_submenu_page(
             self::SLUG,
             'Login Security',
             'Login Security',
-            self::CAPABILITY,
+            TwoFactorPage::SELF_CAPABILITY,
             TwoFactorPage::SLUG,
             [TwoFactorPage::class, 'render']
         );
