@@ -33,6 +33,18 @@ class UserSettings
 
     public const BACKUP_CODE_COUNT = 8;
 
+    /**
+     * Roles that make up the "team" this feature reasons about: the ones
+     * that can change content or configuration, and so are worth a 2FA
+     * roll-call. Shared by the Team Status table, the HMAC status route,
+     * and TwoFactorAdminActions — an admin must only be able to act on a
+     * row the table actually renders, so these three cannot be allowed to
+     * drift apart.
+     *
+     * @var array<int, string>
+     */
+    public const TEAM_ROLES = ['administrator', 'editor'];
+
     public static function isEnabled(int $userId): bool
     {
         return get_user_meta($userId, self::META_ENABLED, true) === '1'

@@ -62,16 +62,109 @@ $GLOBALS['wp_test_options'] = [];
 $GLOBALS['wp_test_filters'] = [];
 $GLOBALS['wp_test_actions'] = [];
 $GLOBALS['wp_test_current_user'] = null;
+$GLOBALS['wp_test_current_user_can'] = true;
 
 if (! class_exists('WP_User')) {
     class WP_User
     {
         public string $user_email = '';
 
-        public function __construct(string $email = '')
-        {
+        public int $ID = 0;
+
+        public string $user_login = '';
+
+        public string $display_name = '';
+
+        /** @var array<int, string> */
+        public array $roles = [];
+
+        /**
+         * Email stays the first argument: Menu::currentUserIsAgency() is the
+         * oldest consumer of this stub and every existing test constructs
+         * users positionally by email.
+         *
+         * @param  array<int, string>  $roles
+         */
+        public function __construct(
+            string $email = '',
+            int $id = 0,
+            string $login = '',
+            array $roles = [],
+            string $displayName = ''
+        ) {
             $this->user_email = $email;
+            $this->ID = $id;
+            $this->user_login = $login;
+            $this->roles = $roles;
+            $this->display_name = $displayName !== '' ? $displayName : $login;
         }
+    }
+}
+
+// In-memory user store for the user-meta / get_userdata stubs below.
+// Tests register users with $GLOBALS['wp_test_users'][$id] = new WP_User(...)
+// and read/write meta through the normal WP functions.
+$GLOBALS['wp_test_users'] = [];
+$GLOBALS['wp_test_user_meta'] = [];
+
+if (! function_exists('get_userdata')) {
+    function get_userdata(int $userId): WP_User|false
+    {
+        return $GLOBALS['wp_test_users'][$userId] ?? false;
+    }
+}
+
+if (! function_exists('user_can')) {
+    function user_can(int $userId, string $capability): bool
+    {
+        $user = $GLOBALS['wp_test_users'][$userId] ?? null;
+        if (! $user) {
+            return false;
+        }
+
+        // Only the distinction the 2FA code actually leans on: administrators
+        // have manage_options, editors do not.
+        if ($capability === 'manage_options') {
+            return in_array('administrator', $user->roles, true);
+        }
+
+        return true;
+    }
+}
+
+if (! function_exists('get_user_meta')) {
+    function get_user_meta(int $userId, string $key = '', bool $single = false): mixed
+    {
+        $value = $GLOBALS['wp_test_user_meta'][$userId][$key] ?? '';
+
+        return $single ? $value : [$value];
+    }
+}
+
+if (! function_exists('update_user_meta')) {
+    function update_user_meta(int $userId, string $key, mixed $value): bool
+    {
+        $GLOBALS['wp_test_user_meta'][$userId][$key] = $value;
+
+        return true;
+    }
+}
+
+if (! function_exists('delete_user_meta')) {
+    function delete_user_meta(int $userId, string $key, mixed $value = ''): bool
+    {
+        unset($GLOBALS['wp_test_user_meta'][$userId][$key]);
+
+        return true;
+    }
+}
+
+if (! function_exists('get_current_user_id')) {
+    function get_current_user_id(): int
+    {
+        $user = $GLOBALS['wp_test_current_user'] ?? null;
+
+        return $user ? (int) $user->ID : 0;
     }
 }
 
@@ -250,7 +343,10 @@ if (! function_exists('admin_url')) {
 if (! function_exists('current_user_can')) {
     function current_user_can(string $capability): bool
     {
-        return true;
+        // Defaults to true so the many tests that never think about
+        // capabilities keep passing; set the global to false to exercise a
+        // denial path.
+        return $GLOBALS['wp_test_current_user_can'] ?? true;
     }
 }
 
@@ -470,6 +566,10 @@ if (! function_exists('wp_json_encode')) {
     {
         return json_encode($data, $options, $depth);
     }
+}
+
+if (! defined('DAY_IN_SECONDS')) {
+    define('DAY_IN_SECONDS', 86400);
 }
 
 if (! defined('ARRAY_A')) {

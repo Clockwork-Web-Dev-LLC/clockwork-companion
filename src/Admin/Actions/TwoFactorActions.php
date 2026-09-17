@@ -2,6 +2,7 @@
 
 namespace ClockworkCompanion\Admin\Actions;
 
+use ClockworkCompanion\Admin\Menu;
 use ClockworkCompanion\Admin\Pages\TwoFactorPage;
 use ClockworkCompanion\TwoFactor\UserSettings;
 use ClockworkCompanion\TwoFactor\WflsMigrator;
@@ -14,8 +15,15 @@ use ClockworkCompanion\TwoFactor\WflsMigrator;
  * deliberately no way to enroll, disable, or migrate someone else's
  * account from here.
  *
- * Auth model mirrors RunSecurityScanAction: WP nonce + manage_options.
- * No HMAC — that layer is for Clockwork machine-to-machine calls.
+ * Auth model: WP nonce + "is this a logged-in user at all". Every op above
+ * mutates only the caller's OWN meta, so manage_options would be the wrong
+ * gate — an editor whose 2FA an admin required (TwoFactorAdminActions) has
+ * to be able to finish enrolling, and an editor who migrated from Wordfence
+ * has to be able to regenerate their own backup codes. remove_wfls is the
+ * one exception and keeps the full admin gate: it deletes a plugin for the
+ * entire site. No HMAC anywhere here — that layer is for Clockwork
+ * machine-to-machine calls. Cross-user operations live in
+ * TwoFactorAdminActions, which carries its own, much stricter, checks.
  *
  * Backup-code handoff: ops that mint codes (confirm, migrate, regenerate)
  * can't put them in the redirect URL — query strings land in access logs
@@ -35,7 +43,7 @@ class TwoFactorActions
 
     public function handle(): void
     {
-        if (! current_user_can('manage_options')) {
+        if (! is_user_logged_in()) {
             wp_die('You do not have permission to manage login security on this site.', 403);
         }
 
@@ -91,6 +99,12 @@ class TwoFactorActions
                 ]);
 
             case 'remove_wfls':
+                // The only site-wide op in this class — deleting a plugin,
+                // not touching your own meta. It keeps the admin gate the
+                // rest of the class no longer needs.
+                if (! current_user_can('manage_options') || ! Menu::currentUserIsAgency()) {
+                    wp_die('You do not have permission to remove plugins on this site.', 403);
+                }
                 $result = WflsMigrator::removeWfls();
                 $this->redirect($result['ok']
                     ? ['flash' => $result['message']]
