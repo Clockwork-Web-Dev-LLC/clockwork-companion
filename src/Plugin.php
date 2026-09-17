@@ -215,6 +215,13 @@ class Plugin
         // confirm / disable / migrate). Current-user-only operations.
         (new \ClockworkCompanion\Admin\Actions\TwoFactorActions())->register();
 
+        // Its cross-user counterpart: the Team Status table's require /
+        // stop-requiring / turn-off buttons, acting on ANOTHER user. Gated
+        // on the acting user's capability + agency membership, with a
+        // per-target nonce. Never enrolls on someone's behalf — "require"
+        // enforces, the target still scans their own code.
+        (new \ClockworkCompanion\Admin\Actions\TwoFactorAdminActions())->register();
+
         // SSO interceptor — runs on every front-end request to check for the
         // ?clockwork_sso=<nonce> query param. Bound to `init` priority 1
         // inside register(), so output buffering is still safe.

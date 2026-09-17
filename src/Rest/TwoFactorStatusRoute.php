@@ -3,6 +3,7 @@
 namespace ClockworkCompanion\Rest;
 
 use ClockworkCompanion\Auth\HmacVerifier;
+use ClockworkCompanion\TwoFactor\EnrollmentNudge;
 use ClockworkCompanion\TwoFactor\LoginInterceptor;
 use ClockworkCompanion\TwoFactor\UserSettings;
 use ClockworkCompanion\TwoFactor\WflsMigrator;
@@ -28,6 +29,7 @@ use WP_REST_Response;
  *         "login": "agency-operator",
  *         "role": "administrator",
  *         "state": "clockwork" | "wfls" | "none",
+ *         "required": false,             // an admin explicitly required 2FA here
  *         "backup_codes_remaining": 8    // clockwork state only
  *       },
  *       ...
@@ -39,6 +41,12 @@ use WP_REST_Response;
  * needs migrating; when wfls_active=false those users have NO working
  * login gate despite thinking they do — the monitoring app should treat
  * that as urgent.
+ *
+ * "required" is orthogonal to state: an operator pressed "Require 2FA" on
+ * that user's Team Status row, so wp-admin is locked to the Login Security
+ * page until they enroll. It lets the "admins without 2FA" issue separate
+ * "nobody has chased this account yet" from "already chased, still not
+ * done" — different follow-ups.
  */
 class TwoFactorStatusRoute
 {
@@ -62,7 +70,7 @@ class TwoFactorStatusRoute
     public function payload(): array
     {
         $users = get_users([
-            'role__in' => ['administrator', 'editor'],
+            'role__in' => UserSettings::TEAM_ROLES,
             'orderby' => 'user_login',
         ]);
 
@@ -87,6 +95,7 @@ class TwoFactorStatusRoute
                 'login' => (string) $user->user_login,
                 'role' => (string) ($user->roles[0] ?? ''),
                 'state' => $state,
+                'required' => EnrollmentNudge::isExplicitlyRequired($user->ID),
             ];
             if ($state === 'clockwork') {
                 $row['backup_codes_remaining'] = UserSettings::backupCodesRemaining($user->ID);

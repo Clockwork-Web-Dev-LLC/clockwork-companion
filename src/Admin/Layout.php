@@ -18,6 +18,16 @@ class Layout
     /** @return array<int, array{slug: string, label: string, page?: string}> */
     public static function tabs(): array
     {
+        // Every page below is registered at Menu::CAPABILITY except Login
+        // Security, which sits lower so a user who has been required to set
+        // up 2FA can reach it (see TwoFactorPage::SELF_CAPABILITY). For such
+        // a user the rest of the strip would be a row of links to "Sorry, you
+        // are not allowed to access this page", so give them the one tab they
+        // can actually open.
+        if (! current_user_can(Menu::CAPABILITY)) {
+            return [['slug' => 'two-factor', 'label' => '2FA', 'page' => \ClockworkCompanion\Admin\Pages\TwoFactorPage::SLUG]];
+        }
+
         $all = [
             ['slug' => 'activity', 'label' => 'Activity', 'page' => Menu::SLUG],
             ['slug' => 'uptime', 'label' => 'Uptime', 'page' => \ClockworkCompanion\Admin\Pages\UptimePage::SLUG],

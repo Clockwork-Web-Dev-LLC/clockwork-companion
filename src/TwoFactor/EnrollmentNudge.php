@@ -9,13 +9,20 @@ use ClockworkCompanion\Admin\Pages\TwoFactorPage;
  * Nags eligible admins into setting up two-factor, with an enforced grace
  * period.
  *
- * Scope is deliberately narrow: only users the Clockwork menu itself is
- * visible to (Menu::currentUserIsAgency() + the menu's own manage_options
- * capability — i.e. agency operators, not client admins) ever see this.
- * Client sites get Companion installed with 2FA available but not pushed on
- * them; nagging a client admin to set up a feature their sidebar doesn't
- * even show them would just be confusing (see Menu's docblock on menu
- * visibility).
+ * Automatic scope is deliberately narrow: only users the Clockwork menu
+ * itself is visible to (Menu::currentUserIsAgency() + the menu's own
+ * manage_options capability — i.e. agency operators, not client admins) are
+ * picked up on their own. Client sites get Companion installed with 2FA
+ * available but not pushed on them; nagging a client admin to set up a
+ * feature their sidebar doesn't even show them would just be confusing (see
+ * Menu's docblock on menu visibility).
+ *
+ * On top of that there is an explicit, per-user opt-in: an agency admin can
+ * press "Require 2FA" on any administrator or editor row in Team Status
+ * (TwoFactorAdminActions), which sets META_REQUIRED and drops their grace
+ * to zero. That is the ONLY way enforcement reaches an account outside the
+ * automatic scope, and it is per-user by design — requiring one client
+ * admin must not start nagging their colleagues. See isEligible().
  *
  * Grace period: stored as an absolute deadline (unix timestamp) in
  * META_GRACE_DEADLINE, not a "days remaining" counter — that's what makes
@@ -31,6 +38,8 @@ use ClockworkCompanion\Admin\Pages\TwoFactorPage;
  * this one exists precisely to act on someone else's account, so it carries
  * its own capability + agency check on the ACTING user, and a per-target
  * nonce so one teammate's form can't be replayed against another's account.
+ * TwoFactorAdminActions uses that same shape for the require / turn-off
+ * buttons in the adjacent column.
  *
  * Enforcement: while a user's deadline is in the future, they get a
  * dismissible-for-24h nag banner with a day countdown. Once it passes, the
@@ -47,6 +56,15 @@ use ClockworkCompanion\Admin\Pages\TwoFactorPage;
 class EnrollmentNudge
 {
     private const META_GRACE_DEADLINE = '_clockwork_2fa_grace_deadline';
+
+    /**
+     * Set when an agency admin has explicitly required 2FA for this user
+     * from the Team Status table. Distinct from the implicit agency-domain
+     * eligibility below: it is what lets enforcement reach accounts the
+     * nudge was never automatically gated to (client admins, editors)
+     * without turning the nag on for every such account by default.
+     */
+    private const META_REQUIRED = '_clockwork_2fa_required';
 
     private const META_DISMISSED_UNTIL = '_clockwork_2fa_nudge_dismissed_until';
 
@@ -113,6 +131,15 @@ class EnrollmentNudge
             return;
         }
         if (wp_doing_ajax() || (defined('DOING_CRON') && DOING_CRON)) {
+            return;
+        }
+
+        // Never lock someone to a door they can't open. If the target page
+        // isn't loadable by this user, the redirect below would bounce them
+        // between wp-admin and a 403 with no way out and no way to enroll.
+        // Falling back to the (non-dismissible) banner keeps the pressure on
+        // without bricking the account.
+        if (! current_user_can(TwoFactorPage::SELF_CAPABILITY)) {
             return;
         }
 
@@ -186,9 +213,21 @@ class EnrollmentNudge
     }
 
     /**
-     * Whether $userId is in scope for the nudge/enforcement at all: same
-     * visibility gate as the Clockwork menu (agency-domain email + the
-     * menu's own manage_options capability), and not already enrolled.
+     * Whether $userId is in scope for the nudge/enforcement at all.
+     *
+     * Two ways in, and only two:
+     *   1. Implicitly — the same visibility gate as the Clockwork menu
+     *      (agency-domain email + the menu's own manage_options capability).
+     *      This is the automatic behaviour and stays exactly as it was.
+     *   2. Explicitly — an agency admin pressed "Require now" on this user's
+     *      Team Status row (isExplicitlyRequired). That route deliberately
+     *      skips both the agency-domain and the capability check, because
+     *      its whole purpose is to reach accounts rule 1 never covers: a
+     *      client-domain administrator, or an editor. It is opt-in per user,
+     *      so requiring one client admin doesn't start nagging the rest.
+     *
+     * Already-enrolled users are never eligible either way — there is
+     * nothing left to nudge them about.
      */
     public static function isEligible(int $userId): bool
     {
@@ -202,14 +241,50 @@ class EnrollmentNudge
         if (! $user) {
             return false;
         }
-        if (! Menu::currentUserIsAgency($user) || ! user_can($userId, Menu::CAPABILITY)) {
-            return false;
-        }
         if (UserSettings::isEnabled($userId)) {
             return false;
         }
+        if (self::isExplicitlyRequired($userId)) {
+            return true;
+        }
 
-        return true;
+        return Menu::currentUserIsAgency($user) && user_can($userId, Menu::CAPABILITY);
+    }
+
+    /**
+     * Whether an admin has explicitly required 2FA for this user, as
+     * opposed to them falling under the automatic agency-domain rule.
+     */
+    public static function isExplicitlyRequired(int $userId): bool
+    {
+        return get_user_meta($userId, self::META_REQUIRED, true) === '1';
+    }
+
+    /**
+     * Require 2FA for $userId, starting the clock $days from now. The
+     * default of 0 means enforcement bites on their very next wp-admin
+     * request: they get the non-dismissible banner and are redirect-locked
+     * to the Login Security page until they enroll themselves.
+     *
+     * Nothing here touches the target's secret — an admin requiring 2FA
+     * never learns the factor, the user still scans their own QR code.
+     */
+    public static function setRequired(int $userId, int $days = 0): void
+    {
+        update_user_meta($userId, self::META_REQUIRED, '1');
+        self::setGraceDeadline($userId, $days);
+    }
+
+    /**
+     * Drop the explicit requirement and the deadline that came with it.
+     * Users who are ALSO covered by the automatic agency rule stay eligible
+     * — they just fall back to a fresh default grace window, because
+     * graceDeadline() re-initialises lazily once the stored one is gone.
+     */
+    public static function clearRequired(int $userId): void
+    {
+        delete_user_meta($userId, self::META_REQUIRED);
+        delete_user_meta($userId, self::META_GRACE_DEADLINE);
     }
 
     /**

@@ -2,7 +2,9 @@
 
 namespace ClockworkCompanion\Admin\Pages;
 
+use ClockworkCompanion\Admin\Actions\TwoFactorAdminActions;
 use ClockworkCompanion\Admin\Layout;
+use ClockworkCompanion\Admin\Menu;
 use ClockworkCompanion\TwoFactor\EnrollmentNudge;
 use ClockworkCompanion\TwoFactor\Totp;
 use ClockworkCompanion\TwoFactor\UserSettings;
@@ -16,9 +18,16 @@ use ClockworkCompanion\TwoFactor\WflsMigrator;
  *      Renders one of four states: WFLS-migratable (banner), enrolled
  *      (status + manage buttons), mid-enrollment (QR + confirm form), or
  *      not enrolled (set-up button).
- *   2. "Team status" — read-only enrollment roll-call for admins/editors,
- *      including who is still on Wordfence Login Security. Exists so the
- *      operator can see at a glance who to nudge before WFLS goes away.
+ *   2. "Team status" — enrollment roll-call for admins/editors, including
+ *      who is still on Wordfence Login Security, plus per-user controls for
+ *      an agency admin to require or turn off someone else's 2FA. Exists so
+ *      the operator can see at a glance who to nudge before WFLS goes away,
+ *      and act on it without a database round-trip.
+ *
+ *      "Require" does NOT enroll anyone — an admin scanning a QR code on a
+ *      teammate's behalf would learn a factor that is supposed to be theirs
+ *      alone. It flips EnrollmentNudge's enforcement on for that user, who
+ *      then enrolls themselves. See TwoFactorAdminActions.
  *
  * Backup codes are displayed exactly once. Action handlers can't put them
  * in the redirect URL (query strings leak into server logs and browser
@@ -35,6 +44,22 @@ class TwoFactorPage
     public const SLUG = 'clockwork-two-factor';
 
     public const CODES_TRANSIENT_PREFIX = 'clockwork_2fa_codes_';
+
+    /**
+     * Capability the page is REGISTERED with — deliberately lower than the
+     * rest of the Clockwork menu's manage_options.
+     *
+     * Every other Clockwork page shows site-wide operational data, so
+     * manage_options is right for them. This one is the only place a user
+     * can set up their own second factor, and EnrollmentNudge redirect-locks
+     * wp-admin to it once someone's grace period expires. An editor an admin
+     * has required 2FA of must therefore be able to open it — locking
+     * somebody to a door they cannot open is just a brick.
+     *
+     * Everything on the page that ISN'T about your own account (Team Status,
+     * the WFLS removal button) is gated separately on canManageOthers().
+     */
+    public const SELF_CAPABILITY = 'read';
 
     public static function render(): void
     {
@@ -63,8 +88,27 @@ class TwoFactorPage
 
         self::renderFreshBackupCodes();
         self::renderSelfCard();
+
+        // Site-wide surfaces. A required editor reaches this page under
+        // SELF_CAPABILITY; they get their own enrollment card and nothing
+        // else. Same for a client administrator on a white-labelled install,
+        // who clears manage_options but not the agency check.
+        if (! self::canManageOthers()) {
+            return;
+        }
+
         self::renderWflsCleanupCard();
         self::renderTeamCard();
+    }
+
+    /**
+     * Whether the current user may see and act on OTHER people's 2FA here.
+     * Same rule TwoFactorAdminActions enforces on the acting user, so the
+     * page can't offer a control the handler would refuse.
+     */
+    public static function canManageOthers(): bool
+    {
+        return current_user_can(Menu::CAPABILITY) && Menu::currentUserIsAgency();
     }
 
     /**
@@ -274,7 +318,7 @@ class TwoFactorPage
     private static function renderTeamCard(): void
     {
         $users = get_users([
-            'role__in' => ['administrator', 'editor'],
+            'role__in' => UserSettings::TEAM_ROLES,
             'orderby' => 'display_name',
             'fields' => 'all',
         ]);
@@ -282,10 +326,11 @@ class TwoFactorPage
         <div class="clockwork-card">
             <div class="clockwork-card__body">
             <h2 style="margin-top:0;">Team status</h2>
-            <p style="color:#50575e;">Administrator and editor accounts on this site, and where each one's two-factor protection stands.</p>
-            <table class="widefat striped" style="max-width:920px;">
+            <p style="color:#50575e;">Administrator and editor accounts on this site, and where each one's two-factor protection stands.
+               You can require two-factor on an account that doesn't have it, or turn it off for someone who's locked out.</p>
+            <table class="widefat striped" style="max-width:1100px;">
                 <thead>
-                    <tr><th>User</th><th>Role</th><th>Two-factor</th><th>Grace period</th></tr>
+                    <tr><th>User</th><th>Role</th><th>Two-factor</th><th>Grace period</th><th>Manage</th></tr>
                 </thead>
                 <tbody>
                 <?php foreach ($users as $u) : ?>
@@ -296,6 +341,8 @@ class TwoFactorPage
                         $pill = WflsMigrator::isWflsActive()
                             ? '<span style="color:#996800;font-weight:600;">Wordfence (needs migration)</span>'
                             : '<span style="color:#d63638;font-weight:600;">Wordfence — gate is OFF, migrate now</span>';
+                    } elseif (EnrollmentNudge::isExplicitlyRequired($u->ID)) {
+                        $pill = '<span style="color:#d63638;font-weight:600;">Required — not yet enrolled</span>';
                     } else {
                         $pill = '<span style="color:#787c82;">None</span>';
                     }
@@ -305,6 +352,7 @@ class TwoFactorPage
                         <td><?php echo esc_html(implode(', ', $u->roles)); ?></td>
                         <td><?php echo wp_kses_post($pill); ?></td>
                         <td><?php self::renderGraceCell($u->ID); ?></td>
+                        <td><?php self::renderManageCell($u); ?></td>
                     </tr>
                 <?php endforeach; ?>
                 </tbody>
@@ -324,11 +372,78 @@ class TwoFactorPage
     }
 
     /**
+     * "Manage" cell for one Team Status row: the cross-user controls.
+     *
+     * One button, because at any moment there is exactly one sensible move:
+     * an enrolled user can be turned off, a required-but-unenrolled user can
+     * be let off the hook, and everyone else can be required. Rendering the
+     * inapplicable ops greyed out would only invite clicking them.
+     *
+     * The row is inert (a dash) whenever TwoFactorAdminActions would refuse
+     * the request anyway — your own row included, since your own account is
+     * managed from the card at the top of this page. Asking the handler
+     * rather than re-deriving the rule here is what stops the button set and
+     * the enforcement from drifting apart.
+     */
+    private static function renderManageCell(\WP_User $user): void
+    {
+        $targetId = (int) $user->ID;
+
+        if (TwoFactorAdminActions::denialReason($targetId) !== null) {
+            echo '<span style="color:#c3c4c7;">—</span>';
+
+            return;
+        }
+
+        if (UserSettings::isEnabled($targetId)) {
+            self::manageForm($targetId, 'disable', 'Turn off 2FA', 'button button-small', sprintf(
+                'Turn off two-factor authentication for %s? Their secret and backup codes are deleted, and their sign-ins will need only a password until they enroll again. This is logged.',
+                $user->display_name
+            ));
+
+            return;
+        }
+
+        if (EnrollmentNudge::isExplicitlyRequired($targetId)) {
+            self::manageForm($targetId, 'unrequire', 'Stop requiring', 'button button-small');
+
+            return;
+        }
+
+        self::manageForm($targetId, 'require', 'Require 2FA', 'button button-small button-primary', sprintf(
+            'Require two-factor for %s? Their next wp-admin page load is locked to this page until they set it up. They scan their own code — you will not see their secret.',
+            $user->display_name
+        ));
+    }
+
+    /**
+     * One cross-user action button. Carries the target's id and a nonce
+     * bound to that id, so editing user_id in the DOM invalidates the nonce
+     * instead of retargeting the action.
+     */
+    private static function manageForm(int $targetId, string $op, string $label, string $buttonClass, string $confirm = ''): void
+    {
+        $onSubmit = $confirm !== ''
+            ? sprintf(' onsubmit="return confirm(%s);"', esc_attr(wp_json_encode($confirm)))
+            : '';
+        ?>
+        <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="display:inline;"<?php echo $onSubmit; ?>>
+            <input type="hidden" name="action" value="<?php echo esc_attr(TwoFactorAdminActions::ACTION_HOOK); ?>">
+            <input type="hidden" name="op" value="<?php echo esc_attr($op); ?>">
+            <input type="hidden" name="user_id" value="<?php echo esc_attr((string) $targetId); ?>">
+            <input type="hidden" name="_wpnonce" value="<?php echo esc_attr(wp_create_nonce(TwoFactorAdminActions::nonceAction($targetId))); ?>">
+            <button type="submit" class="<?php echo esc_attr($buttonClass); ?>"><?php echo esc_html($label); ?></button>
+        </form>
+        <?php
+    }
+
+    /**
      * Grace-period cell for one Team Status row. Only rendered as an
-     * editable control for users EnrollmentNudge actually tracks (agency
-     * email + manage_options + not yet enrolled) — everyone else (editors,
-     * client accounts, already-enrolled users) just gets a dash, since the
-     * nudge/enforcement never applies to them.
+     * editable control for users EnrollmentNudge actually tracks — the
+     * agency-domain admins it covers automatically, plus anyone an admin
+     * has explicitly required via the Manage column. Everyone else (client
+     * accounts nobody required, already-enrolled users) just gets a dash,
+     * since the nudge/enforcement never applies to them.
      */
     private static function renderGraceCell(int $userId): void
     {
