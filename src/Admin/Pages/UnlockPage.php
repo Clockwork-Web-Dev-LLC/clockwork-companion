@@ -13,7 +13,7 @@ use ClockworkCompanion\WhiteLabel\WhiteLabel;
  * without needing WP access to that site. Sites are pre-configured with their
  * companion secret; the unlock request is HMAC-signed and fired server-side.
  *
- * Access: manage_options + agency email domain (enforced by Menu::maybeHideMenu).
+ * Access: manage_options + UnlockPage::isHub().
  * Stored data: wp_options key `cw_unlock_sites` — array of {domain, secret} pairs.
  */
 class UnlockPage
@@ -66,8 +66,7 @@ class UnlockPage
         }
 
         $email = strtolower((string) $user->user_email);
-        $expectedSuffix = '@' . $cleanHubDomain;
-        if (str_ends_with($email, $expectedSuffix) || str_ends_with($email, '.' . $cleanHubDomain)) {
+        if (self::emailMatchesHub($email, $cleanHubDomain)) {
             return true;
         }
 
@@ -89,8 +88,47 @@ class UnlockPage
         return false;
     }
 
+    private static function emailMatchesHub(string $email, string $hubDomain): bool
+    {
+        $at = strrpos($email, '@');
+        if ($at === false) {
+            return false;
+        }
+        $emailDomain = substr($email, $at + 1);
+        if ($emailDomain === '' || $hubDomain === '') {
+            return false;
+        }
+        if ($emailDomain === $hubDomain) {
+            return true;
+        }
+        // ops@mail.clockworkwd.com on hub clockworkwd.com
+        if (str_ends_with($emailDomain, '.' . $hubDomain)) {
+            return true;
+        }
+        // Hub under staff email domain: support.customagency.com accepts dev@customagency.com
+        return self::isRegistrableParentDomain($emailDomain)
+            && str_ends_with($hubDomain, '.' . $emailDomain);
+    }
+
+    private static function isRegistrableParentDomain(string $domain): bool
+    {
+        $labels = explode('.', $domain);
+        if (count($labels) < 2) {
+            return false; // "com"
+        }
+        $publicSecondLevel = ['co', 'com', 'net', 'org', 'ac', 'gov', 'edu', 'or', 'ne'];
+        if (count($labels) === 2 && in_array($labels[0], $publicSecondLevel, true) && strlen($labels[1]) === 2) {
+            return false; // co.uk, com.au
+        }
+        return true;
+    }
+
     public static function render(): void
     {
+        if (! self::isHub() || ! current_user_can(Menu::CAPABILITY)) {
+            wp_die('Unauthorized', 403);
+        }
+
         Layout::render('unlock', [self::class, 'renderBody']);
     }
 

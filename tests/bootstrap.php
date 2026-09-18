@@ -63,6 +63,8 @@ $GLOBALS['wp_test_filters'] = [];
 $GLOBALS['wp_test_actions'] = [];
 $GLOBALS['wp_test_current_user'] = null;
 $GLOBALS['wp_test_current_user_can'] = true;
+$GLOBALS['wp_test_menu_pages'] = [];
+$GLOBALS['wp_test_submenu_pages'] = [];
 
 if (! class_exists('WP_User')) {
     class WP_User
@@ -1074,7 +1076,61 @@ if (! function_exists('wp_remote_get')) {
 
 if (! function_exists('wp_die')) {
     function wp_die($message = '', $title = '', $args = []) {
-        $status = is_array($args) && isset($args['response']) ? $args['response'] : 500;
+        $status = is_int($title) ? $title : (is_array($args) && isset($args['response']) ? $args['response'] : 500);
         throw new RuntimeException("wp_die [{$status}]: " . (is_scalar($message) ? $message : ''));
+    }
+}
+
+if (! function_exists('wp_send_json_error')) {
+    function wp_send_json_error(mixed $data = null, ?int $status_code = null, int $options = 0): void
+    {
+        $status = $status_code ?? 400;
+        $message = is_array($data) ? ($data['message'] ?? json_encode($data)) : (string) $data;
+        throw new RuntimeException("wp_send_json_error [{$status}]: {$message}");
+    }
+}
+
+if (! function_exists('check_ajax_referer')) {
+    function check_ajax_referer(string|int $action = -1, string|false $query_arg = false, bool $die = true): int|false
+    {
+        return 1;
+    }
+}
+
+if (! function_exists('add_menu_page')) {
+    function add_menu_page(string $page_title, string $menu_title, string $capability, string $menu_slug, ?callable $callback = null, string $icon_url = '', ?int $position = null): string
+    {
+        $GLOBALS['wp_test_menu_pages'][$menu_slug] = [
+            'page_title' => $page_title,
+            'menu_title' => $menu_title,
+            'capability' => $capability,
+            'callback' => $callback,
+        ];
+        return $menu_slug;
+    }
+}
+
+if (! function_exists('add_submenu_page')) {
+    function add_submenu_page(string $parent_slug, string $page_title, string $menu_title, string $capability, string $menu_slug, ?callable $callback = null, ?int $position = null): string|false
+    {
+        $GLOBALS['wp_test_submenu_pages'][$parent_slug][$menu_slug] = [
+            'page_title' => $page_title,
+            'menu_title' => $menu_title,
+            'capability' => $capability,
+            'callback' => $callback,
+        ];
+        return $menu_slug;
+    }
+}
+
+if (! function_exists('remove_submenu_page')) {
+    function remove_submenu_page(string $menu_slug, string $submenu_slug): array|false
+    {
+        if (isset($GLOBALS['wp_test_submenu_pages'][$menu_slug][$submenu_slug])) {
+            $item = $GLOBALS['wp_test_submenu_pages'][$menu_slug][$submenu_slug];
+            unset($GLOBALS['wp_test_submenu_pages'][$menu_slug][$submenu_slug]);
+            return $item;
+        }
+        return false;
     }
 }
