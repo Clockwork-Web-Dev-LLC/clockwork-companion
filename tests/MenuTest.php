@@ -139,4 +139,47 @@ class MenuTest extends TestCase
 
         $this->assertFalse(Menu::currentUserIsAgency(new WP_User('')));
     }
+
+    /**
+     * clockworkwp.com was Clockwork Web Dev's own domain before the
+     * clockworkwd.com rebrand. Fleet-pushed `agency_email_domains` configs
+     * only ever list the current name, so anyone whose own login was never
+     * migrated off the old address would otherwise get locked out of
+     * Unlock, cross-user 2FA controls, and the enrollment nudge on every
+     * site that has domain gating turned on — treated the same as the
+     * support-email self-lockout guard just above.
+     */
+    public function testLegacyClockworkwpDomainIsAlwaysTreatedAsAgency(): void
+    {
+        update_option(WhiteLabel::OPTION_KEY, [
+            'agency_email_domains' => '@clockworkwd.com',
+        ]);
+
+        $this->assertTrue(Menu::currentUserIsAgency(new WP_User('aaron@clockworkwp.com')));
+        $this->assertTrue(Menu::currentUserIsAgency(new WP_User('AARON@ClockworkWP.com')));
+        $this->assertTrue(Menu::currentUserIsAgency(new WP_User('aaron@clockworkwd.com')));
+        $this->assertFalse(Menu::currentUserIsAgency(new WP_User('owner@someshop.com')));
+    }
+
+    /**
+     * A filter that deliberately overrides the domain list to something
+     * unrelated to Clockwork altogether (e.g. a white-labeled agency running
+     * this plugin as their own product) must still recognize the legacy
+     * domain — it's an identity fact about this plugin's own vendor, not an
+     * opt-in a third-party install would ever configure around.
+     */
+    public function testLegacyClockworkwpDomainSurvivesAFilterOverride(): void
+    {
+        update_option(WhiteLabel::OPTION_KEY, ['agency_email_domains' => '@agencyprime.com']);
+        add_filter('clockwork_companion_agency_email_domains', fn () => ['@vanguardweb.dev']);
+
+        $this->assertTrue(Menu::currentUserIsAgency(new WP_User('legacy@clockworkwp.com')));
+    }
+
+    public function testLegacyClockworkwpDomainIsNotDuplicatedWhenAlreadyConfigured(): void
+    {
+        update_option(WhiteLabel::OPTION_KEY, ['agency_email_domains' => '@clockworkwp.com']);
+
+        $this->assertTrue(Menu::currentUserIsAgency(new WP_User('anyone@clockworkwp.com')));
+    }
 }
