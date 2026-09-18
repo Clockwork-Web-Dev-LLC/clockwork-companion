@@ -4,6 +4,11 @@ Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earli
 
 ## [Unreleased]
 
+## 1.38.3 — 2026-09-18
+
+### Fixed
+- **Legacy `clockworkwp.com` logins locked out of agency-only tools**: sites with `agency_email_domains` explicitly configured (typically pushed fleet-wide from Clockwork Control after the clockworkwd.com rebrand) only ever listed the current domain, so any operator whose own login was never migrated off the old `@clockworkwp.com` address was silently denied the Unlock Hub, the cross-user 2FA admin controls (Require/Disable for another user), and the 2FA enrollment nudge — on any site with domain gating turned on, updated or not. `@clockworkwp.com` is now always recognized as an agency domain in `Menu::currentUserIsAgency()`, the same way the configured support-email domain already is, so this self-lockout can't recur regardless of which of the two domains a given login uses.
+
 ## 1.38.2 — 2026-09-18
 
 ### Fixed

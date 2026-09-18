@@ -81,21 +81,22 @@ class Menu
      * users. The plugin is now public to all administrators (manage_options),
      * so this method is a no-op kept for backwards compatibility.
      */
-    public function maybeHideMenu(): void
-    {
-        // No-op: Clockwork is public to all administrators.
-    }
     /**
-     * Whether the Clockwork menu — and everything under it, including the
-     * Login Security page — is actually visible to the given user (current
-     * user if omitted). Static + public so other features can gate on "is
-     * this thing visible to this user at all" without duplicating the
-     * agency-domain check (e.g. TwoFactor\EnrollmentNudge — no point nagging
-     * a client admin to set up 2FA on a page their sidebar doesn't even
-     * show, and no point letting an agency admin tweak a grace period for
-     * someone the feature was never gated to in the first place). Takes an
-     * explicit $user so callers can check a user other than "whoever is
-     * currently logged in" — e.g. a Team Status row for a teammate.
+     * Whether the given user (current user if omitted) counts as "agency"
+     * for the features that are still gated on it: the Unlock Hub tool, the
+     * cross-user 2FA admin controls, the 2FA enrollment nudge, and the
+     * White Label plugin-row hiding. Does NOT affect Clockwork menu
+     * visibility any more — the menu itself is public to every
+     * manage_options administrator (see the class docblock); this only
+     * decides who additionally gets those narrower, more sensitive tools.
+     * Static + public so those features can gate on "is this user agency"
+     * without duplicating the domain-matching logic (e.g.
+     * TwoFactor\EnrollmentNudge — no point nagging a client admin to set up
+     * 2FA on a tool the site never surfaces to them, and no point letting an
+     * agency admin tweak a grace period for someone the feature was never
+     * gated to in the first place). Takes an explicit $user so callers can
+     * check a user other than "whoever is currently logged in" — e.g. a
+     * Team Status row for a teammate.
      */
     public static function currentUserIsAgency(?\WP_User $user = null): bool
     {
@@ -127,6 +128,23 @@ class Menu
             if (! in_array($domain, $agencyDomains, true)) {
                 $agencyDomains[] = $domain;
             }
+        }
+
+        // clockworkwp.com was Clockwork Web Dev's own domain before the
+        // clockworkwd.com rebrand (see WhiteLabel::DEFAULTS). Fleet-pushed
+        // `agency_email_domains` configs only ever list the current name, so
+        // any operator whose own login was never migrated off the old
+        // address would otherwise get silently locked out of Unlock,
+        // cross-user 2FA controls, and the enrollment nudge on every site
+        // that has domain gating turned on — a self-lockout of exactly the
+        // kind the support-email check above already guards against.
+        // Same category as the unlock_hub_domain / support_email defaults
+        // elsewhere in this file: an identity fact about this plugin's own
+        // vendor, not something a white-labeling agency's install needs to
+        // opt out of — a coincidental @clockworkwp.com login on someone
+        // else's fleet is not a realistic risk.
+        if (! in_array('@clockworkwp.com', $agencyDomains, true)) {
+            $agencyDomains[] = '@clockworkwp.com';
         }
 
         $email = strtolower((string) $user->user_email);
