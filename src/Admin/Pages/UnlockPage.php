@@ -4,6 +4,7 @@ namespace ClockworkCompanion\Admin\Pages;
 
 use ClockworkCompanion\Admin\Layout;
 use ClockworkCompanion\Admin\Menu;
+use ClockworkCompanion\WhiteLabel\WhiteLabel;
 
 /**
  * Clockwork → Unlock admin page.
@@ -25,6 +26,69 @@ class UnlockPage
 
     public const AJAX_ACTION = 'cw_unlock_site';
 
+    /**
+     * Whether the current WordPress site is functioning as the agency Unlock Hub,
+     * and the active user is an authorized agency employee.
+     */
+    public static function isHub(?\WP_User $user = null): bool
+    {
+        // 1. Explicit constant override (backwards compatibility)
+        if (defined('CLOCKWORK_UNLOCK_HUB') && CLOCKWORK_UNLOCK_HUB) {
+            return true;
+        }
+
+        // 2. Hub domain matching
+        $hubDomain = WhiteLabel::getUnlockHubDomain();
+        if ($hubDomain === '') {
+            return false;
+        }
+
+        $siteUrl = function_exists('home_url') ? home_url() : (function_exists('site_url') ? site_url() : '');
+        $siteHost = wp_parse_url($siteUrl, PHP_URL_HOST);
+        if (! $siteHost && isset($_SERVER['HTTP_HOST'])) {
+            $siteHost = $_SERVER['HTTP_HOST'];
+        }
+
+        $cleanSiteHost = strtolower(preg_replace('/^www\./', '', trim((string) $siteHost)));
+        $cleanHubDomain = strtolower(preg_replace('/^www\./', '', trim($hubDomain)));
+
+        if ($cleanSiteHost === '' || $cleanSiteHost !== $cleanHubDomain) {
+            return false;
+        }
+
+        // 3. User verification: must be an authenticated agency user
+        if ($user === null && function_exists('wp_get_current_user')) {
+            $user = wp_get_current_user();
+        }
+
+        if (! $user || empty($user->user_email)) {
+            return false;
+        }
+
+        $email = strtolower((string) $user->user_email);
+        $expectedSuffix = '@' . $cleanHubDomain;
+        if (str_ends_with($email, $expectedSuffix) || str_ends_with($email, '.' . $cleanHubDomain)) {
+            return true;
+        }
+
+        $agencyDomains = WhiteLabel::getAgencyEmailDomains();
+        foreach ($agencyDomains as $domain) {
+            if ($domain !== '' && str_ends_with($email, strtolower($domain))) {
+                return true;
+            }
+        }
+
+        $supportEmail = WhiteLabel::getSupportEmail();
+        if (! empty($supportEmail) && str_contains($supportEmail, '@')) {
+            $supportDomain = '@' . strtolower(substr(strrchr($supportEmail, '@'), 1));
+            if (str_ends_with($email, $supportDomain)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public static function render(): void
     {
         Layout::render('unlock', [self::class, 'renderBody']);
@@ -32,6 +96,10 @@ class UnlockPage
 
     public static function renderBody(): void
     {
+        if (! self::isHub() || ! current_user_can(Menu::CAPABILITY)) {
+            wp_die('Unauthorized', 403);
+        }
+
         $importResult = null;
 
         if (isset($_POST['cw_unlock_action']) && check_admin_referer(self::NONCE_ACTION)) {
@@ -67,7 +135,7 @@ class UnlockPage
     {
         check_ajax_referer(self::NONCE_ACTION, '_nonce');
 
-        if (! current_user_can(Menu::CAPABILITY)) {
+        if (! self::isHub() || ! current_user_can(Menu::CAPABILITY)) {
             wp_send_json_error(['message' => 'Insufficient permissions.'], 403);
         }
 

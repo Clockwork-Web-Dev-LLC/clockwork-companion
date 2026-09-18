@@ -44,7 +44,7 @@ class Layout
         $all[] = ['slug' => 'backups', 'label' => 'Backups', 'page' => \ClockworkCompanion\Admin\Pages\BackupsPage::SLUG];
         $all[] = ['slug' => 'notifications', 'label' => 'Notifications', 'page' => \ClockworkCompanion\Admin\Pages\NotificationsPage::SLUG];
 
-        if (defined('CLOCKWORK_UNLOCK_HUB') && CLOCKWORK_UNLOCK_HUB) {
+        if (\ClockworkCompanion\Admin\Pages\UnlockPage::isHub()) {
             $all[] = ['slug' => 'unlock', 'label' => 'Unlock', 'page' => \ClockworkCompanion\Admin\Pages\UnlockPage::SLUG];
         }
 

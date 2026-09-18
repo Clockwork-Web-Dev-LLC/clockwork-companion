@@ -38,6 +38,7 @@ class WhiteLabel
         'hide_plugin_row' => false,
         'hide_help_links' => false,
         'footer_text' => '',
+        'unlock_hub_domain' => 'clockworkwd.com',
         'hide_version' => false,
         'primary_color' => '#6953C4',
         'primary_dark_color' => '#2D2062',
@@ -274,6 +275,41 @@ class WhiteLabel
         }
 
         return $domains;
+    }
+
+    /**
+     * Get the primary agency hub domain for LLAR unlock detection, normalized
+     * to lowercase hostname without protocol, port, or leading "www.".
+     */
+    public static function getUnlockHubDomain(): string
+    {
+        $raw = '';
+
+        if (defined('CLOCKWORK_UNLOCK_HUB_DOMAIN')) {
+            $raw = (string) constant('CLOCKWORK_UNLOCK_HUB_DOMAIN');
+        }
+
+        $settings = self::getSettings();
+
+        if ($raw === '') {
+            $raw = (string) ($settings['unlock_hub_domain'] ?? '');
+        }
+
+        if ($raw === '') {
+            $companyUrl = (string) ($settings['company_url'] ?? self::DEFAULTS['company_url']);
+            $raw = (string) wp_parse_url($companyUrl, PHP_URL_HOST);
+        }
+
+        if ($raw === '') {
+            $raw = self::DEFAULTS['unlock_hub_domain'];
+        }
+
+        $domain = strtolower(trim($raw));
+        $domain = preg_replace('#^https?://#', '', $domain);
+        $domain = explode('/', $domain)[0];
+        $domain = preg_replace('/^www\./', '', $domain);
+
+        return trim($domain);
     }
 
     /**
