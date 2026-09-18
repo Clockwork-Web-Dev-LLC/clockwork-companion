@@ -134,4 +134,21 @@ class BrandingRouteTest extends TestCase
         $this->assertSame('Companion', $settings['brand_text']);
     }
 
+    public function testHandlePostPersistsUnlockHubDomain(): void
+    {
+        $route = new BrandingRoute();
+        $payload = [
+            'enabled' => true,
+            'unlock_hub_domain' => 'hub.clockworkwd.com',
+        ];
+
+        $request = new WP_REST_Request('POST', '/clockwork/v1/branding', $payload);
+        $response = $route->handlePost($request);
+
+        $this->assertSame(200, $response->get_status());
+
+        $saved = get_option(WhiteLabel::OPTION_KEY);
+        $this->assertSame('hub.clockworkwd.com', $saved['unlock_hub_domain']);
+        $this->assertSame('hub.clockworkwd.com', WhiteLabel::getUnlockHubDomain());
+    }
 }

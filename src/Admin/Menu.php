@@ -48,7 +48,7 @@ class Menu
         add_action('admin_head', [$this, 'outputIconCss']);
         add_action('admin_post_clockwork_save_notifications', [NotificationsPage::class, 'handleSave']);
 
-        if (defined('CLOCKWORK_UNLOCK_HUB') && CLOCKWORK_UNLOCK_HUB) {
+        if (UnlockPage::isHub()) {
             UnlockPage::registerAjax();
         }
     }
@@ -272,7 +272,7 @@ class Menu
             [ConnectionPage::class, 'render']
         );
 
-        if (defined('CLOCKWORK_UNLOCK_HUB') && CLOCKWORK_UNLOCK_HUB) {
+        if (UnlockPage::isHub()) {
             add_submenu_page(
                 self::SLUG,
                 'Unlock',

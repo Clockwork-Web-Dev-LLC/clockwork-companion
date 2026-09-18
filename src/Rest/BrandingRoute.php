@@ -58,6 +58,7 @@ class BrandingRoute
             'hide_plugin_row' => ! empty($payload['hide_plugin_row']),
             'hide_help_links' => ! empty($payload['hide_help_links']),
             'footer_text' => isset($payload['footer_text']) ? sanitize_text_field((string) $payload['footer_text']) : '',
+            'unlock_hub_domain' => isset($payload['unlock_hub_domain']) ? sanitize_text_field((string) $payload['unlock_hub_domain']) : '',
             'synced_at' => isset($payload['synced_at']) ? sanitize_text_field((string) $payload['synced_at']) : gmdate('c'),
         ];
 
