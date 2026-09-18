@@ -75,6 +75,40 @@ Tells `HmacVerifier::clientIp()` to read the real client IP from `CF-Connecting-
 
 For Clockwork-managed care-plan sites, the `clockwork:ensure-companion-trust-proxy` command idempotently injects this constant fleet-wide and runs nightly to catch newly-eligible sites.
 
+### `CLOCKWORK_UNLOCK_HUB`
+
+```php
+define('CLOCKWORK_UNLOCK_HUB', true);
+```
+
+Explicitly marks the WordPress install as an agency Unlock Hub, bypassing domain detection. Recommended as a manual override for local development or custom multi-network setups.
+
+### `CLOCKWORK_UNLOCK_HUB_DOMAIN`
+
+```php
+define('CLOCKWORK_UNLOCK_HUB_DOMAIN', 'clockworkwd.com');
+```
+
+Overrides the primary agency hub domain configured via White Labeling.
+
+## LLAR Unlock Hub & Remote Lockout Clearing
+
+Companion includes an agency-only emergency unlock tool (`Clockwork → Unlock` / `UnlockPage`) designed to clear **Limit Login Attempts Reloaded (LLAR)** lockouts across your entire managed fleet without needing SSH access or WP credentials on the target site.
+
+### How It Works
+
+1. An authorized agency operator enters or selects a target site on the Unlock Hub page.
+2. The Hub fires an authenticated, HMAC-SHA256 signed `DELETE /wp-json/clockwork/v1/lockouts` request server-side to the client's Companion plugin using that site's stored Companion secret.
+3. The client site verifies the HMAC signature and flushes LLAR lockouts immediately.
+
+### Dynamic Hub Detection & Client Isolation
+
+To prevent client sites from ever exposing the emergency unlock console:
+- **Primary Domain Match:** Companion checks if the current WordPress site's `home_url()` matches the configured **Agency Primary Hub Domain** (default: `clockworkwd.com`, pushed centrally via White Labeling in Clockwork Control).
+- **Agency Staff Authentication:** Even on the hub domain, the user must have `manage_options` AND their email address must match the agency domain (e.g. `*@clockworkwd.com` or configured `agency_email_domains` / `support_email`).
+- **Client Site Isolation:** On all client sites, the Unlock submenu and navigation tab are completely suppressed, and direct requests to `renderBody()` or `ajaxUnlock()` return HTTP 403 Forbidden.
+- **Public Admin Menu:** The main Clockwork Companion menu is public to all administrators with `manage_options` to inspect telemetry, connection health, and capabilities, while the Unlock Hub tool remains strictly restricted to agency staff on the primary domain.
+
 ## Local development
 
 ```bash

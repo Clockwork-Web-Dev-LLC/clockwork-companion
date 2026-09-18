@@ -4,6 +4,18 @@ Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earli
 
 ## [Unreleased]
 
+### Added
+- **Dynamic CLOCKWORK_UNLOCK_HUB detection via White Labeling**:
+  - The Limit Login Attempts Reloaded (LLAR) Unlock Hub (`Clockwork → Unlock` / `UnlockPage`) is now dynamically detected using the configured `unlock_hub_domain` pushed from Clockwork Control's White Label settings (defaulting to `clockworkwd.com`), removing the need to manually define `CLOCKWORK_UNLOCK_HUB` in `wp-config.php`.
+  - Dynamic detection compares `home_url()` against the configured primary agency domain (`WhiteLabel::getUnlockHubDomain()`) with automatic `www.` normalization.
+  - Gated to authenticated administrators whose email address matches the agency domain (`*@<hub_domain>`, configured `agency_email_domains`, or `support_email`).
+  - Client sites and non-agency administrators are strictly isolated: the Unlock menu item and tab are suppressed, and direct calls to `renderBody()` or `ajaxUnlock()` fail closed with HTTP 403 Forbidden.
+  - Preserved full backwards compatibility for sites with `define('CLOCKWORK_UNLOCK_HUB', true);` in `wp-config.php`.
+- **White Label sync for unlock_hub_domain**: `BrandingRoute` accepts and stores `unlock_hub_domain` from HMAC-signed configuration payloads pushed from Clockwork Control.
+
+### Changed
+- **Public admin menu visibility**: Removed the agency-email domain hiding hook on `admin_menu`. The Clockwork Companion admin menu is now publicly visible to all administrators with `manage_options` across all sites, while sensitive tools (such as Unlock) remain strictly gated to agency staff on the primary domain.
+
 ## 1.38.0 — 2026-09-17
 
 ### Added
