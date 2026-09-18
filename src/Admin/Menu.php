@@ -142,7 +142,13 @@ class Menu
     public function addMenu(): void
     {
         $customIcon = WhiteLabel::getMenuIcon();
-        $menuIcon = ! empty($customIcon) ? $customIcon : WhiteLabel::bundledAssetUrl('assets/clockwork-logo-mark.svg').'?v=1.1';
+        // Cache-buster bumped to 1.2: the bundled SVG had a broken MIME type
+        // ("img/png" instead of "image/png") on its two embedded raster
+        // layers, so browsers silently dropped the colored circle + spike
+        // and rendered only the bare white "C" glyph in the sidebar. Fixed
+        // in the asset; the version bump forces browsers/CDNs that already
+        // cached the broken file to refetch it.
+        $menuIcon = ! empty($customIcon) ? $customIcon : WhiteLabel::bundledAssetUrl('assets/clockwork-logo-mark.svg').'?v=1.2';
         $menuTitle = WhiteLabel::getMenuTitle();
         $pluginName = WhiteLabel::getPluginName();
 
