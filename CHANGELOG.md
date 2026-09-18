@@ -4,6 +4,8 @@ Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earli
 
 ## [Unreleased]
 
+## 1.38.1 — 2026-09-18
+
 ### Added
 - **Dynamic CLOCKWORK_UNLOCK_HUB detection via White Labeling**:
   - The Limit Login Attempts Reloaded (LLAR) Unlock Hub (`Clockwork → Unlock` / `UnlockPage`) is now dynamically detected using the configured `unlock_hub_domain` pushed from Clockwork Control's White Label settings (defaulting to `clockworkwd.com`), removing the need to manually define `CLOCKWORK_UNLOCK_HUB` in `wp-config.php`.
