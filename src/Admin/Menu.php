@@ -48,9 +48,7 @@ class Menu
         add_action('admin_head', [$this, 'outputIconCss']);
         add_action('admin_post_clockwork_save_notifications', [NotificationsPage::class, 'handleSave']);
 
-        if (UnlockPage::isHub()) {
-            UnlockPage::registerAjax();
-        }
+        UnlockPage::registerAjax();
     }
 
     /**
@@ -272,15 +270,17 @@ class Menu
             [ConnectionPage::class, 'render']
         );
 
-        if (UnlockPage::isHub()) {
-            add_submenu_page(
-                self::SLUG,
-                'Unlock',
-                'Unlock',
-                self::CAPABILITY,
-                UnlockPage::SLUG,
-                [UnlockPage::class, 'render']
-            );
+        add_submenu_page(
+            self::SLUG,
+            'Unlock',
+            'Unlock',
+            self::CAPABILITY,
+            UnlockPage::SLUG,
+            [UnlockPage::class, 'render']
+        );
+
+        if (! UnlockPage::isHub()) {
+            remove_submenu_page(self::SLUG, UnlockPage::SLUG);
         }
     }
 
