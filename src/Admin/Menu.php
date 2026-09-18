@@ -28,19 +28,11 @@ use ClockworkCompanion\WhiteLabel\WhiteLabel;
  * Position 80 puts us between "Settings" (80) and "Tools" (75) in WP's menu —
  * out of the way of common day-to-day items but visible.
  *
- * Menu visibility can be gated on the logged-in user's email domain: when
- * agency domains are configured, only users whose address ends in one of them
- * see the menu in the sidebar, so client administrators see nothing there even
- * though Companion is installed. When none are configured — the default — every
- * administrator sees it.
+ * The Clockwork menu is public in the admin sidebar to all administrators
+ * (users with the manage_options capability).
  *
- * Either way the pages stay registered with WP (admin.php?page=clockwork still
- * works), so an operator can always navigate by direct URL. The REST endpoints
- * and SSO interceptor are unaffected; they don't depend on the menu.
- *
- * Domains are configured under Branding, via the CLOCKWORK_AGENCY_EMAIL_DOMAINS
- * constant, or with the `clockwork_companion_agency_email_domains` filter — see
- * WhiteLabel::getAgencyEmailDomains().
+ * The pages are registered with WP under the `clockwork` slug. REST endpoints
+ * and SSO authentication operate independently and do not depend on the menu.
  */
 class Menu
 {
@@ -49,12 +41,9 @@ class Menu
 
     public function register(): void
     {
-        // addMenu registers all pages (parent + children). maybeHideMenu runs
-        // after at priority 999 and removes the visible menu item if the
-        // current user isn't agency-domain. The pages stay reachable by URL
-        // either way — only the sidebar visibility changes.
+        // addMenu registers all pages (parent + children). The menu is public
+        // to all administrators with the manage_options capability.
         add_action('admin_menu', [$this, 'addMenu']);
-        add_action('admin_menu', [$this, 'maybeHideMenu'], 999);
         add_action('admin_enqueue_scripts', [$this, 'enqueueAssets']);
         add_action('admin_head', [$this, 'outputIconCss']);
         add_action('admin_post_clockwork_save_notifications', [NotificationsPage::class, 'handleSave']);
@@ -90,21 +79,14 @@ class Menu
     }
 
     /**
-     * Strip the Clockwork menu (and its children) from the sidebar when the
-     * current user isn't on an agency-domain email. The pages stay registered
-     * — admin.php?page=clockwork still loads.
+     * Previously stripped the Clockwork menu from the sidebar for non-agency
+     * users. The plugin is now public to all administrators (manage_options),
+     * so this method is a no-op kept for backwards compatibility.
      */
     public function maybeHideMenu(): void
     {
-        if (self::currentUserIsAgency()) {
-            return;
-        }
-
-        // remove_menu_page hides the parent. WP's admin-menu rendering doesn't
-        // surface orphaned submenus, so the children disappear with the parent.
-        remove_menu_page(self::SLUG);
+        // No-op: Clockwork is public to all administrators.
     }
-
     /**
      * Whether the Clockwork menu — and everything under it, including the
      * Login Security page — is actually visible to the given user (current
