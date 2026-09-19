@@ -51,7 +51,7 @@ class UpdateCoveragePage
         }
 
         global $pagenow;
-        if ($pagenow !== 'plugins.php') {
+        if (! in_array($pagenow, ['plugins.php', 'themes.php'], true)) {
             return;
         }
 
@@ -63,14 +63,23 @@ class UpdateCoveragePage
         $count = count($data['items']);
         $url = admin_url('admin.php?page=' . self::SLUG);
         $pluginName = WhiteLabel::getPluginName();
+        $kinds = [];
+        foreach ($data['items'] as $item) {
+            if (is_array($item)) {
+                $kinds[] = isset($item['kind']) ? (string) $item['kind'] : 'plugin';
+            }
+        }
+        $kinds = array_unique($kinds);
+        $noun = $kinds === ['theme'] ? 'theme(s)' : ($kinds === ['plugin'] || $kinds === [] ? 'plugin(s)' : 'plugin(s) or theme(s)');
 
         echo '<div class="notice notice-warning is-dismissible clockwork-update-exceptions-notice">';
         echo '<p>';
         printf(
-            /* translators: 1: plugin name, 2: count of plugins, 3: url to view details */
-            esc_html__('%1$s has paused automatic updates for %2$d plugin(s) after repeated failures. ', 'clockwork-companion'),
+            /* translators: 1: plugin name, 2: count, 3: "plugin(s)", "theme(s)", or "plugin(s) or theme(s)" */
+            esc_html__('%1$s has paused automatic updates for %2$d %3$s after repeated failures. ', 'clockwork-companion'),
             esc_html($pluginName),
-            (int) $count
+            (int) $count,
+            $noun
         );
         printf(
             '<a href="%s">%s</a>',
@@ -93,7 +102,7 @@ class UpdateCoveragePage
                     All updates operational
                 </h3>
                 <p style="font-size: 14px; color: #4b5563; margin: 0 0 4px; line-height: 1.5;">
-                    Automatic plugin updates are on for this site when a care plan is active. Nothing is currently paused.
+                    Automatic plugin and theme updates are on for this site when a care plan is active. Nothing is currently paused.
                 </p>
                 <p style="font-size: 12px; color: #9ca3af; margin: 0;">
                     Plugins will continue to receive scheduled updates as new versions become available.

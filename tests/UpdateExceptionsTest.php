@@ -113,7 +113,7 @@ class UpdateExceptionsTest extends TestCase
         UpdateCoveragePage::renderBody();
         $output = ob_get_clean();
 
-        $this->assertStringContainsString('Automatic plugin updates are on for this site when a care plan is active. Nothing is currently paused.', $output);
+        $this->assertStringContainsString('Automatic plugin and theme updates are on for this site when a care plan is active. Nothing is currently paused.', $output);
         $this->assertStringContainsString('All updates operational', $output);
     }
 
@@ -176,6 +176,22 @@ class UpdateExceptionsTest extends TestCase
         $this->assertStringContainsString('clockwork-update-exceptions-notice', $output);
         $this->assertStringContainsString('has paused automatic updates for 1 plugin(s) after repeated failures.', $output);
         $this->assertStringContainsString('View details', $output);
+
+        // Theme-only pauses also surface on themes.php with theme copy.
+        update_option(UpdateCoveragePage::OPTION, [
+            'generated_at' => '2026-09-19T06:20:00Z',
+            'site_domain' => 'example.com',
+            'items' => [
+                ['kind' => 'theme', 'slug' => 'sample-theme', 'name' => 'Sample Theme'],
+            ],
+        ]);
+
+        $GLOBALS['pagenow'] = 'themes.php';
+        ob_start();
+        UpdateCoveragePage::maybeRenderPluginsNotice();
+        $output = ob_get_clean();
+
+        $this->assertStringContainsString('has paused automatic updates for 1 theme(s) after repeated failures.', $output);
     }
 
     public function testPluginsNoticeDoesNotRenderWhenItemsEmpty(): void
