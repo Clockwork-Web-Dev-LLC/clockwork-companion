@@ -120,6 +120,7 @@ class Plugin
         'plugin-lifecycle',
         'debug-log',
         'environment',
+        'update-exceptions',
     ];
 
     public function boot(): void
@@ -185,6 +186,7 @@ class Plugin
             (new PluginLifecycleRoute())->register();
             (new DebugLogRoute())->register();
             (new EnvironmentRoute())->register();
+            (new \ClockworkCompanion\Rest\UpdateExceptionsRoute())->register();
         });
 
         // Self-service Forms tab AJAX. Capability + nonce gated; distinct

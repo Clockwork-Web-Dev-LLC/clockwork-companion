@@ -43,6 +43,7 @@ class Layout
         $all[] = ['slug' => 'forms', 'label' => 'Forms', 'page' => \ClockworkCompanion\Admin\Pages\FormsPage::SLUG];
         $all[] = ['slug' => 'backups', 'label' => 'Backups', 'page' => \ClockworkCompanion\Admin\Pages\BackupsPage::SLUG];
         $all[] = ['slug' => 'notifications', 'label' => 'Notifications', 'page' => \ClockworkCompanion\Admin\Pages\NotificationsPage::SLUG];
+        $all[] = ['slug' => 'update-coverage', 'label' => 'Update coverage', 'page' => \ClockworkCompanion\Admin\Pages\UpdateCoveragePage::SLUG];
 
         if (\ClockworkCompanion\Admin\Pages\UnlockPage::isHub()) {
             $all[] = ['slug' => 'unlock', 'label' => 'Unlock', 'page' => \ClockworkCompanion\Admin\Pages\UnlockPage::SLUG];

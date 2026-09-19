@@ -46,6 +46,7 @@ class Menu
         add_action('admin_menu', [$this, 'addMenu']);
         add_action('admin_enqueue_scripts', [$this, 'enqueueAssets']);
         add_action('admin_head', [$this, 'outputIconCss']);
+        add_action('admin_notices', [\ClockworkCompanion\Admin\Pages\UpdateCoveragePage::class, 'maybeRenderPluginsNotice']);
         add_action('admin_post_clockwork_save_notifications', [NotificationsPage::class, 'handleSave']);
 
         UnlockPage::registerAjax();
@@ -283,6 +284,15 @@ class Menu
             self::CAPABILITY,
             NotificationsPage::SLUG,
             [NotificationsPage::class, 'render']
+        );
+
+        add_submenu_page(
+            self::SLUG,
+            'Update coverage',
+            'Update coverage',
+            self::CAPABILITY,
+            \ClockworkCompanion\Admin\Pages\UpdateCoveragePage::SLUG,
+            [\ClockworkCompanion\Admin\Pages\UpdateCoveragePage::class, 'render']
         );
 
         add_submenu_page(
