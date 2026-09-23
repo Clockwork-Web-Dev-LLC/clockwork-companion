@@ -107,7 +107,7 @@ class PerformancePage
                     consistent hardware. You'd see your <strong>Performance score</strong>,
                     <strong>Largest Contentful Paint</strong>, <strong>Cumulative Layout Shift</strong>, and
                     <strong>page weight</strong> trended over time, so a slow regression doesn't sneak past you.
-                    <button type="button" class="cwk-support-trigger cwk-link-btn">Talk to <?php echo esc_html(WhiteLabel::getAuthorName()); ?></button> about adding a care plan.
+                    <?php echo WhiteLabel::supportLink('Talk to ' . WhiteLabel::getAuthorName()); ?> about adding a care plan.
                 </div>
             </div>
             <?php

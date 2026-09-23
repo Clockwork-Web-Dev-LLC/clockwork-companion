@@ -30,17 +30,6 @@ if (! defined('CLOCKWORK_COMPANION_FILE')) {
 }
 define('CLOCKWORK_COMPANION_NAMESPACE', 'clockwork/v1');
 
-// Support form — proxies to the Gravity Forms REST API v2 on the operator's
-// own site. Point CLOCKWORK_SUPPORT_SITE_URL at that site in wp-config.php and
-// supply credentials from its Forms → Settings → REST API → Authentication
-// screen (API version 2):
-//   CLOCKWORK_SUPPORT_GF_KEY    — Consumer Key  (ck_…)
-//   CLOCKWORK_SUPPORT_GF_SECRET — Consumer Secret (cs_…)
-// Left undefined, the in-plugin support form is simply unavailable.
-if (! defined('CLOCKWORK_SUPPORT_SITE_URL')) {
-    define('CLOCKWORK_SUPPORT_SITE_URL', '');
-}
-
 spl_autoload_register(function (string $class): void {
     $prefix = 'ClockworkCompanion\\';
     if (strncmp($class, $prefix, strlen($prefix)) !== 0) {

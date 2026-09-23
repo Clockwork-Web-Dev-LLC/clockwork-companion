@@ -68,6 +68,24 @@ class WhiteLabelTest extends TestCase
         $this->assertSame('mailto:ops@agencyprime.com', WhiteLabel::getSupportUrl());
     }
 
+    public function testSupportUrlIsClockworkSupportPageWhenNotWhiteLabeled(): void
+    {
+        $this->assertSame('https://clockworkwd.com/support/', WhiteLabel::getSupportUrl());
+        $this->assertStringContainsString('href="https://clockworkwd.com/support/"', WhiteLabel::supportLink('Talk to us'));
+    }
+
+    public function testWhiteLabeledSiteWithNoSupportDestinationNeverLinksToClockwork(): void
+    {
+        update_option(WhiteLabel::OPTION_KEY, [
+            'enabled' => true,
+            'support_email' => '',
+            'support_url' => '',
+        ]);
+
+        $this->assertSame('', WhiteLabel::getSupportUrl());
+        $this->assertSame('Talk to us', WhiteLabel::supportLink('Talk to us'));
+    }
+
     public function testFilterAllPluginsModifiesCompanionMetadata(): void
     {
         update_option(WhiteLabel::OPTION_KEY, [

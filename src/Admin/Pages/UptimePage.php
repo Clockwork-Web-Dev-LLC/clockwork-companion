@@ -144,7 +144,7 @@ class UptimePage
                     <dd>A page that doesn't load — server errors, timeouts, DNS failures, or anything other than a successful response. Cloudflare or WAF challenges that block our checker are flagged separately so they don't count as real outages.</dd>
 
                     <dt>Probe frequency</dt>
-                    <dd>Every 5 minutes by default. <?php echo esc_html(WhiteLabel::getAuthorName()); ?> can dial this up to once a minute or down to every 15 minutes globally — <button type="button" class="cwk-support-trigger cwk-link-btn">contact us</button> if you want a specific cadence on this site.</dd>
+                    <dd>Every 5 minutes by default. <?php echo esc_html(WhiteLabel::getAuthorName()); ?> can dial this up to once a minute or down to every 15 minutes globally — <?php echo WhiteLabel::supportLink('contact us'); ?> if you want a specific cadence on this site.</dd>
 
                     <dt>Alert threshold</dt>
                     <dd>Two consecutive failures (about 10 minutes of real downtime) before an alert is fired. Recovery is instant — the moment your site comes back, the alert clears.</dd>
@@ -153,7 +153,7 @@ class UptimePage
                     <dd><?php echo esc_html(WhiteLabel::getAuthorName()); ?>'s internal team chat. They get a notification with the failure reason and a link straight to your site, so they can investigate before you ever notice.</dd>
 
                     <dt>Want this changed?</dt>
-                    <dd>The schedule, threshold, and notification routing are all controlled by <?php echo esc_html(WhiteLabel::getAuthorName()); ?>. <button type="button" class="cwk-support-trigger cwk-link-btn">Reach out to us</button> and we can adjust things on our end.</dd>
+                    <dd>The schedule, threshold, and notification routing are all controlled by <?php echo esc_html(WhiteLabel::getAuthorName()); ?>. <?php echo WhiteLabel::supportLink('Reach out to us'); ?> and we can adjust things on our end.</dd>
                 </dl>
             </div>
         </div>

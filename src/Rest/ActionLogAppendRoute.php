@@ -21,6 +21,11 @@ use WP_REST_Response;
  * trade-off for first-cut — Clockwork still has the authoritative copy in
  * action_logs, and we're not building reconciliation here.
  *
+ * `action_type` is accepted as-is, so a type Clockwork starts sending that
+ * isn't listed in Admin\Pages\ActivityPage::typeConfig() / labelForType()
+ * renders with a generic icon and raw label — add it there when adding it
+ * on the Clockwork side.
+ *
  * Request body: a single normalised row.
  *   {
  *     "action_type": "plugin_update",

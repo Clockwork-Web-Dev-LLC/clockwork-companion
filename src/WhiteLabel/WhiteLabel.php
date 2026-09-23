@@ -10,6 +10,7 @@ class WhiteLabel
     public const LEGACY_OPTION_KEY = 'clockwork_white_label';
     public const DONATED_AT_OPTION = 'clockwork_whitelabel_donated_at';
     public const DISMISSED_AT_OPTION = 'clockwork_whitelabel_donate_dismissed_at';
+    public const CLOCKWORK_SUPPORT_URL = 'https://clockworkwd.com/support/';
 
     /**
      * Default white-label branding configuration.
@@ -452,16 +453,26 @@ class WhiteLabel
     }
 
     /**
-     * Get the custom support URL, if specified or mailto.
+     * Where every "Get Support" / "Talk to …" link points.
+     *
+     * Unbranded (Clockwork) sites go to Clockwork's public support page.
+     * White-labeled sites use their own support URL, then their support
+     * email, and otherwise get no link at all (supportLink() renders plain
+     * text, the header button is hidden) — never Clockwork's page, so a
+     * site running someone else's branding doesn't point its owner at us.
      */
     public static function getSupportUrl(): string
     {
         $settings = self::getSettings();
-        if (! empty($settings['enabled']) && ! empty($settings['support_url'])) {
+        if (empty($settings['enabled'])) {
+            return self::CLOCKWORK_SUPPORT_URL;
+        }
+
+        if (! empty($settings['support_url'])) {
             return (string) $settings['support_url'];
         }
 
-        if (! empty($settings['enabled']) && ! empty($settings['support_email'])) {
+        if (! empty($settings['support_email'])) {
             return 'mailto:' . (string) $settings['support_email'];
         }
 

@@ -4,9 +4,9 @@ namespace ClockworkCompanion;
 
 use ClockworkCompanion\ActionLog\Schema as ActionLogSchema;
 use ClockworkCompanion\Admin\Actions\RunSecurityScanAction;
+use ClockworkCompanion\Admin\DashboardWidget;
 use ClockworkCompanion\Admin\FormsAjaxHandlers;
 use ClockworkCompanion\Admin\Menu;
-use ClockworkCompanion\Admin\Support\SupportForm;
 use ClockworkCompanion\Admin\UpdatesRefreshAjaxHandler;
 use ClockworkCompanion\Auth\Secret;
 use ClockworkCompanion\AuthAudit\Schema as AuthAuditSchema;
@@ -206,8 +206,8 @@ class Plugin
         // Cheap to call on every request because Menu::register() just adds hooks.
         (new Menu())->register();
 
-        // Support form modal + dashboard widget + AJAX proxy.
-        (new SupportForm())->register();
+        // wp-admin Dashboard status widget + support link.
+        (new DashboardWidget())->register();
 
         // admin-post.php handler for the Security page's "Run scan now" buttons.
         // Nonce + manage_options gated; unrelated to the HMAC REST routes above.

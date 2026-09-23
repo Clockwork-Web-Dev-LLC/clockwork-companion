@@ -139,7 +139,7 @@ class ActivityPage
                 </div>
                 <div class="cwk-plan-banner__text">
                     <strong class="cwk-plan-banner__title">You're not on a care plan</strong>
-                    <span class="cwk-plan-banner__sub">Work shown here may be billed separately. A care plan covers updates, scans, and monitoring automatically — <button type="button" class="cwk-support-trigger cwk-link-btn">talk to <?php echo esc_html(WhiteLabel::getAuthorName()); ?></button> about adding one.</span>
+                    <span class="cwk-plan-banner__sub">Work shown here may be billed separately. A care plan covers updates, scans, and monitoring automatically — <?php echo WhiteLabel::supportLink('talk to ' . WhiteLabel::getAuthorName()); ?> about adding one.</span>
                 </div>
             </div>
             <?php
@@ -291,6 +291,14 @@ class ActivityPage
     /**
      * Tile config: plural labels + icon names for the summary grid.
      *
+     * KEEP IN SYNC: whenever a new `action_type` starts being written to the
+     * action log — an ActionLog\Repository::insert() call in this plugin, or
+     * a new type recorded by the monitoring app's ActionLogger and mirrored
+     * in via ActionLogAppendRoute — add it here AND to labelForType() below.
+     * Nothing enforces the set of types, so a missing entry fails silently:
+     * the tile falls back to the generic circle icon and an auto-titlecased
+     * label ("2fa Required").
+     *
      * @return array<string, array{label: string, icon: string}>
      */
     private static function typeConfig(): array
@@ -302,10 +310,11 @@ class ActivityPage
             'uptime_check'            => ['label' => 'Uptime checks',           'icon' => 'pulse'],
             'uptime_transition'       => ['label' => 'Uptime checks',           'icon' => 'pulse'],
             'companion_install'       => ['label' => 'Companion installs',      'icon' => 'download'],
-            'auto_updates_configured' => ['label' => 'Auto-updates configured', 'icon' => 'refresh'],
+            'auto_updates_toggled'    => ['label' => 'Auto-update changes',     'icon' => 'refresh'],
             'companion_update'        => ['label' => 'Companion updates',       'icon' => 'download'],
             'theme_update'            => ['label' => 'Theme updates',           'icon' => 'theme'],
             'core_update'             => ['label' => 'Core updates',            'icon' => 'wp'],
+            'translations_update'     => ['label' => 'Translation updates',     'icon' => 'globe'],
             'sso_login'               => ['label' => 'SSO logins',              'icon' => 'login'],
             'manual_ban'              => ['label' => 'Lockouts',                'icon' => 'ban'],
             'manual_unban'            => ['label' => 'Unlocks',                 'icon' => 'check'],
@@ -313,6 +322,25 @@ class ActivityPage
             'review_dismiss'          => ['label' => 'Reviews dismissed',       'icon' => 'dismiss'],
             'care_plan_toggled'       => ['label' => 'Care plan changes',       'icon' => 'plan'],
             'backup'                  => ['label' => 'Backups',                 'icon' => 'backup'],
+            'site_deactivated'        => ['label' => 'Monitoring paused',       'icon' => 'power'],
+            'site_reactivated'        => ['label' => 'Monitoring resumed',      'icon' => 'power'],
+            'site.archive'            => ['label' => 'Site archived',           'icon' => 'archive'],
+            'site.unarchive'          => ['label' => 'Site unarchived',         'icon' => 'archive'],
+            'site.email-vuln-report'  => ['label' => 'Vulnerability reports',   'icon' => 'mail'],
+            'uptime_ignored'          => ['label' => 'Uptime alerts muted',     'icon' => 'bell-off'],
+            'uptime_unignored'        => ['label' => 'Uptime alerts unmuted',   'icon' => 'bell'],
+            'wp_core_repaired'        => ['label' => 'Core file repairs',       'icon' => 'wrench'],
+            'companion_secret_rotated' => ['label' => 'Connection key rotations', 'icon' => 'key'],
+            'plugin_update.lock_cleared' => ['label' => 'Update locks cleared', 'icon' => 'unlock'],
+            // Written by Admin\Actions\TwoFactorAdminActions when an admin
+            // changes another user's 2FA from the Login Security page.
+            '2fa_required'            => ['label' => '2FA required',            'icon' => 'lock'],
+            '2fa_unrequired'          => ['label' => '2FA requirement dropped', 'icon' => 'unlock'],
+            '2fa_disabled_by_admin'   => ['label' => '2FA turned off',          'icon' => 'unlock'],
+            // Written by TwoFactor\WflsMigrator when moving users off
+            // Wordfence Login Security.
+            '2fa_wfls_migration'      => ['label' => '2FA migrations',          'icon' => 'migrate'],
+            '2fa_wfls_removed'        => ['label' => 'Wordfence 2FA removed',   'icon' => 'trash'],
             // These four don't originate in this plugin — they're mirrored
             // in from Clockwork's own ops tool via ActionLogAppendRoute, so
             // without an explicit entry here they'd fall through to the
@@ -340,10 +368,26 @@ class ActivityPage
             'performance_scan'        => 'Performance scan',
             'uptime_check'            => 'Uptime check',
             'uptime_transition'       => 'Uptime check',
-            'auto_updates_configured' => 'Auto-updates configured',
+            'auto_updates_toggled'    => 'Auto-update change',
             'theme_update'            => 'Theme update',
             'core_update'             => 'Core update',
+            'translations_update'     => 'Translation update',
             'backup'                  => 'Backup',
+            'site_deactivated'        => 'Monitoring paused',
+            'site_reactivated'        => 'Monitoring resumed',
+            'site.archive'            => 'Site archived',
+            'site.unarchive'          => 'Site unarchived',
+            'site.email-vuln-report'  => 'Vulnerability report',
+            'uptime_ignored'          => 'Uptime alerts muted',
+            'uptime_unignored'        => 'Uptime alerts unmuted',
+            'wp_core_repaired'        => 'Core file repair',
+            'companion_secret_rotated' => 'Connection key rotated',
+            'plugin_update.lock_cleared' => 'Update lock cleared',
+            '2fa_required'            => '2FA required',
+            '2fa_unrequired'          => '2FA requirement dropped',
+            '2fa_disabled_by_admin'   => '2FA turned off',
+            '2fa_wfls_migration'      => '2FA migration',
+            '2fa_wfls_removed'        => 'Wordfence 2FA removed',
             'cache_purged'            => 'Cache purge',
             'comments_cleanup'        => 'Comments cleanup',
             'wfls_plugin_removed'     => 'Wordfence removed',
@@ -372,6 +416,16 @@ class ActivityPage
             'trash'    => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>',
             'message'  => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
             'migrate'  => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3L4 7l4 4"/><path d="M4 7h16"/><path d="M16 21l4-4-4-4"/><path d="M20 17H4"/></svg>',
+            'lock'     => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
+            'unlock'   => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>',
+            'globe'    => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8l6 6"/><path d="M4 14l6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="M22 22l-5-10-5 10"/><path d="M14 18h6"/></svg>',
+            'power'    => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>',
+            'archive'  => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>',
+            'mail'     => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>',
+            'bell'     => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>',
+            'bell-off' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13.73 21a2 2 0 0 1-3.46 0"/><path d="M18.63 13A17.89 17.89 0 0 1 18 8"/><path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"/><path d="M18 8a6 6 0 0 0-9.33-5"/><line x1="1" y1="1" x2="23" y2="23"/></svg>',
+            'wrench'   => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>',
+            'key'      => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.78 7.78 5.5 5.5 0 0 1 7.78-7.78zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>',
             'default'  => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/></svg>',
         ];
 

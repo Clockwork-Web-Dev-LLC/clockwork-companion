@@ -12,6 +12,10 @@ namespace ClockworkCompanion\ActionLog;
 class Repository
 {
     /**
+     * Writing a new `action_type`? Also add it to
+     * Admin\Pages\ActivityPage::typeConfig() and labelForType(), or it
+     * shows on the Activity page with a generic icon and raw label.
+     *
      * @param  array{
      *     action_type: string,
      *     target?: ?string,

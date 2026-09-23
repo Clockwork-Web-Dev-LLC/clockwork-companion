@@ -86,6 +86,26 @@ body.wp-admin {
     letter-spacing: 0.04em;
     text-transform: uppercase;
 }
+.cwk-header-support-btn {
+    display: inline-flex;
+    align-items: center;
+    background: transparent;
+    border: 1px solid rgba(255,255,255,.3);
+    color: #fff;
+    border-radius: 5px;
+    padding: 4px 12px;
+    font-size: 12px;
+    line-height: 1.5;
+    text-decoration: none;
+    transition: background .15s, border-color .15s;
+}
+.cwk-header-support-btn:hover,
+.cwk-header-support-btn:focus {
+    background: rgba(255,255,255,.1);
+    border-color: rgba(255,255,255,.5);
+    color: #fff;
+}
+
 .clockwork-admin__version {
     font-size: 12px;
     color: rgba(255,255,255,0.55);

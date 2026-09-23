@@ -4,6 +4,18 @@ Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earli
 
 ## [Unreleased]
 
+### Removed
+- **In-plugin support form**: the "Get Support" modal, its admin-ajax proxy to the Gravity Forms REST API (`clockwork_support_submit`), `assets/support-form.js`, and the `CLOCKWORK_SUPPORT_SITE_URL` / `CLOCKWORK_SUPPORT_GF_KEY` / `CLOCKWORK_SUPPORT_GF_SECRET` constants are gone. Any of those constants still in a site's `wp-config.php` are now unused and can be deleted.
+
+### Changed
+- **Support links now go to Clockwork's support page**: the header "Get Support" button, the Dashboard widget button, and every "Talk to Clockwork Web Dev" / "Reach out" / "contact us" link across the Activity, Backups, Performance, Security, Traffic and Uptime pages open `https://clockworkwd.com/support/` in a new tab on unbranded sites. White-labeled sites keep using their own support URL, then their support email; with neither set, the header button is hidden and the links render as plain text, so they never point at Clockwork.
+- **Dashboard widget** moved from `Admin\Support\SupportForm` to `Admin\DashboardWidget`. The status grid is unchanged.
+- **Activity page icons for 2FA admin actions**: `2fa_required`, `2fa_unrequired`, and `2fa_disabled_by_admin` (written by the Login Security page's Require / Unrequire / Disable controls) now get lock/unlock icons and proper labels ("2FA required", "2FA requirement dropped", "2FA turned off") instead of the generic circle and an auto-titlecased "2fa Required".
+- **Activity page icons for the remaining action types**: `translations_update`, `site_deactivated`, `site_reactivated`, `site.archive`, `site.unarchive`, `site.email-vuln-report`, `uptime_ignored`, `uptime_unignored`, `wp_core_repaired`, `companion_secret_rotated`, `plugin_update.lock_cleared` (mirrored in from the monitoring app), and `2fa_wfls_migration` / `2fa_wfls_removed` (written by `WflsMigrator`) now get an icon and label.
+
+### Fixed
+- **Auto-update changes showed a generic icon**: the Activity page's lookup table keyed this action as `auto_updates_configured`, but the monitoring app records it as `auto_updates_toggled`, so it never matched. Renamed the key.
+
 ## 1.38.4 — 2026-09-23
 
 ### Changed

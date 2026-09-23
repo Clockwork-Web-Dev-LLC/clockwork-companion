@@ -318,7 +318,7 @@ class BackupsPage
                 <?php else : ?>
                     <div class="clockwork-notice">
                         Your hosting plan includes 30 days of backup history.
-                        <button type="button" class="cwk-support-trigger cwk-link-btn">Talk to <?php echo esc_html(WhiteLabel::getAuthorName()); ?></button> about a care plan to extend retention to 90 days.
+                        <?php echo WhiteLabel::supportLink('Talk to ' . WhiteLabel::getAuthorName()); ?> about a care plan to extend retention to 90 days.
                     </div>
                 <?php endif; ?>
             </div>

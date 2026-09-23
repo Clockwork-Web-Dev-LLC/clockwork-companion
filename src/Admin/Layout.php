@@ -75,14 +75,10 @@ class Layout
                     <span class="clockwork-admin__brand-text"><?php echo esc_html($brandText); ?></span>
                 </div>
                 <div style="display:flex;align-items:center;gap:12px;">
-                    <?php if (! WhiteLabel::areHelpLinksHidden()) : ?>
-                        <?php if (!empty($supportUrl)) : ?>
-                            <a href="<?php echo esc_url($supportUrl); ?>" target="_blank" rel="noopener noreferrer" class="cwk-header-support-btn" style="text-decoration:none;display:inline-flex;align-items:center;">
-                                <?php echo esc_html($supportLabel); ?>
-                            </a>
-                        <?php else : ?>
-                            <button type="button" class="cwk-support-trigger cwk-header-support-btn"><?php echo esc_html($supportLabel); ?></button>
-                        <?php endif; ?>
+                    <?php if (! WhiteLabel::areHelpLinksHidden() && $supportUrl !== '') : ?>
+                        <a href="<?php echo esc_url($supportUrl); ?>" target="_blank" rel="noopener noreferrer" class="cwk-header-support-btn">
+                            <?php echo esc_html($supportLabel); ?>
+                        </a>
                     <?php endif; ?>
 
                     <?php if ($showVersion) : ?>
