@@ -112,7 +112,7 @@ class LoginInterceptor
         if ($state['attempts'] > self::MAX_ATTEMPTS) {
             delete_transient($key);
             AuthAuditRepository::insert([
-                'ip' => (string) ($_SERVER['REMOTE_ADDR'] ?? ''),
+                'ip' => \ClockworkCompanion\Gatekeeper\ClientIp::get(),
                 'reason' => '2fa_attempts_exhausted',
                 'request_path' => '/wp-login.php',
                 'request_method' => 'POST',
@@ -142,7 +142,7 @@ class LoginInterceptor
 
         if (! $valid) {
             AuthAuditRepository::insert([
-                'ip' => (string) ($_SERVER['REMOTE_ADDR'] ?? ''),
+                'ip' => \ClockworkCompanion\Gatekeeper\ClientIp::get(),
                 'reason' => '2fa_bad_code',
                 'request_path' => '/wp-login.php',
                 'request_method' => 'POST',

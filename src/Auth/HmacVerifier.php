@@ -130,33 +130,9 @@ class HmacVerifier
         return false;
     }
 
-    private static function clientIp(): string
+    public static function clientIp(): string
     {
-        $candidate = '';
-
-        if (defined('CLOCKWORK_COMPANION_TRUST_PROXY') && constant('CLOCKWORK_COMPANION_TRUST_PROXY')) {
-            // Cloudflare puts the real client IP here directly; honoured first
-            // because it's a single-value header (no chain to parse).
-            if (! empty($_SERVER['HTTP_CF_CONNECTING_IP'])) {
-                $candidate = trim((string) $_SERVER['HTTP_CF_CONNECTING_IP']);
-            } elseif (! empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
-                // Generic XFF: leftmost entry is the original client per
-                // RFC convention. Operator opted in via the constant above.
-                $candidate = trim(explode(',', (string) $_SERVER['HTTP_X_FORWARDED_FOR'])[0]);
-            }
-        }
-
-        if ($candidate === '' && isset($_SERVER['REMOTE_ADDR'])) {
-            $candidate = (string) $_SERVER['REMOTE_ADDR'];
-        }
-
-        // Validate so the audit table can't be poisoned by a garbage string
-        // if any upstream ever populates these from untrusted input.
-        if ($candidate !== '' && filter_var($candidate, FILTER_VALIDATE_IP)) {
-            return $candidate;
-        }
-
-        return 'unknown';
+        return \ClockworkCompanion\Gatekeeper\ClientIp::get();
     }
 
     private static function transientKey(string $ip): string

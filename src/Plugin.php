@@ -52,6 +52,7 @@ class Plugin
     public const CAPABILITIES = [
         'contact-form-test',
         'lockouts',
+        'gatekeeper',
         'wordfence-blocks',
         'plugins',
         'admins',
@@ -130,6 +131,9 @@ class Plugin
         ActionLogSchema::ensureInstalled();
         AuthAuditSchema::ensureInstalled();
         ResourceSchema::ensureInstalled();
+        \ClockworkCompanion\Gatekeeper\Schema::ensureInstalled();
+        \ClockworkCompanion\Gatekeeper\Store::maybeSchedulePrune();
+        \ClockworkCompanion\Gatekeeper\Gate::register();
 
         // Third-party plugin compatibility shims — run before route registration
         // so any filters they install are live by the time WordPress's REST
@@ -151,6 +155,7 @@ class Plugin
             (new DetectRoute())->register();
             (new TestContactFormRoute())->register();
             (new LockoutsRoute())->register();
+            (new \ClockworkCompanion\Rest\GatekeeperSettingsRoute())->register();
             (new WordfenceBlocksRoute())->register();
             (new PluginsRoute())->register();
             (new ThemesRoute())->register();

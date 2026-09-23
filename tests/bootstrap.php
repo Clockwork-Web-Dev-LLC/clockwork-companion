@@ -649,8 +649,13 @@ if (! class_exists('wpdb')) {
             return null;
         }
 
+        public array $table_rows = [];
+
         public function get_results(?string $query = null, string $output = 'ARRAY_A'): array
         {
+            if ($query && str_contains($query, 'clockwork_lockouts')) {
+                return $this->table_rows['wp_clockwork_lockouts'] ?? [];
+            }
             return [];
         }
 
@@ -667,6 +672,92 @@ if (! class_exists('wpdb')) {
         public function db_server_info(): string
         {
             return 'MySQL 8.0.36';
+        }
+
+        public string $sitemeta = 'wp_sitemeta';
+        public string $last_error = '';
+
+        public function suppress_errors(bool $suppress = true): bool
+        {
+            return true;
+        }
+
+        public function get_charset_collate(): string
+        {
+            return 'DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci';
+        }
+
+        public function get_row(?string $query = null, string $output = 'ARRAY_A', int $y = 0): mixed
+        {
+            if (! $query || ! str_contains($query, 'clockwork_lockouts')) {
+                return null;
+            }
+
+            $rows = $this->table_rows['wp_clockwork_lockouts'] ?? [];
+            $needleIp = null;
+            if (preg_match("/ip = '([^']+)'/", $query, $m)) {
+                $needleIp = stripslashes($m[1]);
+            }
+
+            foreach ($rows as $row) {
+                if ($needleIp !== null && ($row['ip'] ?? '') !== $needleIp) {
+                    continue;
+                }
+
+                if (! isset($row['id'])) {
+                    $row['id'] = 1;
+                }
+
+                return $row;
+            }
+
+            return null;
+        }
+
+        public function insert(string $table, array $data, array|string $format = []): int|false
+        {
+            if ($table === 'wp_clockwork_lockouts' && isset($data['ip'])) {
+                foreach ($this->table_rows[$table] ?? [] as $i => $row) {
+                    if (($row['ip'] ?? '') === $data['ip']) {
+                        $this->table_rows[$table][$i] = array_merge($row, $data);
+
+                        return 1;
+                    }
+                }
+                $data['id'] = count($this->table_rows[$table] ?? []) + 1;
+            }
+
+            $this->table_rows[$table][] = $data;
+            return 1;
+        }
+
+        public function update(string $table, array $data, array $where, array|string $format = [], array|string $where_format = []): int|false
+        {
+            if (isset($this->table_rows[$table])) {
+                foreach ($this->table_rows[$table] as &$row) {
+                    $match = true;
+                    foreach ($where as $k => $v) {
+                        if (!isset($row[$k]) || $row[$k] != $v) { $match = false; break; }
+                    }
+                    if ($match) {
+                        $row = array_merge($row, $data);
+                    }
+                }
+            }
+            return 1;
+        }
+
+        public function delete(string $table, array $where, array|string $where_format = []): int|false
+        {
+            if (isset($this->table_rows[$table])) {
+                $this->table_rows[$table] = array_values(array_filter($this->table_rows[$table], function ($row) use ($where) {
+                    foreach ($where as $k => $v) {
+                        if (isset($row[$k]) && $row[$k] == $v) { return false; }
+                    }
+                    return true;
+                }));
+            }
+            return 1;
         }
     }
 }
@@ -1132,5 +1223,73 @@ if (! function_exists('remove_submenu_page')) {
             return $item;
         }
         return false;
+    }
+}
+
+if (! function_exists('dbDelta')) {
+    function dbDelta(string|array $queries = '', bool $execute = true): array
+    {
+        return [];
+    }
+}
+
+if (! function_exists('status_header')) {
+    function status_header(int $code, string $description = ''): void
+    {
+        $GLOBALS['wp_test_status_header'] = $code;
+    }
+}
+
+if (! function_exists('wp_using_ext_object_cache')) {
+    function wp_using_ext_object_cache(?bool $using = null): bool
+    {
+        if ($using !== null) {
+            $GLOBALS['wp_test_using_ext_object_cache'] = $using;
+        }
+        return ! empty($GLOBALS['wp_test_using_ext_object_cache']);
+    }
+}
+
+if (! function_exists('wp_cache_get')) {
+    function wp_cache_get(string|int $key, string $group = '', bool $force = false, ?bool &$found = null): mixed
+    {
+        $groupKey = $group . ':' . $key;
+        if (isset($GLOBALS['wp_test_object_cache'][$groupKey])) {
+            $found = true;
+            return $GLOBALS['wp_test_object_cache'][$groupKey];
+        }
+        $found = false;
+        return false;
+    }
+}
+
+if (! function_exists('wp_cache_set')) {
+    function wp_cache_set(string|int $key, mixed $data, string $group = '', int $expire = 0): bool
+    {
+        $groupKey = $group . ':' . $key;
+        $GLOBALS['wp_test_object_cache'][$groupKey] = $data;
+        $GLOBALS['wp_test_object_cache_expire'][$groupKey] = $expire;
+        return true;
+    }
+}
+
+if (! function_exists('wp_cache_delete')) {
+    function wp_cache_delete(string|int $key, string $group = ''): bool
+    {
+        $groupKey = $group . ':' . $key;
+        unset($GLOBALS['wp_test_object_cache'][$groupKey], $GLOBALS['wp_test_object_cache_expire'][$groupKey]);
+        return true;
+    }
+}
+
+if (! function_exists('wp_cache_incr')) {
+    function wp_cache_incr(string|int $key, int $offset = 1, string $group = ''): int|false
+    {
+        $groupKey = $group . ':' . $key;
+        if (! isset($GLOBALS['wp_test_object_cache'][$groupKey])) {
+            return false;
+        }
+        $GLOBALS['wp_test_object_cache'][$groupKey] = (int) $GLOBALS['wp_test_object_cache'][$groupKey] + $offset;
+        return $GLOBALS['wp_test_object_cache'][$groupKey];
     }
 }
