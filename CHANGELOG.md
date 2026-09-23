@@ -4,6 +4,8 @@ Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earli
 
 ## [Unreleased]
 
+## 1.39.0 — 2026-09-23
+
 ### Removed
 - **In-plugin support form**: the "Get Support" modal, its admin-ajax proxy to the Gravity Forms REST API (`clockwork_support_submit`), `assets/support-form.js`, and the `CLOCKWORK_SUPPORT_SITE_URL` / `CLOCKWORK_SUPPORT_GF_KEY` / `CLOCKWORK_SUPPORT_GF_SECRET` constants are gone. Any of those constants still in a site's `wp-config.php` are now unused and can be deleted.
 
