@@ -21,10 +21,14 @@ use ClockworkCompanion\TwoFactor\UserSettings;
  *
  * Three ops:
  *
- *   require    — mark the target as required to enroll and set their grace
- *                deadline to 0, so their next wp-admin request is
- *                redirect-locked to the Login Security page until they set
- *                2FA up themselves.
+ *   require    — mark the target as required to enroll and start their
+ *                grace deadline at EnrollmentNudge::defaultGraceDays()
+ *                (30 by default) from now, same as the automatic
+ *                agency-domain path: a nag banner during the window, then
+ *                a redirect-lock to the Login Security page if it lapses
+ *                unenrolled. An admin who wants a specific account locked
+ *                out sooner can drop that row's grace to 0 afterwards via
+ *                the grace-period cell.
  *   unrequire  — drop that requirement and reset the deadline.
  *   disable    — turn the target's 2FA off entirely. The lockout-recovery
  *                path: someone lost their phone and their backup codes.
@@ -124,14 +128,19 @@ class TwoFactorAdminActions
                 if (UserSettings::isEnabled($targetId)) {
                     $this->redirect(['flash_error' => sprintf('%s already has two-factor enabled.', $name)]);
                 }
-                EnrollmentNudge::setRequired($targetId);
+                $graceDays = EnrollmentNudge::defaultGraceDays();
+                EnrollmentNudge::setRequired($targetId, $graceDays);
                 $this->log($target, '2fa_required', sprintf(
-                    'Required two-factor authentication for %s — wp-admin is locked to the Login Security page until they enroll.',
-                    $target->user_login
+                    'Required two-factor authentication for %s — %d day%s to set it up before wp-admin is locked to the Login Security page.',
+                    $target->user_login,
+                    $graceDays,
+                    $graceDays === 1 ? '' : 's'
                 ));
                 $this->redirect(['flash' => sprintf(
-                    'Two-factor is now required for %s. Their next wp-admin page load is locked to the Login Security page until they set it up — they scan their own code, you never see it.',
-                    $name
+                    'Two-factor is now required for %s. They have %d day%s to set it up — they scan their own code, you never see it — before wp-admin is locked to the Login Security page.',
+                    $name,
+                    $graceDays,
+                    $graceDays === 1 ? '' : 's'
                 )]);
 
             case 'unrequire':

@@ -411,8 +411,10 @@ class TwoFactorPage
         }
 
         self::manageForm($targetId, 'require', 'Require 2FA', 'button button-small button-primary', sprintf(
-            'Require two-factor for %s? Their next wp-admin page load is locked to this page until they set it up. They scan their own code — you will not see their secret.',
-            $user->display_name
+            'Require two-factor for %s? They\'ll get %d day%s to set it up (shown as a reminder in their wp-admin), then wp-admin is locked to this page until they do. They scan their own code — you will not see their secret. You can adjust or skip the grace period from this row afterward.',
+            $user->display_name,
+            EnrollmentNudge::defaultGraceDays(),
+            EnrollmentNudge::defaultGraceDays() === 1 ? '' : 's'
         ));
     }
 

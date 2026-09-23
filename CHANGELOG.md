@@ -4,6 +4,11 @@ Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earli
 
 ## [Unreleased]
 
+## 1.38.4 — 2026-09-23
+
+### Changed
+- **"Require 2FA" now grants a grace period instead of locking immediately**: pressing Require on a Team Status row used to drop that user's grace deadline straight to 0 (redirect-locked to the Login Security page on their very next wp-admin request). It now starts the same default grace window as the automatic agency-domain path (`EnrollmentNudge::defaultGraceDays()`, 30 days, filterable via `clockwork_companion_2fa_grace_days` / `CLOCKWORK_2FA_GRACE_DAYS`) — the required user gets a dismissible nag banner linking to setup for the length of the window, then the redirect-lock if it lapses unenrolled. An admin who wants a specific account locked out sooner can still zero out that row's grace from the grace-period cell right after requiring it.
+
 ## 1.38.3 — 2026-09-18
 
 ### Fixed

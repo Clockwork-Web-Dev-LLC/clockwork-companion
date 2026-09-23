@@ -19,10 +19,14 @@ use ClockworkCompanion\Admin\Pages\TwoFactorPage;
  *
  * On top of that there is an explicit, per-user opt-in: an agency admin can
  * press "Require 2FA" on any administrator or editor row in Team Status
- * (TwoFactorAdminActions), which sets META_REQUIRED and drops their grace
- * to zero. That is the ONLY way enforcement reaches an account outside the
- * automatic scope, and it is per-user by design — requiring one client
- * admin must not start nagging their colleagues. See isEligible().
+ * (TwoFactorAdminActions), which sets META_REQUIRED and starts their grace
+ * window at the same default as the automatic path (defaultGraceDays()) —
+ * not an immediate lock. That is the ONLY way enforcement reaches an
+ * account outside the automatic scope, and it is per-user by design —
+ * requiring one client admin must not start nagging their colleagues. An
+ * admin who wants a specific account locked out sooner can still drop that
+ * one row's grace to 0 from the grace-period cell right after requiring it.
+ * See isEligible().
  *
  * Grace period: stored as an absolute deadline (unix timestamp) in
  * META_GRACE_DEADLINE, not a "days remaining" counter — that's what makes
@@ -262,9 +266,13 @@ class EnrollmentNudge
 
     /**
      * Require 2FA for $userId, starting the clock $days from now. The
-     * default of 0 means enforcement bites on their very next wp-admin
-     * request: they get the non-dismissible banner and are redirect-locked
-     * to the Login Security page until they enroll themselves.
+     * $days=0 default is this method's own primitive behaviour — enforcement
+     * bites on their very next wp-admin request, non-dismissible banner and
+     * redirect-lock included. TwoFactorAdminActions' "Require 2FA" button
+     * does not rely on that default: it explicitly passes defaultGraceDays()
+     * so pressing it starts a normal grace window rather than locking the
+     * account out immediately. Call this with $days=0 directly only when an
+     * immediate lock is actually intended.
      *
      * Nothing here touches the target's secret — an admin requiring 2FA
      * never learns the factor, the user still scans their own QR code.
@@ -323,7 +331,14 @@ class EnrollmentNudge
         update_user_meta($userId, self::META_GRACE_DEADLINE, time() + max(0, $days) * DAY_IN_SECONDS);
     }
 
-    private static function defaultGraceDays(): int
+    /**
+     * The grace window (in days) new enforcement starts with: both the
+     * automatic agency-domain lazy-init in graceDeadline(), and the default
+     * TwoFactorAdminActions applies when an admin presses "Require 2FA" on
+     * someone. Public so both call sites read the same number instead of
+     * each hardcoding their own.
+     */
+    public static function defaultGraceDays(): int
     {
         if (defined('CLOCKWORK_2FA_GRACE_DAYS')) {
             return max(0, (int) CLOCKWORK_2FA_GRACE_DAYS);
