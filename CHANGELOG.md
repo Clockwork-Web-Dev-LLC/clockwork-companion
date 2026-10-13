@@ -4,6 +4,11 @@ Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earli
 
 ## [Unreleased]
 
+## 1.39.1 — 2026-10-13
+
+### Fixed
+- **Dashboard widget**: a stray `?>` in `DashboardWidget::renderWidget()` printed the support-URL lookup as literal text under the status grid and triggered an "Undefined variable $supportUrl" warning. The support button also showed when no support URL was set or help links were hidden. Introduced in 1.39.0.
+
 ## 1.39.0 — 2026-09-23
 
 ### Removed

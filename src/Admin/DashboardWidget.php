@@ -38,7 +38,7 @@ class DashboardWidget
     public static function renderWidget(): void
     {
         self::renderStatsGrid();
-        ?>
+
         $supportUrl = WhiteLabel::getSupportUrl();
         if ($supportUrl === '' || WhiteLabel::areHelpLinksHidden()) {
             return;
