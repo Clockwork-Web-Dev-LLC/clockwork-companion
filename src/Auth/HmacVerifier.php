@@ -15,6 +15,16 @@ use WP_REST_Request;
  * - TIMESTAMP is X-Clockwork-Timestamp (unix seconds, integer).
  * - BODY is the raw request body (empty string for GET).
  *
+ * Query string: get_route() excludes it, so the payload above doesn't
+ * cover it. Any request carrying query params (other than `rest_route`,
+ * which the ?rest_route= fallback URL form adds) must also send
+ * X-Clockwork-Signature-V2, signed over the same payload with the path
+ * extended to REQUEST_PATH + "?" + canonicalQuery() — params sorted by
+ * key, RFC 3986 encoded. Without that, a captured signed request could be
+ * resent with altered or extra query params. Requests without query params
+ * keep verifying against X-Clockwork-Signature alone, so Clockwork can send
+ * both headers and stay compatible with older Companion versions.
+ *
  * Replay window: 5 minutes. Requests outside the window are rejected even
  * if the signature is valid. Successful mutating requests (POST/PUT/PATCH/
  * DELETE) are also consumed for that window so a captured signed body
@@ -82,8 +92,20 @@ class HmacVerifier
             return new \WP_Error('no_secret', 'Companion secret not initialised', ['status' => 500]);
         }
 
+        $path = '/wp-json'.$request->get_route();
+        $query = self::canonicalQuery($request);
+        if ($query !== '') {
+            $signature = $request->get_header('x_clockwork_signature_v2');
+            if (! $signature) {
+                self::noteFailure($ip, 'missing_headers', $request);
+
+                return new \WP_Error('missing_headers', 'Requests with query parameters must send X-Clockwork-Signature-V2', ['status' => 401]);
+            }
+            $path .= '?'.$query;
+        }
+
         $payload = strtoupper($request->get_method())
-            ."\n".'/wp-json'.$request->get_route()
+            ."\n".$path
             ."\n".$tsInt
             ."\n".$request->get_body();
 
@@ -118,9 +140,67 @@ class HmacVerifier
         return in_array(strtoupper($request->get_method()), ['POST', 'PUT', 'PATCH', 'DELETE'], true);
     }
 
+    /**
+     * Query params as signed by Clockwork: `rest_route` dropped, sorted by
+     * key, RFC 3986 encoded. Empty string when there are none.
+     */
+    public static function canonicalQuery(WP_REST_Request $request): string
+    {
+        $params = (array) $request->get_query_params();
+        unset($params['rest_route']);
+        if ($params === []) {
+            return '';
+        }
+        ksort($params, SORT_STRING);
+
+        return http_build_query($params, '', '&', PHP_QUERY_RFC3986);
+    }
+
+    /**
+     * Marks the signature as used and reports whether it already was. A
+     * single INSERT IGNORE against the unique option_name key makes the
+     * check-and-mark atomic, so two copies of one signed request arriving
+     * together can't both pass (a get_transient()/set_transient() pair
+     * could). Expired markers are purged on the way in; that purge is ours
+     * because transient garbage collection skips the options table on sites
+     * with a persistent object cache.
+     */
     private static function alreadyConsumed(string $signature, int $timestamp): bool
     {
+        global $wpdb;
+
         $key = 'clockwork_hmac_used_'.substr(hash('sha256', $signature."\n".$timestamp), 0, 32);
+
+        if (! isset($wpdb) || ! is_object($wpdb)) {
+            return self::alreadyConsumedViaTransient($key);
+        }
+
+        $now = time();
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+        $wpdb->query($wpdb->prepare(
+            "DELETE FROM {$wpdb->options} WHERE option_name LIKE %s AND CAST(option_value AS UNSIGNED) < %d",
+            $wpdb->esc_like('clockwork_hmac_used_').'%',
+            $now
+        ));
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+        $inserted = $wpdb->query($wpdb->prepare(
+            "INSERT IGNORE INTO {$wpdb->options} (option_name, option_value, autoload) VALUES (%s, %s, 'off')",
+            $key,
+            (string) ($now + self::REPLAY_WINDOW_SECONDS)
+        ));
+
+        if ($inserted === false) {
+            // DB error — don't let a broken options table lock Clockwork
+            // out; fall back to the non-atomic check.
+            return self::alreadyConsumedViaTransient($key);
+        }
+
+        return (int) $inserted === 0;
+    }
+
+    private static function alreadyConsumedViaTransient(string $key): bool
+    {
         if (get_transient($key)) {
             return true;
         }

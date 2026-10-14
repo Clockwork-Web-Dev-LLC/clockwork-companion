@@ -28,7 +28,15 @@ METHOD\n/wp-json/<route>\n<timestamp>\n<body>
 
 Body is the empty string for GET. The replay window is 300 seconds; requests outside it are rejected even with valid signatures.
 
-Mutating requests (POST/PUT/PATCH/DELETE) also consume the exact signature for that window so a captured body cannot be replayed. Failed verifications are rate-limited per IP (30 / 60s).
+Requests with query parameters (other than `rest_route`) must also send:
+
+```
+X-Clockwork-Signature-V2: <hex hmac-sha256 of payload_v2>
+```
+
+Where `payload_v2` is the same payload with the path replaced by `/wp-json/<route>?<canonical query>`. The canonical query is the params minus `rest_route`, sorted by key and encoded as `http_build_query($params, '', '&', PHP_QUERY_RFC3986)`. Without query parameters only `X-Clockwork-Signature` is checked, so clients can send both headers to every Companion version.
+
+Mutating requests (POST/PUT/PATCH/DELETE) also consume the exact signature for that window so a captured body cannot be replayed. The check-and-mark is a single `INSERT IGNORE` into `wp_options`, so concurrent copies of one request can't both pass. Failed verifications are rate-limited per IP (30 / 60s).
 
 ## Backup URL rules (create + restore)
 

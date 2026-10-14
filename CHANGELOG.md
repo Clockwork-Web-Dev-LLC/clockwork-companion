@@ -4,6 +4,12 @@ Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earli
 
 ## [Unreleased]
 
+## 1.40.0 — 2026-10-14
+
+### Security
+- **Query strings are now signed**: `HmacVerifier` signed only method, route, timestamp and body, so the query string of a captured request could be altered or extended. Any request carrying query params (other than `rest_route`) must now send `X-Clockwork-Signature-V2`, an HMAC over the path plus the canonical query (sorted by key, RFC 3986). Requests without query params verify exactly as before. **Deploy the Clockwork app change that sends V2 before rolling this out**, or `/resource-report` pulls will return 401 on updated sites.
+- **Replay protection is atomic**: a signed POST/PUT/PATCH/DELETE is now marked used with one `INSERT IGNORE` into `wp_options` (option `clockwork_hmac_used_*`, expired rows purged on the way in) instead of a `get_transient()`/`set_transient()` pair, so two copies of one request arriving together can no longer both run.
+
 ## 1.39.1 — 2026-10-13
 
 ### Fixed
