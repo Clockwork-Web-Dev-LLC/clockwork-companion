@@ -1123,9 +1123,9 @@ if (! function_exists('add_menu_page')) {
 }
 
 if (! function_exists('add_submenu_page')) {
-    function add_submenu_page(string $parent_slug, string $page_title, string $menu_title, string $capability, string $menu_slug, ?callable $callback = null, ?int $position = null): string|false
+    function add_submenu_page(?string $parent_slug, string $page_title, string $menu_title, string $capability, string $menu_slug, ?callable $callback = null, ?int $position = null): string|false
     {
-        $GLOBALS['wp_test_submenu_pages'][$parent_slug][$menu_slug] = [
+        $GLOBALS['wp_test_submenu_pages'][$parent_slug ?? ''][$menu_slug] = [
             'page_title' => $page_title,
             'menu_title' => $menu_title,
             'capability' => $capability,
@@ -1144,5 +1144,38 @@ if (! function_exists('remove_submenu_page')) {
             return $item;
         }
         return false;
+    }
+}
+
+if (! function_exists('wp_safe_redirect')) {
+    function wp_safe_redirect(string $location, int $status = 302): bool
+    {
+        $GLOBALS['wp_test_last_redirect'] = $location;
+        return true;
+    }
+}
+
+if (! function_exists('wp_is_rest_endpoint')) {
+    function wp_is_rest_endpoint(): bool
+    {
+        return ! empty($GLOBALS['wp_test_is_rest']);
+    }
+}
+
+if (! function_exists('wp_doing_ajax')) {
+    function wp_doing_ajax(): bool
+    {
+        return ! empty($GLOBALS['wp_test_doing_ajax']);
+    }
+}
+
+if (! function_exists('wp_nonce_field')) {
+    function wp_nonce_field(string|int $action = -1, string $name = '_wpnonce', bool $referer = true, bool $echo = true): string
+    {
+        $field = '<input type="hidden" name="' . esc_attr($name) . '" value="test_nonce" />';
+        if ($echo) {
+            echo $field;
+        }
+        return $field;
     }
 }

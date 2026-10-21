@@ -4,6 +4,14 @@ Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earli
 
 ## [Unreleased]
 
+## 1.40.1 — 2026-10-21
+
+### Fixed
+- **2FA grace-period expiry redirect loop**: When an admin or editor's grace period expired (0 days left), `maybeEnforceGrace()` unconditionally redirected every `wp-admin` request to the Login Security page with no self-service way to dismiss or defer, causing a redirect lock that could only be cleared if another admin clicked "Reset" in Team Status. Users can now dismiss the expired prompt for 24 hours via "Remind me tomorrow" (on both the admin notice and the Login Security card) to continue using `wp-admin` normally.
+- **REST, AJAX, and logout exemptions**: `maybeEnforceGrace()` now explicitly exempts REST API requests (`REST_REQUEST` and `wp_is_rest_endpoint()`), logout actions (`$_GET['action'] === 'logout'` and `wp-login.php`), and media uploads (`async-upload.php`).
+- **Editor 2FA page access**: Non-administrators (like Editors) whose 2FA was required could trigger a 403 or redirect loop when accessing the 2FA page because its parent menu (`clockwork`) requires `manage_options`. `Menu::addMenu()` now registers the page with parent `null` for users lacking `manage_options`, making it directly accessible under the `read` capability.
+- **Flash notice double-encoded apostrophe**: Resetting or updating a grace period generated flash notices with HTML entity `&rsquo;` and ran through duplicate `rawurlencode()` calls before `add_query_arg()`, causing URLs to contain `%26rsquo%3Bs` and displaying raw entity text. Changed to standard apostrophes and removed redundant URL-encoding.
+
 ## 1.40.0 — 2026-10-14
 
 ### Security

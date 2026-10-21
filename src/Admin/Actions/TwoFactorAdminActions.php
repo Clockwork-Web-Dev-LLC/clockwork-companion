@@ -204,7 +204,7 @@ class TwoFactorAdminActions
     private function redirect(array $args = []): void
     {
         wp_safe_redirect(add_query_arg(
-            array_merge(['page' => TwoFactorPage::SLUG], array_map('rawurlencode', $args)),
+            array_merge(['page' => TwoFactorPage::SLUG], $args),
             admin_url('admin.php')
         ));
         exit;

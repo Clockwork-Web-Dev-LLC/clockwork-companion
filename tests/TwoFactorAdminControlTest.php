@@ -323,4 +323,97 @@ class TwoFactorAdminControlTest extends TestCase
 
         $this->assertFalse(EnrollmentNudge::isEligible(self::CLIENT_ADMIN_ID));
     }
+
+    // ------------------------------------------------------- grace expiry & redirect safety
+
+    /**
+     * When grace period has expired, but user has dismissed the prompt for today,
+     * maybeEnforceGrace() must NOT redirect, allowing the user to navigate wp-admin.
+     */
+    public function testExpiredGraceDoesNotRedirectWhenDismissedForToday(): void
+    {
+        $this->gateToAgencyDomain();
+        EnrollmentNudge::setRequired(self::CLIENT_ADMIN_ID, 0);
+        $this->assertSame(0, EnrollmentNudge::daysLeftFor(self::CLIENT_ADMIN_ID));
+
+        $GLOBALS['wp_test_current_user'] = $GLOBALS['wp_test_users'][self::CLIENT_ADMIN_ID];
+
+        // Dismiss for 24h
+        update_user_meta(self::CLIENT_ADMIN_ID, '_clockwork_2fa_nudge_dismissed_until', time() + 86400);
+
+        $nudge = new EnrollmentNudge();
+        // If it attempted to redirect and exit, this would kill PHPUnit. Reaching this line proves it returned.
+        $nudge->maybeEnforceGrace();
+        $this->assertTrue(true, 'maybeEnforceGrace() returned cleanly without redirecting');
+    }
+
+    /**
+     * REST requests, AJAX, and logout actions must never be intercepted by maybeEnforceGrace().
+     */
+    public function testExemptionsFromGraceRedirectLock(): void
+    {
+        $this->gateToAgencyDomain();
+        EnrollmentNudge::setRequired(self::CLIENT_ADMIN_ID, 0);
+        $GLOBALS['wp_test_current_user'] = $GLOBALS['wp_test_users'][self::CLIENT_ADMIN_ID];
+
+        $nudge = new EnrollmentNudge();
+
+        // 1. REST endpoint
+        $GLOBALS['wp_test_is_rest'] = true;
+        $nudge->maybeEnforceGrace();
+        $GLOBALS['wp_test_is_rest'] = false;
+
+        // 2. Logout action
+        $_GET['action'] = 'logout';
+        $nudge->maybeEnforceGrace();
+        unset($_GET['action']);
+
+        // 3. Two-factor setup page itself
+        $GLOBALS['pagenow'] = 'admin.php';
+        $_GET['page'] = TwoFactorPage::SLUG;
+        $nudge->maybeEnforceGrace();
+        unset($_GET['page']);
+        $GLOBALS['pagenow'] = '';
+
+        $this->assertTrue(true, 'Exempted requests returned cleanly without redirecting');
+    }
+
+    /**
+     * Menu registration must allow non-admin editors to access the 2FA page
+     * by registering with a null parent rather than locking them under manage_options.
+     */
+    public function testTwoFactorPageMenuParentAdaptsToUserCapability(): void
+    {
+        $menu = new Menu();
+        $GLOBALS['wp_test_submenu_pages'] = [];
+
+        // Admin user can manage_options -> registered under clockwork parent
+        $GLOBALS['wp_test_current_user_can'] = true;
+        $menu->addMenu();
+        $this->assertArrayHasKey(TwoFactorPage::SLUG, $GLOBALS['wp_test_submenu_pages'][Menu::SLUG]);
+
+        // Editor cannot manage_options -> registered under null/empty parent so it is accessible with 'read'
+        $GLOBALS['wp_test_submenu_pages'] = [];
+        $GLOBALS['wp_test_current_user_can'] = false;
+        $menu->addMenu();
+        $this->assertArrayHasKey(TwoFactorPage::SLUG, $GLOBALS['wp_test_submenu_pages']['']);
+    }
+
+    /**
+     * Verify flash notices in TwoFactorPage do not output raw entity &rsquo;
+     * or double-encoded characters.
+     */
+    public function testFlashNoticeDoesNotDoubleEncodeApostrophes(): void
+    {
+        $_GET['flash'] = "Reset Bob's two-factor grace period back to the default.";
+
+        ob_start();
+        TwoFactorPage::renderBody();
+        $output = ob_get_clean();
+
+        $this->assertStringContainsString("Reset Bob&#039;s two-factor grace period", $output);
+        $this->assertStringNotContainsString("&amp;rsquo;", $output);
+        $this->assertStringNotContainsString("%26rsquo", $output);
+        unset($_GET['flash']);
+    }
 }

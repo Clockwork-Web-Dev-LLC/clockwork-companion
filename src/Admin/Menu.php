@@ -227,8 +227,9 @@ class Menu
         // only their own enrollment card. Note this does NOT put the item in
         // anyone's sidebar who couldn't already see it: the parent menu is
         // still manage_options, and WP doesn't render orphaned submenus.
+        $twoFactorParent = current_user_can(self::CAPABILITY) ? self::SLUG : null;
         add_submenu_page(
-            self::SLUG,
+            $twoFactorParent,
             'Login Security',
             'Login Security',
             TwoFactorPage::SELF_CAPABILITY,

@@ -93,11 +93,11 @@ class EnrollmentNudge
             return;
         }
 
-        $daysLeft = self::daysLeftFor($userId);
-        if ($daysLeft > 0 && self::isDismissedForToday($userId)) {
+        if (self::isDismissedForToday($userId)) {
             return;
         }
 
+        $daysLeft = self::daysLeftFor($userId);
         $setupUrl = esc_url(admin_url('admin.php?page='.TwoFactorPage::SLUG));
 
         if ($daysLeft > 0) {
@@ -113,8 +113,9 @@ class EnrollmentNudge
         }
 
         printf(
-            '<div class="notice notice-error"><p><strong>Two-factor authentication is now required</strong> on this account — wp-admin is locked to the <a href="%s">Login Security page</a> until it&rsquo;s set up. It only takes a minute.</p></div>',
-            $setupUrl
+            '<div class="notice notice-error"><p><strong>Two-factor authentication is now required</strong> on this account — please set it up on the <a href="%s">Login Security page</a>. It only takes a minute. &nbsp;%s</p></div>',
+            $setupUrl,
+            self::dismissLink('Remind me tomorrow')
         );
     }
 
@@ -134,20 +135,33 @@ class EnrollmentNudge
         if (self::daysLeftFor($userId) > 0) {
             return;
         }
-        if (wp_doing_ajax() || (defined('DOING_CRON') && DOING_CRON)) {
+        if (self::isDismissedForToday($userId)) {
+            return;
+        }
+        if ((function_exists('wp_doing_ajax') && wp_doing_ajax()) || (defined('DOING_CRON') && DOING_CRON) || (function_exists('wp_doing_cron') && wp_doing_cron())) {
+            return;
+        }
+        if ((defined('REST_REQUEST') && REST_REQUEST) || (function_exists('wp_is_rest_endpoint') && wp_is_rest_endpoint())) {
             return;
         }
 
         // Never lock someone to a door they can't open. If the target page
         // isn't loadable by this user, the redirect below would bounce them
         // between wp-admin and a 403 with no way out and no way to enroll.
-        // Falling back to the (non-dismissible) banner keeps the pressure on
-        // without bricking the account.
+        // Falling back to the banner keeps the pressure on without bricking
+        // the account.
         if (! current_user_can(TwoFactorPage::SELF_CAPABILITY)) {
             return;
         }
 
+        if (isset($_GET['action']) && $_GET['action'] === 'logout') {
+            return;
+        }
+
         global $pagenow;
+        if ($pagenow === 'wp-login.php' || $pagenow === 'async-upload.php') {
+            return;
+        }
         if ($pagenow === 'admin.php' && ($_GET['page'] ?? '') === TwoFactorPage::SLUG) {
             return;
         }
@@ -194,7 +208,7 @@ class EnrollmentNudge
 
         if (($_POST['grace_op'] ?? '') === 'reset') {
             delete_user_meta($targetId, self::META_GRACE_DEADLINE);
-            $flash = sprintf('Reset %s&rsquo;s two-factor grace period back to the default.', $target->display_name);
+            $flash = sprintf("Reset %s's two-factor grace period back to the default.", $target->display_name);
         } else {
             $days = isset($_POST['days']) ? (int) $_POST['days'] : -1;
             if ($days < 0) {
@@ -202,7 +216,7 @@ class EnrollmentNudge
             }
             self::setGraceDeadline($targetId, $days);
             $flash = sprintf(
-                'Set %s&rsquo;s two-factor grace period to %d day%s from now.',
+                "Set %s's two-factor grace period to %d day%s from now.",
                 $target->display_name,
                 $days,
                 $days === 1 ? '' : 's'
@@ -210,7 +224,7 @@ class EnrollmentNudge
         }
 
         wp_safe_redirect(add_query_arg(
-            ['page' => TwoFactorPage::SLUG, 'flash' => rawurlencode($flash)],
+            ['page' => TwoFactorPage::SLUG, 'flash' => $flash],
             admin_url('admin.php')
         ));
         exit;
@@ -354,11 +368,12 @@ class EnrollmentNudge
         return $until > time();
     }
 
-    private static function dismissLink(): string
+    public static function dismissLink(?string $label = null): string
     {
+        $labelText = $label ?? 'Remind me tomorrow';
         $url = wp_nonce_url(admin_url('admin-post.php?action='.self::DISMISS_ACTION), self::DISMISS_ACTION);
 
-        return sprintf('<a href="%s">Remind me tomorrow</a>', esc_url($url));
+        return sprintf('<a href="%s">%s</a>', esc_url($url), esc_html($labelText));
     }
 
     /** Per-target nonce so one user's set-grace form can't be replayed against another's account. */

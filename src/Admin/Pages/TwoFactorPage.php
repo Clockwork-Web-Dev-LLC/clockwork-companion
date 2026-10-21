@@ -76,13 +76,13 @@ class TwoFactorPage
         if (! empty($_GET['flash'])) {
             printf(
                 '<div class="notice notice-success" style="margin:0 0 16px;"><p>%s</p></div>',
-                esc_html(rawurldecode((string) $_GET['flash']))
+                esc_html((string) $_GET['flash'])
             );
         }
         if (! empty($_GET['flash_error'])) {
             printf(
                 '<div class="notice notice-error" style="margin:0 0 16px;"><p>%s</p></div>',
-                esc_html(rawurldecode((string) $_GET['flash_error']))
+                esc_html((string) $_GET['flash_error'])
             );
         }
 
@@ -270,6 +270,7 @@ class TwoFactorPage
 
     private static function renderNotEnrolledState(): void
     {
+        $userId = get_current_user_id();
         ?>
         <p>
             <span style="display:inline-block;padding:2px 10px;border-radius:10px;background:#f0f0f1;color:#50575e;font-weight:600;font-size:12px;">Not set up</span>
@@ -278,6 +279,11 @@ class TwoFactorPage
         <p style="color:#50575e;">Two-factor authentication adds a 6-digit code from your phone to every
            sign-in, so a stolen password alone can't get in.</p>
         <?php self::actionForm('begin', 'Set up two-factor authentication', 'button button-primary'); ?>
+        <?php if (EnrollmentNudge::daysLeftFor($userId) <= 0) : ?>
+            <p style="margin-top:12px;font-size:12px;color:#787c82;">
+                Not ready right now? <?php echo EnrollmentNudge::dismissLink('Remind me tomorrow'); ?> — you can browse wp-admin for the next 24 hours.
+            </p>
+        <?php endif; ?>
         <?php
     }
 
