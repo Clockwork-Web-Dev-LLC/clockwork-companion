@@ -233,16 +233,13 @@ class EnrollmentNudge
     /**
      * Whether $userId is in scope for the nudge/enforcement at all.
      *
-     * Two ways in, and only two:
-     *   1. Implicitly — the same visibility gate as the Clockwork menu
-     *      (agency-domain email + the menu's own manage_options capability).
-     *      This is the automatic behaviour and stays exactly as it was.
-     *   2. Explicitly — an agency admin pressed "Require now" on this user's
-     *      Team Status row (isExplicitlyRequired). That route deliberately
-     *      skips both the agency-domain and the capability check, because
-     *      its whole purpose is to reach accounts rule 1 never covers: a
-     *      client-domain administrator, or an editor. It is opt-in per user,
-     *      so requiring one client admin doesn't start nagging the rest.
+     * 2FA enforcement is strictly opt-in by default:
+     *   1. Explicitly (default) — an agency admin pressed "Require 2FA" on this
+     *      user's Team Status row (isExplicitlyRequired). It is opt-in per user,
+     *      so requiring one user doesn't start nagging or locking anyone else.
+     *   2. Fleet/site-wide toggle — if CLOCKWORK_2FA_REQUIRE_ALL is defined or
+     *      the `clockwork_companion_2fa_require_all` filter returns true,
+     *      all administrators become eligible for enforcement.
      *
      * Already-enrolled users are never eligible either way — there is
      * nothing left to nudge them about.
@@ -265,8 +262,24 @@ class EnrollmentNudge
         if (self::isExplicitlyRequired($userId)) {
             return true;
         }
+        if (self::isRequireAllEnabled()) {
+            return user_can($userId, Menu::CAPABILITY);
+        }
 
-        return Menu::currentUserIsAgency($user) && user_can($userId, Menu::CAPABILITY);
+        return false;
+    }
+
+    /**
+     * Whether fleet/site-wide 2FA requirement is active via constant or filter.
+     * Default is false (strictly opt-in per user).
+     */
+    public static function isRequireAllEnabled(): bool
+    {
+        if (defined('CLOCKWORK_2FA_REQUIRE_ALL')) {
+            return (bool) constant('CLOCKWORK_2FA_REQUIRE_ALL');
+        }
+
+        return (bool) apply_filters('clockwork_companion_2fa_require_all', false);
     }
 
     /**

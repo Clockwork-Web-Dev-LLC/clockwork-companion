@@ -4,6 +4,11 @@ Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earli
 
 ## [Unreleased]
 
+## 1.40.2 — 2026-10-22
+
+### Changed
+- **2FA enforcement is now strictly opt-in by default**: Previously, any administrator without 2FA was automatically placed on an unintended 30-day grace countdown leading to `wp-admin` redirect lockout once expired. 2FA is now purely opt-in: users are only required to enroll if an administrator explicitly clicks "Require 2FA" on their row in **Login Security → Team status** (or if `CLOCKWORK_2FA_REQUIRE_ALL` / `clockwork_companion_2fa_require_all` is explicitly set). Users who already have 2FA enabled remain fully protected and challenged at login as usual.
+
 ## 1.40.1 — 2026-10-21
 
 ### Fixed

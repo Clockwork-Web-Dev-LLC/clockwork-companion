@@ -202,12 +202,10 @@ class TwoFactorAdminControlTest extends TestCase
     }
 
     /**
-     * An agency admin stays in scope after un-requiring — they were covered
-     * automatically to begin with — but on a fresh default window rather
-     * than the expired one the requirement left behind. Without the deadline
-     * being cleared too, "stop requiring" would leave them locked out.
+     * In the default opt-in mode, clearing the requirement drops the user back out
+     * of scope (no nag, no lockout).
      */
-    public function testClearingTheRequirementRestoresAFullGraceWindowForAgencyUsers(): void
+    public function testClearingTheRequirementDropsUserBackOutOfScope(): void
     {
         $this->gateToAgencyDomain();
         EnrollmentNudge::setRequired(self::AGENCY_ADMIN_ID);
@@ -215,8 +213,46 @@ class TwoFactorAdminControlTest extends TestCase
 
         EnrollmentNudge::clearRequired(self::AGENCY_ADMIN_ID);
 
+        $this->assertFalse(EnrollmentNudge::isEligible(self::AGENCY_ADMIN_ID));
+    }
+
+    /**
+     * If site/fleet-wide enforcement is enabled via filter/constant, admins
+     * become eligible.
+     */
+    public function testDefaultOptInLeavesUnEnrolledAdminsUnNaggedAndUnEnforced(): void
+    {
+        $this->assertFalse(EnrollmentNudge::isEligible(self::AGENCY_ADMIN_ID));
+        $this->assertFalse(EnrollmentNudge::isEligible(self::CLIENT_ADMIN_ID));
+        $this->assertFalse(EnrollmentNudge::isEligible(self::EDITOR_ID));
+
+        // Leftover expired grace deadline from old behavior does not trigger eligibility without explicit requirement
+        update_user_meta(self::AGENCY_ADMIN_ID, '_clockwork_2fa_grace_deadline', time() - 3600);
+        $this->assertFalse(EnrollmentNudge::isEligible(self::AGENCY_ADMIN_ID));
+
+        EnrollmentNudge::setRequired(self::AGENCY_ADMIN_ID, 30);
         $this->assertTrue(EnrollmentNudge::isEligible(self::AGENCY_ADMIN_ID));
-        $this->assertGreaterThan(1, EnrollmentNudge::daysLeftFor(self::AGENCY_ADMIN_ID));
+        $this->assertSame(30, EnrollmentNudge::daysLeftFor(self::AGENCY_ADMIN_ID));
+
+        EnrollmentNudge::clearRequired(self::AGENCY_ADMIN_ID);
+        $this->assertFalse(EnrollmentNudge::isEligible(self::AGENCY_ADMIN_ID));
+    }
+
+    public function testRequireAllToggleMakesAdminsEligible(): void
+    {
+        $this->assertFalse(EnrollmentNudge::isEligible(self::AGENCY_ADMIN_ID));
+        $this->assertFalse(EnrollmentNudge::isEligible(self::CLIENT_ADMIN_ID));
+
+        add_filter('clockwork_companion_2fa_require_all', fn() => true);
+        try {
+            $this->assertTrue(EnrollmentNudge::isRequireAllEnabled());
+            $this->assertTrue(EnrollmentNudge::isEligible(self::AGENCY_ADMIN_ID));
+            $this->assertTrue(EnrollmentNudge::isEligible(self::CLIENT_ADMIN_ID));
+            // Non-admin (editor) is not eligible under require-all unless explicitly required
+            $this->assertFalse(EnrollmentNudge::isEligible(self::EDITOR_ID));
+        } finally {
+            unset($GLOBALS['wp_test_filters']['clockwork_companion_2fa_require_all']);
+        }
     }
 
     /** Nothing left to nudge an enrolled user about, required or not. */
