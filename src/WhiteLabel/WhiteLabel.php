@@ -715,6 +715,7 @@ class WhiteLabel
             echo "    --cwk-page-bg: {$pageBg};\n";
             echo "    --cwk-card: {$cardBg};\n";
             echo "}\n";
+            echo ".clockwork-admin__header { background: var(--cwk-primary-dark, #2D2062); color: #ffffff; }\n";
         }
 
         if (! empty($menuIcon) && filter_var($menuIcon, FILTER_VALIDATE_URL)) {
