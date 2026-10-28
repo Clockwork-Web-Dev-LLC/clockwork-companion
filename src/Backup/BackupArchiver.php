@@ -31,6 +31,25 @@ class BackupArchiver
     ];
 
     /**
+     * File extensions that are already compressed. Storing them with CM_STORE
+     * avoids burning 5x-10x CPU deflating media/gzip files and prevents host
+     * gateway timeouts on media-heavy sites.
+     */
+    public const STORE_ONLY_EXTENSIONS = [
+        'jpg', 'jpeg', 'png', 'gif', 'webp', 'avif', 'ico',
+        'mp4', 'm4v', 'mov', 'webm', 'avi', 'mp3', 'ogg', 'wav', 'flac',
+        'pdf', 'zip', 'gz', 'tgz', 'bz2', 'xz', '7z', 'rar',
+        'woff', 'woff2', 'ttf', 'otf', 'eot',
+    ];
+
+    /**
+     * Maximum files queued before flushing/re-opening ZipArchive.
+     * PHP's libzip holds open file descriptors for every addFile() call until
+     * close(); batching at 300 keeps us safely below the OS ulimit -n (1024).
+     */
+    public const ZIP_BATCH_SIZE = 300;
+
+    /**
      * Package database dump and site files into a zip archive.
      *
      * @param  string  $zipOutputPath Destination path for zip
@@ -77,6 +96,17 @@ class BackupArchiver
             return $written;
         }
 
+        clearstatcache(true, $zipOutputPath);
+        if (! is_file($zipOutputPath)) {
+            return [
+                'ok' => false,
+                'size_bytes' => 0,
+                'sha256' => '',
+                'files_count' => 0,
+                'error' => "Archive creation failed to write file: {$zipOutputPath}",
+            ];
+        }
+
         $size = (int) @filesize($zipOutputPath);
         $sha256 = $size > 0 ? (string) @hash_file('sha256', $zipOutputPath) : '';
 
@@ -104,9 +134,9 @@ class BackupArchiver
         }
 
         $wpConfigPath = defined('ABSPATH') ? ABSPATH.'wp-config.php' : null;
-        if ($wpConfigPath && file_exists($wpConfigPath)) {
+        if ($wpConfigPath && file_exists($wpConfigPath) && is_readable($wpConfigPath)) {
             $entries[] = ['source' => $wpConfigPath, 'dest' => 'wp-config.php'];
-        } elseif (defined('ABSPATH') && file_exists(dirname(ABSPATH).'/wp-config.php')) {
+        } elseif (defined('ABSPATH') && file_exists(dirname(ABSPATH).'/wp-config.php') && is_readable(dirname(ABSPATH).'/wp-config.php')) {
             $entries[] = ['source' => dirname(ABSPATH).'/wp-config.php', 'dest' => 'wp-config.php'];
         }
 
@@ -123,6 +153,9 @@ class BackupArchiver
                         if (str_starts_with($name, '._') || $name === '.DS_Store') {
                             return false;
                         }
+                        if ($current->isLink()) {
+                            return false;
+                        }
                         if ($current->isDir()) {
                             if (in_array(strtolower($name), $excludes, true)) {
                                 return false;
@@ -136,7 +169,7 @@ class BackupArchiver
 
             foreach ($iter as $item) {
                 /** @var SplFileInfo $item */
-                if (! $item->isDir()) {
+                if (! $item->isDir() && $item->isReadable()) {
                     $relative = substr($item->getPathname(), strlen($contentDir) + 1);
                     $entries[] = [
                         'source' => $item->getPathname(),
@@ -155,21 +188,50 @@ class BackupArchiver
      */
     private function writeWithZipArchive(string $zipOutputPath, array $entries): ?array
     {
-        $zip = new ZipArchive();
-        if ($zip->open($zipOutputPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
-            return [
-                'ok' => false,
-                'size_bytes' => 0,
-                'sha256' => '',
-                'files_count' => 0,
-                'error' => "Cannot create zip archive at {$zipOutputPath}",
-            ];
+        if (is_file($zipOutputPath)) {
+            @unlink($zipOutputPath);
         }
 
-        foreach ($entries as $entry) {
-            $zip->addFile($entry['source'], $entry['dest']);
+        $chunks = array_chunk($entries, self::ZIP_BATCH_SIZE);
+
+        foreach ($chunks as $chunkIndex => $batch) {
+            $zip = new ZipArchive();
+            $flags = $chunkIndex === 0
+                ? (ZipArchive::CREATE | ZipArchive::OVERWRITE)
+                : ZipArchive::CREATE;
+
+            if ($zip->open($zipOutputPath, $flags) !== true) {
+                return [
+                    'ok' => false,
+                    'size_bytes' => 0,
+                    'sha256' => '',
+                    'files_count' => 0,
+                    'error' => "Cannot open zip archive at {$zipOutputPath} (batch {$chunkIndex})",
+                ];
+            }
+
+            foreach ($batch as $entry) {
+                if (! is_file($entry['source']) || ! is_readable($entry['source'])) {
+                    continue;
+                }
+                if ($zip->addFile($entry['source'], $entry['dest'])) {
+                    $ext = strtolower((string) pathinfo($entry['source'], PATHINFO_EXTENSION));
+                    if (in_array($ext, self::STORE_ONLY_EXTENSIONS, true) && method_exists($zip, 'setCompressionName')) {
+                        @$zip->setCompressionName($entry['dest'], ZipArchive::CM_STORE);
+                    }
+                }
+            }
+
+            if (! @$zip->close()) {
+                return [
+                    'ok' => false,
+                    'size_bytes' => 0,
+                    'sha256' => '',
+                    'files_count' => 0,
+                    'error' => "Failed closing/flushing zip archive at {$zipOutputPath} (batch {$chunkIndex})",
+                ];
+            }
         }
-        $zip->close();
 
         return null;
     }

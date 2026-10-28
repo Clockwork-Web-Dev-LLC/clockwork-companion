@@ -35,6 +35,7 @@ class BackupCreateRoute
     {
         $startTime = microtime(true);
 
+        @ignore_user_abort(true);
         @set_time_limit(900);
         @ini_set('memory_limit', '512M');
 

@@ -94,10 +94,13 @@ class DatabaseDumper
             }
 
             $this->write($handle, "-- Dumping data for `{$table}`\n", $useGz);
-            $batchSize = 500;
+            $batchSize = 200;
 
             for ($offset = 0; $offset < $totalRows; $offset += $batchSize) {
                 $rows = $wpdb->get_results("SELECT * FROM `{$table}` LIMIT {$offset}, {$batchSize}", ARRAY_A);
+                if (method_exists($wpdb, 'flush')) {
+                    $wpdb->flush();
+                }
                 if (empty($rows)) {
                     break;
                 }
