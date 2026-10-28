@@ -120,7 +120,7 @@ class BackupsPage
         // itself takes a full files+database backup on the site's own
         // schedule and streams it straight to Glacier. The copy must not
         // promise the other pipeline's mechanics or cadence.
-        $directArchive = (string) ($report['source'] ?? '') === 'clockwork-companion';
+        $directArchive = in_array((string) ($report['source'] ?? ''), ['clockwork-companion', 'clockwork-renegade'], true);
         ?>
         <div class="clockwork-card" style="margin-bottom: 16px;">
             <div class="clockwork-card__body">
@@ -495,7 +495,7 @@ class BackupsPage
         if (in_array($scope, ['combined', 'full'], true)) {
             return true;
         }
-        if (($report['source'] ?? '') === 'clockwork-companion') {
+        if (in_array((string) ($report['source'] ?? ''), ['clockwork-companion', 'clockwork-renegade'], true)) {
             return true;
         }
         if ($history === []) {
