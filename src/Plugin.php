@@ -121,6 +121,7 @@ class Plugin
         'debug-log',
         'environment',
         'update-exceptions',
+        'client-notifications',
     ];
 
     public function boot(): void
@@ -187,6 +188,7 @@ class Plugin
             (new DebugLogRoute())->register();
             (new EnvironmentRoute())->register();
             (new \ClockworkCompanion\Rest\UpdateExceptionsRoute())->register();
+            (new \ClockworkCompanion\Rest\ClientNotificationsRoute())->register();
         });
 
         // Self-service Forms tab AJAX. Capability + nonce gated; distinct
