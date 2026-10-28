@@ -4,6 +4,9 @@ Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earli
 
 ## [Unreleased]
 
+
+## 1.41.0 — 2026-10-28
+
 ### Added
 - **Care Plan report recipients**: Clockwork → Notifications now lets site administrators manage who receives Care Plan & Maintenance Reports (recipients, frequency, on/off). New HMAC-signed `GET`/`POST /client-notifications` endpoint syncs these settings with Clockwork Control, and `/snapshot` includes them under `client_notifications`.
 
