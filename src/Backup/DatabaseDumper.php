@@ -12,13 +12,28 @@ namespace ClockworkCompanion\Backup;
 class DatabaseDumper
 {
     /**
+     * Total raw SQL bytes written across all table headers and INSERT statements.
+     */
+    private int $rawBytes = 0;
+
+    /**
      * Dump all database tables to the specified file path.
      * If the path ends in .gz and zlib is supported, it streams gzipped SQL directly.
      *
-     * @return array{ok: bool, tables_count: int, size_bytes: int, error?: string}
+     * @return array{
+     *     ok: bool,
+     *     tables_count: int,
+     *     total_rows: int,
+     *     raw_bytes: int,
+     *     size_bytes: int,
+     *     tables: array<int, array{name: string, rows: int, size_bytes: int}>,
+     *     error?: string
+     * }
      */
     public function dump(string $outputPath): array
     {
+        $this->rawBytes = 0;
+
         if (! defined('ARRAY_A')) {
             define('ARRAY_A', 'ARRAY_A');
         }
@@ -32,7 +47,10 @@ class DatabaseDumper
             return [
                 'ok' => false,
                 'tables_count' => 0,
+                'total_rows' => 0,
+                'raw_bytes' => 0,
                 'size_bytes' => 0,
+                'tables' => [],
                 'error' => 'WordPress $wpdb is unavailable.',
             ];
         }
@@ -42,7 +60,10 @@ class DatabaseDumper
             return [
                 'ok' => false,
                 'tables_count' => 0,
+                'total_rows' => 0,
+                'raw_bytes' => 0,
                 'size_bytes' => 0,
+                'tables' => [],
                 'error' => "Cannot create backup directory: {$dir}",
             ];
         }
@@ -54,7 +75,10 @@ class DatabaseDumper
             return [
                 'ok' => false,
                 'tables_count' => 0,
+                'total_rows' => 0,
+                'raw_bytes' => 0,
                 'size_bytes' => 0,
+                'tables' => [],
                 'error' => "Failed to open output file for writing: {$outputPath}",
             ];
         }
@@ -68,14 +92,40 @@ class DatabaseDumper
 
         $this->write($handle, $header, $useGz);
 
+        $statusRows = (array) $wpdb->get_results('SHOW TABLE STATUS', ARRAY_A);
+        $statusMap = [];
+        foreach ($statusRows as $status) {
+            if (is_array($status) && isset($status['Name']) && is_string($status['Name'])) {
+                $statusMap[$status['Name']] = [
+                    'rows' => isset($status['Rows']) ? (int) $status['Rows'] : 0,
+                    'data_length' => isset($status['Data_length']) ? (int) $status['Data_length'] : 0,
+                    'index_length' => isset($status['Index_length']) ? (int) $status['Index_length'] : 0,
+                ];
+            }
+        }
+
         $tables = (array) $wpdb->get_col('SHOW TABLES');
         $tablesCount = count($tables);
+        $totalRowsSum = 0;
+        $tablesMeta = [];
 
         foreach ($tables as $table) {
             $table = (string) $table;
             if ($table === '') {
                 continue;
             }
+
+            $totalRows = (int) $wpdb->get_var("SELECT COUNT(*) FROM `{$table}`");
+            $tableSizeBytes = 0;
+            if (isset($statusMap[$table])) {
+                $tableSizeBytes = $statusMap[$table]['data_length'] + $statusMap[$table]['index_length'];
+            }
+            $tablesMeta[] = [
+                'name' => $table,
+                'rows' => $totalRows,
+                'size_bytes' => $tableSizeBytes,
+            ];
+            $totalRowsSum += $totalRows;
 
             $createRow = $wpdb->get_row("SHOW CREATE TABLE `{$table}`", ARRAY_N);
             $createSql = $createRow[1] ?? null;
@@ -88,7 +138,6 @@ class DatabaseDumper
             }
 
             // Dump rows in batches of 500
-            $totalRows = (int) $wpdb->get_var("SELECT COUNT(*) FROM `{$table}`");
             if ($totalRows === 0) {
                 continue;
             }
@@ -97,7 +146,10 @@ class DatabaseDumper
             $batchSize = 200;
 
             for ($offset = 0; $offset < $totalRows; $offset += $batchSize) {
-                $rows = $wpdb->get_results("SELECT * FROM `{$table}` LIMIT {$offset}, {$batchSize}", ARRAY_A);
+                $query = method_exists($wpdb, 'prepare')
+                    ? $wpdb->prepare("SELECT * FROM `{$table}` LIMIT %d, %d", (int) $offset, (int) $batchSize)
+                    : "SELECT * FROM `{$table}` LIMIT ".(int) $offset.', '.(int) $batchSize;
+                $rows = $wpdb->get_results($query, ARRAY_A);
                 if (method_exists($wpdb, 'flush')) {
                     $wpdb->flush();
                 }
@@ -140,12 +192,16 @@ class DatabaseDumper
         return [
             'ok' => true,
             'tables_count' => $tablesCount,
+            'total_rows' => $totalRowsSum,
+            'raw_bytes' => $this->rawBytes,
             'size_bytes' => (int) @filesize($outputPath),
+            'tables' => $tablesMeta,
         ];
     }
 
     private function write($handle, string $data, bool $useGz): void
     {
+        $this->rawBytes += strlen($data);
         if ($useGz) {
             gzwrite($handle, $data);
         } else {

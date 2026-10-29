@@ -62,6 +62,7 @@ class BackupCreateRoute
 
         try {
             // 1. Dump database
+            $dumpResult = [];
             if ($includeDb) {
                 $dumper = new DatabaseDumper();
                 $dumpResult = $dumper->dump($dbDumpFile);
@@ -70,9 +71,9 @@ class BackupCreateRoute
                 }
             }
 
-            // 2. Package into Zip
+            // 2. Package into Zip (including manifest.json)
             $archiver = new BackupArchiver();
-            $archiveResult = $archiver->createArchive($zipFile, $dbDumpFile, $includeFiles, $customExcludes);
+            $archiveResult = $archiver->createArchive($zipFile, $dbDumpFile, $includeFiles, $customExcludes, $dumpResult);
             if (! ($archiveResult['ok'] ?? false)) {
                 return new WP_Error('archive_failed', $archiveResult['error'] ?? 'Archive creation failed', ['status' => 500]);
             }
@@ -85,12 +86,17 @@ class BackupCreateRoute
             }
 
             $duration = round(microtime(true) - $startTime, 2);
+            $manifest = $archiveResult['manifest'] ?? null;
+            if (is_array($manifest) && isset($manifest['summary'])) {
+                $manifest['summary']['duration_seconds'] = $duration;
+            }
 
             return new WP_REST_Response([
                 'ok' => true,
                 'size_bytes' => $uploadResult['size_bytes'],
                 'sha256' => $uploadResult['sha256'],
                 'duration_seconds' => $duration,
+                'manifest' => $manifest,
             ], 200);
         } finally {
             // Guarantee cleanup of local temp files

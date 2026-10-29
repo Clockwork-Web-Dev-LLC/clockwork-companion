@@ -84,20 +84,30 @@ class BackupCreateRouteTest extends TestCase
                 'sha256' => $sha256,
             ];
 
-            // Verify zip contains database/db-...sql.gz
+            // Verify zip contains database/db-...sql.gz and manifest.json
             $zip = new \ZipArchive();
             $opened = $zip->open($filePath);
             $this->assertTrue($opened === true);
             $hasDb = false;
+            $hasManifest = false;
+            $manifestContent = null;
             for ($i = 0; $i < $zip->numFiles; $i++) {
                 $stat = $zip->statIndex($i);
                 if (str_starts_with($stat['name'], 'database/')) {
                     $hasDb = true;
-                    break;
+                }
+                if ($stat['name'] === 'manifest.json') {
+                    $hasManifest = true;
+                    $manifestContent = $zip->getFromIndex($i);
                 }
             }
             $zip->close();
             $this->assertTrue($hasDb, 'Expected zip archive to contain database dump');
+            $this->assertTrue($hasManifest, 'Expected zip archive to contain manifest.json');
+            $this->assertNotEmpty($manifestContent);
+            $manifestInsideZip = json_decode($manifestContent, true);
+            $this->assertIsArray($manifestInsideZip);
+            $this->assertSame('1.0', $manifestInsideZip['version'] ?? null);
 
             return [
                 'ok' => true,
@@ -128,6 +138,23 @@ class BackupCreateRouteTest extends TestCase
         $this->assertGreaterThan(0, $data['size_bytes']);
         $this->assertSame(64, strlen($data['sha256']));
         $this->assertArrayHasKey('duration_seconds', $data);
+
+        // Verify manifest payload returned in REST response
+        $this->assertArrayHasKey('manifest', $data);
+        $this->assertIsArray($data['manifest']);
+        $manifest = $data['manifest'];
+        $this->assertSame('1.0', $manifest['version']);
+        $this->assertArrayHasKey('site', $manifest);
+        $this->assertArrayHasKey('summary', $manifest);
+        $this->assertArrayHasKey('database', $manifest);
+        $this->assertArrayHasKey('files', $manifest);
+        $this->assertArrayHasKey('exclusions', $manifest);
+
+        $this->assertSame(2, $manifest['database']['tables_count']);
+        $this->assertSame(4, $manifest['database']['total_rows']);
+        $this->assertCount(2, $manifest['database']['tables']);
+        $this->assertSame('wp_posts', $manifest['database']['tables'][0]['name']);
+        $this->assertSame('wp_options', $manifest['database']['tables'][1]['name']);
 
         // Verify S3DirectUploader received parameters
         $this->assertTrue($uploadedData['file_exists_during_upload']);

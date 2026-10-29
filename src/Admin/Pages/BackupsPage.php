@@ -356,11 +356,17 @@ class BackupsPage
                                         </span>
                                     </td>
                                     <?php if ($combined) : ?>
-                                        <td class="mono"><?php echo esc_html(self::formatBytes(self::combinedArchiveBytes($row))); ?></td>
+                                        <td class="mono">
+                                            <div><?php echo esc_html(self::formatBytes(self::combinedArchiveBytes($row))); ?></div>
+                                            <?php self::renderManifestBreakdown($row['manifest'] ?? null); ?>
+                                        </td>
                                     <?php else : ?>
                                         <td class="mono"><?php echo esc_html(self::formatBytes($row['database_bytes'] ?? null)); ?></td>
                                         <td class="mono"><?php echo esc_html(self::formatBytes($row['files_bytes'] ?? null)); ?></td>
-                                        <td><?php echo esc_html((string) ($row['notes'] ?? '—')); ?></td>
+                                        <td>
+                                            <?php echo esc_html((string) ($row['notes'] ?? '—')); ?>
+                                            <?php self::renderManifestBreakdown($row['manifest'] ?? null); ?>
+                                        </td>
                                     <?php endif; ?>
                                 </tr>
                             <?php endforeach; ?>
@@ -450,6 +456,100 @@ class BackupsPage
             <?php echo esc_html(self::formatTimestamp($report['fetched_at'] ?? null) ?: 'unknown'); ?>
             &middot; source: <?php echo esc_html((string) ($report['source'] ?? 'agency')); ?>
         </p>
+        <?php
+    }
+
+    /**
+     * Render expandable manifest details pill and breakdown.
+     *
+     * @param  array<string, mixed>|null  $manifest
+     */
+    private static function renderManifestBreakdown(?array $manifest): void
+    {
+        if (empty($manifest) || ! is_array($manifest)) {
+            return;
+        }
+
+        $db = $manifest['database'] ?? [];
+        $files = $manifest['files'] ?? [];
+        $summary = $manifest['summary'] ?? [];
+
+        $parts = [];
+        $tablesCount = (int) ($db['tables_count'] ?? 0);
+        if ($tablesCount > 0) {
+            $parts[] = sprintf(_n('%d Table', '%d Tables', $tablesCount, 'clockwork-companion'), $tablesCount);
+        }
+
+        $uploadsCount = (int) ($files['uploads']['file_count'] ?? 0);
+        if ($uploadsCount > 0) {
+            $parts[] = sprintf(_n('%s Media File', '%s Media Files', number_format($uploadsCount), 'clockwork-companion'), number_format($uploadsCount));
+        }
+
+        $pluginsCount = (int) ($files['plugins']['count'] ?? 0);
+        if ($pluginsCount > 0) {
+            $parts[] = sprintf(_n('%d Plugin', '%d Plugins', $pluginsCount, 'clockwork-companion'), $pluginsCount);
+        }
+
+        $themesCount = (int) ($files['themes']['count'] ?? 0);
+        if ($themesCount > 0) {
+            $parts[] = sprintf(_n('%d Theme', '%d Themes', $themesCount, 'clockwork-companion'), $themesCount);
+        }
+
+        if (empty($parts)) {
+            return;
+        }
+
+        $summaryText = implode(' · ', $parts);
+        ?>
+        <div class="cwk-manifest-details" style="margin-top: 6px; font-size: 11px;">
+            <details style="cursor: pointer; background: rgba(0,0,0,0.02); border: 1px solid rgba(0,0,0,0.06); border-radius: 6px; padding: 6px 10px;">
+                <summary style="font-weight: 500; color: #475569; outline: none; list-style-position: inside;">
+                    <span style="color: #0f172a; font-weight: 600;"><?php esc_html_e('Includes:', 'clockwork-companion'); ?></span>
+                    <span><?php echo esc_html($summaryText); ?></span>
+                    <span style="color: var(--color-brand, #2563eb); text-decoration: underline; margin-left: 6px; font-size: 10px;"><?php esc_html_e('Inspect', 'clockwork-companion'); ?></span>
+                </summary>
+                <div style="margin-top: 8px; padding-top: 8px; border-top: 1px dashed rgba(0,0,0,0.08); font-size: 11px; line-height: 1.5; color: #334155;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 8px;">
+                        <div>
+                            <strong style="display: block; color: #0f172a; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;"><?php esc_html_e('Database', 'clockwork-companion'); ?></strong>
+                            <span><?php echo esc_html(sprintf('%d tables · %s rows', $tablesCount, number_format((int) ($db['total_rows'] ?? 0)))); ?></span>
+                            <?php if (! empty($db['compressed_sql_bytes'])) : ?>
+                                <span style="color: #64748b;">(<?php echo esc_html(self::formatBytes((int) $db['compressed_sql_bytes'])); ?>)</span>
+                            <?php endif; ?>
+                        </div>
+                        <div>
+                            <strong style="display: block; color: #0f172a; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;"><?php esc_html_e('Media Library', 'clockwork-companion'); ?></strong>
+                            <span><?php echo esc_html(sprintf('%s files', number_format($uploadsCount))); ?></span>
+                            <?php if (! empty($files['uploads']['bytes'])) : ?>
+                                <span style="color: #64748b;">(<?php echo esc_html(self::formatBytes((int) $files['uploads']['bytes'])); ?>)</span>
+                            <?php endif; ?>
+                        </div>
+                        <div>
+                            <strong style="display: block; color: #0f172a; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;"><?php esc_html_e('Plugins & Themes', 'clockwork-companion'); ?></strong>
+                            <span><?php echo esc_html(sprintf('%d plugins · %d themes', $pluginsCount, $themesCount)); ?></span>
+                            <?php if (! empty($files['themes']['active'])) : ?>
+                                <span style="color: #64748b;">(active: <?php echo esc_html((string) $files['themes']['active']); ?>)</span>
+                            <?php endif; ?>
+                        </div>
+                        <?php if (! empty($summary['compression_ratio'])) : ?>
+                            <div>
+                                <strong style="display: block; color: #0f172a; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;"><?php esc_html_e('Compression', 'clockwork-companion'); ?></strong>
+                                <span><?php echo esc_html((string) $summary['compression_ratio']); ?> savings</span>
+                                <?php if (! empty($summary['total_uncompressed_bytes'])) : ?>
+                                    <span style="color: #64748b;">(<?php echo esc_html(self::formatBytes((int) $summary['total_uncompressed_bytes'])); ?> raw)</span>
+                                <?php endif; ?>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                    <?php if (! empty($files['plugins']['list']) && is_array($files['plugins']['list'])) : ?>
+                        <div style="font-size: 10px; color: #64748b; margin-top: 4px;">
+                            <strong><?php esc_html_e('Plugins:', 'clockwork-companion'); ?></strong>
+                            <span><?php echo esc_html(implode(', ', array_slice($files['plugins']['list'], 0, 15))); ?><?php echo count($files['plugins']['list']) > 15 ? '…' : ''; ?></span>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </details>
+        </div>
         <?php
     }
 

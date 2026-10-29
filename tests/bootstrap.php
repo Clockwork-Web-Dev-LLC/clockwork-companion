@@ -849,6 +849,7 @@ if (! function_exists('wp_get_theme')) {
     {
         return new class {
             public function get(string $header): string { return '1.0'; }
+            public function get_stylesheet(): string { return 'twentytwentyfour'; }
         };
     }
 }

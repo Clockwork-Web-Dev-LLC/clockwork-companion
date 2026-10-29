@@ -5,6 +5,12 @@ Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earli
 ## [Unreleased]
 
 
+## 1.42.0 — 2026-10-28
+
+### Added
+- **Backup Manifests**: Backups now collect detailed table sizes, row counts, uploads, themes, and plugins into a standardized `manifest.json` embedded in the backup archive.
+- **WP Admin Backup Breakdown**: Backups history table now renders an expandable manifest summary pill and modal breakdown.
+
 ## 1.41.0 — 2026-10-28
 
 ### Added
