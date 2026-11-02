@@ -1,0 +1,46 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+
+      - name: Verify tag matches plugin version
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          HEADER_VERSION="$(sed -n 's/^ \* Version:[[:space:]]*//p' clockwork-companion.php | tr -d '[:space:]')"
+          CONST_VERSION="$(sed -n "s/^define('CLOCKWORK_COMPANION_VERSION',[[:space:]]*'\([^']*\)');/\1/p" clockwork-companion.php)"
+          if [ "$TAG_VERSION" != "$HEADER_VERSION" ] || [ "$TAG_VERSION" != "$CONST_VERSION" ]; then
+            echo "Tag ($TAG_VERSION), header ($HEADER_VERSION), and constant ($CONST_VERSION) must match." >&2
+            exit 1
+          fi
+
+      - name: Run tests
+        run: |
+          composer install --no-interaction --prefer-dist
+          ./vendor/bin/phpunit
+
+      - name: Build release zip
+        run: ./bin/build-release-zip.sh
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            dist/clockwork-companion.zip
+            dist/clockwork-companion.zip.sha256

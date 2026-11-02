@@ -73,6 +73,7 @@ class UpdatesRefreshAjaxHandler
         if (! function_exists('wp_update_plugins')) {
             require_once ABSPATH.'wp-includes/update.php';
         }
+        delete_transient(\ClockworkCompanion\Updates\SelfUpdater::CACHE_KEY);
         $extra = ['source' => 'clockwork-companion-loopback'];
         wp_update_plugins($extra);
         wp_update_themes($extra);

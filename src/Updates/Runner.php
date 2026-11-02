@@ -67,6 +67,9 @@ class Runner
         // version instead of the cached transient (which may be up to ~12h
         // stale). Cheap on a single targeted call; we deliberately don't do
         // this in the bulk snapshot pull because of api.wordpress.org load.
+        if ($slug === SelfUpdater::PLUGIN_FILE) {
+            delete_transient(SelfUpdater::CACHE_KEY);
+        }
         wp_update_plugins();
 
         $updateTransient = get_site_transient('update_plugins');

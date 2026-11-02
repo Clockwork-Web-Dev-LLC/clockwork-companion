@@ -140,6 +140,7 @@ class Plugin
         \ClockworkCompanion\Compat\ElementorCacheGuard::register();
         \ClockworkCompanion\Compat\WpForceLoginCompat::register();
         \ClockworkCompanion\Maintenance\MaintenanceGuard::register();
+        \ClockworkCompanion\Updates\SelfUpdater::register();
 
         // Register the per-request CPU/memory sampler IMMEDIATELY (not on a
         // hook). The sampler snapshots getrusage() at construction time and

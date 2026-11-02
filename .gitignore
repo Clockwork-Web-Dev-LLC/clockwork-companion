@@ -2,6 +2,7 @@
 vendor/
 composer.lock
 *.zip
+dist/
 .idea/
 .vscode/
 .phpunit.cache/

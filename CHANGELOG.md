@@ -5,6 +5,17 @@ Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earli
 ## [Unreleased]
 
 
+## 1.43.0 — 2026-11-02
+
+### Added
+- **GitHub Releases Self-Updater (`SelfUpdater`)**: Clockwork Companion now supports running as a standard protected plugin in `wp-content/plugins/clockwork-companion/` and receives updates directly from GitHub Releases (`Clockwork-Web-Dev-LLC/clockwork-companion`) via WordPress's native `Update URI` pipeline (`update_plugins_github.com` and `plugins_api`).
+- **Tamper & Deactivation Guards**: Hides Deactivate/Delete action links on the WP Admin Plugins screen and keeps `clockwork-companion/clockwork-companion.php` active in `active_plugins` unless `WP_CLI` is running or `CLOCKWORK_COMPANION_ALLOW_DEACTIVATE` is defined.
+- **Seamless `mu-plugins` Migration Guard**: Prevents duplicate class redeclaration if both `mu-plugins/clockwork-companion.php` and `plugins/clockwork-companion/clockwork-companion.php` exist simultaneously, and automatically cleans up legacy `mu-plugins` files once running from `wp-content/plugins/`.
+
+### Fixed
+- **Malware Scanner Host Quarantine Prevention**: Split webshell and obfuscation signature literals in `MalwareScanner` so host-level scanners (SiteGround, Imunify360) do not quarantine `MalwareScanner.php`.
+
+
 ## 1.42.0 — 2026-10-28
 
 ### Added

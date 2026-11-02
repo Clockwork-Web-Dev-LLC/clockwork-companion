@@ -1,5 +1,9 @@
 <?php
 
+if (! defined('HOUR_IN_SECONDS')) {
+    define('HOUR_IN_SECONDS', 3600);
+}
+
 if (! defined('ABSPATH')) {
     define('ABSPATH', '/tmp/wordpress/');
 }
@@ -51,6 +55,14 @@ if (! defined('CLOCKWORK_COMPANION_VERSION')) {
 
 if (! defined('CLOCKWORK_RENEGADE_DIR')) {
     define('CLOCKWORK_RENEGADE_DIR', dirname(__DIR__));
+}
+
+if (! defined('CLOCKWORK_COMPANION_DIR')) {
+    define('CLOCKWORK_COMPANION_DIR', dirname(__DIR__));
+}
+
+if (! defined('CLOCKWORK_COMPANION_FILE')) {
+    define('CLOCKWORK_COMPANION_FILE', dirname(__DIR__) . '/clockwork-companion.php');
 }
 
 if (! defined('CLOCKWORK_COMPANION_NAMESPACE')) {
