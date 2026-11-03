@@ -3,6 +3,7 @@
 namespace ClockworkCompanion\Rest;
 
 use ClockworkCompanion\Auth\HmacVerifier;
+use ClockworkCompanion\Updates\Runner;
 use WP_Error;
 use WP_REST_Request;
 use WP_REST_Response;
@@ -109,9 +110,13 @@ class PostUpdateVerifyRoute
 
         require_once ABSPATH . 'wp-admin/includes/plugin.php';
 
-        $currentActive = (array) get_option('active_plugins', []);
-        $installed     = array_keys(get_plugins());
-        $repairs       = [];
+        Runner::flushActivePluginsCache();
+
+        $currentActive    = (array) get_option('active_plugins', []);
+        $orderBefore      = array_values(array_filter($currentActive, 'is_string'));
+        $installed        = array_keys(get_plugins());
+        $repairs          = [];
+        $reactivatedSlugs = [];
 
         foreach ($expectedSlugs as $slug) {
             if (in_array($slug, $currentActive, true)) {
@@ -131,12 +136,17 @@ class PostUpdateVerifyRoute
                     'detail' => $result->get_error_message(),
                 ];
             } else {
+                $reactivatedSlugs[] = $slug;
                 $repairs[] = [
                     'type'   => 'plugin_reactivated',
                     'slug'   => $slug,
                     'detail' => 'was inactive after update; re-activated successfully',
                 ];
             }
+        }
+
+        if ($reactivatedSlugs !== []) {
+            Runner::ensureActivePluginOrderPersisted($reactivatedSlugs[0], $orderBefore, $reactivatedSlugs);
         }
 
         return $repairs;

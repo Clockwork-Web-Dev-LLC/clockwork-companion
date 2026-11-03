@@ -933,7 +933,24 @@ if (! function_exists('activate_plugin')) {
             return $GLOBALS['wp_test_activate_plugin_error'];
         }
         $GLOBALS['wp_test_active_plugins'][] = $slug;
+        if (! $networkWide && isset($GLOBALS['wp_test_options']['active_plugins']) && is_array($GLOBALS['wp_test_options']['active_plugins'])) {
+            $current = $GLOBALS['wp_test_options']['active_plugins'];
+            if (! in_array($slug, $current, true)) {
+                $current[] = $slug;
+            }
+            sort($current);
+            update_option('active_plugins', $current);
+        }
         return null;
+    }
+}
+
+if (! function_exists('wp_cache_delete')) {
+    function wp_cache_delete(string|int $key, string $group = ''): bool
+    {
+        $groupKey = $group . ':' . $key;
+        unset($GLOBALS['wp_test_object_cache'][$groupKey], $GLOBALS['wp_test_object_cache_expire'][$groupKey]);
+        return true;
     }
 }
 
