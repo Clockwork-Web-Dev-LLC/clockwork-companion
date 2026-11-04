@@ -3,7 +3,7 @@
  * Plugin Name: Clockwork Companion
  * Plugin URI: https://clockworkcontrol.com
  * Description: Companion plugin for the Clockwork monitoring app. Exposes signed REST endpoints under /wp-json/clockwork/v1/ for fleet-wide control of WordPress maintenance tasks (contact-form testing, plugin updates, security scans, etc.).
- * Version: 1.43.0
+ * Version: 1.43.1
  * Requires at least: 6.4
  * Requires PHP: 8.0
  * Author: Clockwork Web Dev, LLC
@@ -36,7 +36,7 @@ if (defined('CLOCKWORK_COMPANION_VERSION')) {
     return;
 }
 
-define('CLOCKWORK_COMPANION_VERSION', '1.43.0');
+define('CLOCKWORK_COMPANION_VERSION', '1.43.1');
 if (! defined('CLOCKWORK_COMPANION_DIR')) {
     if (is_dir(__DIR__ . '/src')) {
         define('CLOCKWORK_COMPANION_DIR', __DIR__);

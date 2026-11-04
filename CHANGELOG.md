@@ -5,6 +5,13 @@ Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earli
 ## [Unreleased]
 
 
+## 1.43.1 — 2026-11-04
+
+### Fixed
+- **Active Plugin Preservation During Updates (`Runner` & `PostUpdateVerifyRoute`)**: Removed `Plugin_Upgrader::deactivate_plugin_before_upgrade` during single-plugin updates, added a `pre_update_option_active_plugins` guard, flushed Redis `alloptions` + `active_plugins` caches around updates, and preserved plugin load order (including trailing `nextgen-gallery/*` entries) so concurrent frontend shutdown hooks cannot overwrite `active_plugins` with a stale array.
+- **WPForms Contact Form Health Checks (`WpFormsStrategy`)**: Pass the inner `$_POST['wpforms']` entry payload to `wpforms()->process->process()`, bypass WPForms `ajax_submit` / time-limit anti-spam filters during synthetic health-check runs, and populate `first-last` name sub-fields and choice labels when `show_values` is disabled.
+
+
 ## 1.43.0 — 2026-11-02
 
 ### Added
