@@ -153,4 +153,17 @@ class HmacVerifierTest extends TestCase
         $this->assertTrue(HmacVerifier::verify($this->request('GET', '/clockwork/v1/snapshot', $headers)));
         $this->assertTrue(HmacVerifier::verify($this->request('GET', '/clockwork/v1/snapshot', $headers)));
     }
+
+    public function testNonDigitTimestampIsRejected(): void
+    {
+        $ts = time();
+        $request = $this->request('GET', '/clockwork/v1/health', [
+            'x-clockwork-timestamp' => $ts.'abc',
+            'x-clockwork-signature' => $this->sign('GET', '/wp-json/clockwork/v1/health', $ts, ''),
+        ]);
+
+        $result = HmacVerifier::verify($request);
+        $this->assertInstanceOf(WP_Error::class, $result);
+        $this->assertSame('stale_timestamp', $result->get_error_code());
+    }
 }

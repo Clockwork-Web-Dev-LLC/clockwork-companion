@@ -22,7 +22,8 @@ class S3DirectUploader
      */
     public function upload(string $filePath, string $uploadUrl, array $headers = []): array
     {
-        if (! ArchiveDownloader::isSafeHttpsDownloadUrl($uploadUrl)) {
+        $target = ArchiveDownloader::resolveSafeHttpsTarget($uploadUrl);
+        if ($target === null) {
             return [
                 'ok' => false,
                 'http_code' => 0,
@@ -116,6 +117,9 @@ class S3DirectUploader
         if (defined('CURLPROTO_HTTPS')) {
             curl_setopt($ch, CURLOPT_PROTOCOLS, CURLPROTO_HTTPS);
             curl_setopt($ch, CURLOPT_REDIR_PROTOCOLS, CURLPROTO_HTTPS);
+        }
+        if (defined('CURLOPT_RESOLVE') && $target['ips'] !== [] && filter_var($target['host'], FILTER_VALIDATE_IP) === false) {
+            curl_setopt($ch, CURLOPT_RESOLVE, ["{$target['host']}:{$target['port']}:{$target['ips'][0]}"]);
         }
 
         $response = curl_exec($ch);

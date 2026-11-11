@@ -5,6 +5,18 @@ Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earli
 ## [Unreleased]
 
 
+## 1.43.2 — 2026-11-11
+
+### Security
+- **HMAC V2 Query Signing & Atomic Replay Protection (`HmacVerifier`)**: Enforced `X-Clockwork-Signature-V2` verification whenever signed requests carry non-empty query parameters and replaced transient replay checks with atomic `INSERT IGNORE` locks in `wp_options`.
+- **Backup Archive & Restore Path Hardening (`ArchiveExtractor`, `FileApplier`, `ArchiveDownloader`, `S3DirectUploader`)**: Rejected TAR/ZIP symlink and hardlink entries, traversal paths, and symlinked staging targets; enforced `WP_CONTENT_DIR` `realpath()` containment; and required `https://`, `wp_http_validate_url()`, zero redirects, and S3-compatible host suffixes on remote transfers.
+- **Self-Updater, SSO, Proxy Trust, & Endpoint Hardening (`SelfUpdater`, `SsoRoute`, `MaintenanceGuard`, `ClientNotifications`, `DebugLogRoute`, `DatabaseRoute`, `MalwareScanner`)**: Restricted self-update package hosts to `api.github.com` / `github.com` / `objects.githubusercontent.com`, switched SSO redirects to `wp_safe_redirect()` with `Referrer-Policy: no-referrer`, ignored `X-Forwarded-For` / `CF-Connecting-IP` unless `REMOTE_ADDR` is a trusted proxy, stripped CR/LF from email `From` headers, bounded `debug.log` tail reads via `fseek()`, escaped `LIKE` wildcards in table prefix queries, and skipped symlinked directories during malware scans.
+
+### Fixed
+- **Commercial Plugin & Theme Update Transients (`Runner`, `ThemeUpdateRoute`, `TransientRefresher`)**: Preserved prior update transient entries when REST-context `wp_update_plugins()` / `wp_update_themes()` drops `WP_ADMIN`-only commercial updaters, added `TransientRefresher::forceRefresh()` with object-cache invalidation, and surfaced `WP_Upgrader_Skin` error messages on failed upgrades.
+- **Comment Cleanup Action Validation (`CommentsActionRoute`)**: Accepted `cleanup` in the REST route `action` enum validation so bulk spam/trash cleanup requests reach the handler cleanly.
+
+
 ## 1.43.1 — 2026-11-04
 
 ### Fixed

@@ -105,4 +105,21 @@ class FileApplierTest extends TestCase
         $this->assertFileDoesNotExist($this->liveDir . '/uploads/wp-config.php');
         $this->assertFileExists($this->liveDir . '/uploads/image.txt');
     }
+
+    public function testSymlinksInStagingAreSkippedAndNeverDereferenced(): void
+    {
+        $secretTarget = $this->tempDir . '/outside-secret.txt';
+        file_put_contents($secretTarget, 'top-secret-config');
+
+        $this->stage('uploads/real.txt', 'safe-bytes');
+        @symlink($secretTarget, $this->stagingDir . '/uploads/leak.txt');
+
+        $applier = new FileApplier();
+        $result = $applier->apply($this->stagingDir, $this->liveDir);
+
+        $this->assertTrue($result['ok']);
+        $this->assertSame(1, $result['copied_count']);
+        $this->assertFileExists($this->liveDir . '/uploads/real.txt');
+        $this->assertFileDoesNotExist($this->liveDir . '/uploads/leak.txt');
+    }
 }

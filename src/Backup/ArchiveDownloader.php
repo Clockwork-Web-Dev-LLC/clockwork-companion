@@ -46,7 +46,8 @@ class ArchiveDownloader
      */
     public function download(string $url, string $destPath, ?callable $progressCallback = null, ?string $archiveKey = null): array
     {
-        if (! self::isSafeHttpsDownloadUrl($url)) {
+        $target = self::resolveSafeHttpsTarget($url);
+        if ($target === null) {
             return [
                 'ok' => false,
                 'http_code' => 0,
@@ -119,6 +120,9 @@ class ArchiveDownloader
         if (defined('CURLPROTO_HTTPS')) {
             curl_setopt($ch, CURLOPT_PROTOCOLS, CURLPROTO_HTTPS);
             curl_setopt($ch, CURLOPT_REDIR_PROTOCOLS, CURLPROTO_HTTPS);
+        }
+        if (defined('CURLOPT_RESOLVE') && $target['ips'] !== [] && filter_var($target['host'], FILTER_VALIDATE_IP) === false) {
+            curl_setopt($ch, CURLOPT_RESOLVE, ["{$target['host']}:{$target['port']}:{$target['ips'][0]}"]);
         }
 
         if (! empty($rangeHeader)) {
@@ -211,34 +215,57 @@ class ArchiveDownloader
      */
     public static function isSafeHttpsDownloadUrl(string $url): bool
     {
+        return self::resolveSafeHttpsTarget($url) !== null;
+    }
+
+    /**
+     * Resolve and validate a public HTTPS endpoint once so cURL can pin the
+     * validated IP via CURLOPT_RESOLVE (preventing DNS-rebinding TOCTOU).
+     *
+     * @return array{host: string, port: int, ips: list<string>}|null
+     */
+    public static function resolveSafeHttpsTarget(string $url): ?array
+    {
         if (filter_var($url, FILTER_VALIDATE_URL) === false || ! str_starts_with(strtolower($url), 'https://')) {
-            return false;
+            return null;
         }
 
         $host = parse_url($url, PHP_URL_HOST);
         if (! is_string($host) || $host === '') {
-            return false;
+            return null;
         }
 
-        if (self::$testAllowHosts !== null && in_array(strtolower($host), self::$testAllowHosts, true)) {
-            return true;
+        $port = (int) (parse_url($url, PHP_URL_PORT) ?: 443);
+        if ($port < 1 || $port > 65535) {
+            return null;
         }
 
-        $ips = filter_var($host, FILTER_VALIDATE_IP) !== false
-            ? [$host]
-            : self::resolveHostIps($host);
+        $cleanHost = trim($host, '[]');
+
+        if (self::$testAllowHosts !== null && in_array(strtolower($cleanHost), self::$testAllowHosts, true)) {
+            return ['host' => $cleanHost, 'port' => $port, 'ips' => []];
+        }
+
+        $ips = filter_var($cleanHost, FILTER_VALIDATE_IP) !== false
+            ? [$cleanHost]
+            : self::resolveHostIps($cleanHost);
 
         if ($ips === []) {
-            return false;
+            return null;
+        }
+
+        $ipFlags = FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE;
+        if (defined('FILTER_FLAG_GLOBAL_RANGE')) {
+            $ipFlags |= FILTER_FLAG_GLOBAL_RANGE;
         }
 
         foreach ($ips as $ip) {
-            if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
-                return false;
+            if (filter_var($ip, FILTER_VALIDATE_IP, $ipFlags) === false) {
+                return null;
             }
         }
 
-        return true;
+        return ['host' => $cleanHost, 'port' => $port, 'ips' => $ips];
     }
 
     /** @return list<string> */

@@ -145,6 +145,39 @@ class SsoRoute
     {
         global $wpdb;
         $prefix = self::OPTION_PREFIX;
+        $now = time();
+
+        // Purge expired abandoned nonces so wp_options never hits a permanent
+        // MAX_ACTIVE_NONCES ceiling if minted magic links go unredeemed.
+        $optionNames = $wpdb->get_col(
+            $wpdb->prepare(
+                "SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s LIMIT 200",
+                $wpdb->esc_like($prefix).'%'
+            )
+        );
+        if (is_array($optionNames)) {
+            foreach ($optionNames as $optName) {
+                $optName = (string) $optName;
+                if (! str_starts_with($optName, $prefix)) {
+                    continue;
+                }
+                $stored = get_option($optName);
+                if (! is_array($stored) || (int) ($stored['expires_at'] ?? 0) < $now) {
+                    delete_option($optName);
+                }
+            }
+        }
+
+        if (isset($GLOBALS['wp_test_options']) && is_array($GLOBALS['wp_test_options'])) {
+            foreach (array_keys($GLOBALS['wp_test_options']) as $optName) {
+                if (is_string($optName) && str_starts_with($optName, $prefix)) {
+                    $stored = get_option($optName);
+                    if (! is_array($stored) || (int) ($stored['expires_at'] ?? 0) < $now) {
+                        delete_option($optName);
+                    }
+                }
+            }
+        }
 
         $count = $wpdb->get_var(
             $wpdb->prepare(
@@ -163,17 +196,17 @@ class SsoRoute
      */
     private function safeRedirect(string $value): string
     {
-        $value = trim($value);
+        $value = trim(str_replace(["\r", "\n", "\0"], '', $value));
         if ($value === '') {
             return '/wp-admin/';
         }
 
         // Strip protocol+host if present — only the path portion is honoured.
         $parsed = wp_parse_url($value);
-        $path = (string) ($parsed['path'] ?? '/wp-admin/');
-        if ($path[0] !== '/') {
-            $path = '/'.$path;
-        }
+        $path = (string) ($parsed['path'] ?? '');
+        $path = ltrim($path, '/\\');
+        $path = $path === '' ? '/wp-admin/' : '/'.$path;
+
         if (! empty($parsed['query'])) {
             $path .= '?'.$parsed['query'];
         }

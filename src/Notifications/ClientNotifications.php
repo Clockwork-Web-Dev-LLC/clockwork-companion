@@ -135,8 +135,8 @@ class ClientNotifications
 
         if (array_key_exists('slack_webhook_url', $data)) {
             $url = trim((string) $data['slack_webhook_url']);
-            // Only store https:// webhook URLs — reject empty or non-https values.
-            $current['slack_webhook_url'] = (str_starts_with($url, 'https://')) ? esc_url_raw($url) : '';
+            // Only store canonical Slack incoming webhook HTTPS URLs.
+            $current['slack_webhook_url'] = self::isValidSlackWebhookUrl($url) ? esc_url_raw($url) : '';
         }
 
         $reportTouched = false;
@@ -172,6 +172,29 @@ class ClientNotifications
         }
 
         update_option(self::OPTION, $current, false);
+    }
+
+    public static function isValidSlackWebhookUrl(string $url): bool
+    {
+        if ($url === '' || ! str_starts_with($url, 'https://')) {
+            return false;
+        }
+
+        $parts = wp_parse_url($url);
+        if (! is_array($parts)) {
+            return false;
+        }
+
+        $host = strtolower((string) ($parts['host'] ?? ''));
+        $path = (string) ($parts['path'] ?? '');
+
+        return ($parts['scheme'] ?? '') === 'https'
+            && in_array($host, ['hooks.slack.com', 'hooks.slack-gov.com'], true)
+            && str_starts_with($path, '/services/')
+            && ! str_contains($path, '..')
+            && ! isset($parts['user'])
+            && ! isset($parts['pass'])
+            && ! isset($parts['port']);
     }
 
     /**

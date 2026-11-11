@@ -252,12 +252,26 @@ class SelfUpdater
             return false;
         }
 
+        $rawPath = (string) ($parts['path'] ?? '');
+        $decodedPath = rawurldecode($rawPath);
+        if (
+            $rawPath === ''
+            || str_contains($rawPath, '\\')
+            || str_contains($decodedPath, '\\')
+            || str_contains($rawPath, '//')
+            || str_contains($decodedPath, '//')
+            || in_array('..', explode('/', $decodedPath), true)
+            || in_array('.', explode('/', $decodedPath), true)
+        ) {
+            return false;
+        }
+
         return ($parts['scheme'] ?? '') === 'https'
             && ($parts['host'] ?? '') === 'github.com'
-            && isset($parts['path'])
-            && str_starts_with($parts['path'], '/'.self::REPO.'/releases/download/')
-            && str_ends_with($parts['path'], '.zip')
+            && str_starts_with($rawPath, '/'.self::REPO.'/releases/download/')
+            && str_ends_with($rawPath, '.zip')
             && ! isset($parts['user'])
+            && ! isset($parts['pass'])
             && ! isset($parts['port']);
     }
 

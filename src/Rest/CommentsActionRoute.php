@@ -68,32 +68,58 @@ class CommentsActionRoute
 
         $items = [];
         foreach ($comments as $c) {
+            $rawPostUrl = (string) (get_permalink((int) $c->comment_post_ID) ?: '');
+            $safePostUrl = preg_match('#^https?://#i', $rawPostUrl) === 1 ? $rawPostUrl : '';
+            $authorName = (string) $c->comment_author;
+            $dateGmt = (string) $c->comment_date_gmt;
+
             $items[] = [
                 'id' => (int) $c->comment_ID,
                 'post_id' => (int) $c->comment_post_ID,
                 'post_title' => get_the_title((int) $c->comment_post_ID) ?: 'Untitled',
-                'post_url' => get_permalink((int) $c->comment_post_ID) ?: '',
-                'author' => (string) $c->comment_author,
+                'post_url' => $safePostUrl,
+                'author' => $authorName,
+                'author_name' => $authorName,
                 'author_email' => (string) $c->comment_author_email,
                 'author_ip' => (string) $c->comment_author_IP,
                 'author_url' => (string) $c->comment_author_url,
-                'date_gmt' => (string) $c->comment_date_gmt,
+                'date_gmt' => $dateGmt,
+                'date' => $dateGmt,
                 'content' => (string) $c->comment_content,
                 'status' => $this->normalizeStatus((string) $c->comment_approved),
             ];
         }
 
+        $approvedCount = (int) ($counts->approved ?? 0);
+        $moderatedCount = (int) ($counts->moderated ?? 0);
+        $spamCount = (int) ($counts->spam ?? 0);
+        $trashCount = (int) ($counts->trash ?? 0);
+        $totalComments = (int) ($counts->total_comments ?? ($approvedCount + $moderatedCount));
+
+        $filteredTotal = match ($status) {
+            'approve' => $approvedCount,
+            'hold' => $moderatedCount,
+            'spam' => $spamCount,
+            'trash' => $trashCount,
+            default => $totalComments,
+        };
+
         return new WP_REST_Response([
             'ok' => true,
             'items' => $items,
+            'comments' => $items,
             'page' => $page,
             'per_page' => $perPage,
+            'total' => $filteredTotal,
+            'total_pages' => (int) max(1, (int) ceil($filteredTotal / $perPage)),
             'counts' => [
-                'approved' => (int) ($counts->approved ?? 0),
-                'awaiting_moderation' => (int) ($counts->moderated ?? 0),
-                'spam' => (int) ($counts->spam ?? 0),
-                'trash' => (int) ($counts->trash ?? 0),
-                'total' => (int) ($counts->total_comments ?? 0),
+                'all' => $totalComments,
+                'approved' => $approvedCount,
+                'moderated' => $moderatedCount,
+                'awaiting_moderation' => $moderatedCount,
+                'spam' => $spamCount,
+                'trash' => $trashCount,
+                'total' => $totalComments,
             ],
         ]);
     }
@@ -101,7 +127,7 @@ class CommentsActionRoute
     public function handleModerate(WP_REST_Request $request): WP_REST_Response
     {
         $params = (array) $request->get_json_params();
-        $ids = (array) ($params['ids'] ?? []);
+        $ids = (array) ($params['ids'] ?? $params['comment_ids'] ?? []);
         $action = sanitize_text_field((string) ($params['action'] ?? ''));
 
         $allowedActions = ['approve', 'hold', 'spam', 'trash', 'delete'];
@@ -154,6 +180,8 @@ class CommentsActionRoute
             'ok' => true,
             'action' => $action,
             'updated' => $updated,
+            'success_count' => $updated,
+            'failed_count' => count($failed),
             'failed' => $failed,
         ]);
     }
@@ -182,26 +210,48 @@ class CommentsActionRoute
             $statuses[] = 'trash';
         }
 
-        $placeholders = implode("','", array_map('esc_sql', $statuses));
         $cutoffDate = gmdate('Y-m-d H:i:s', time() - ($olderThanDays * 86400));
+        $remainingBudget = 500;
+        $purgedSpam = 0;
+        $purgedTrash = 0;
 
-        $commentIds = $wpdb->get_col($wpdb->prepare(
-            "SELECT comment_ID FROM `{$wpdb->comments}` WHERE comment_approved IN ('{$placeholders}') AND comment_date_gmt <= %s LIMIT 500",
-            $cutoffDate
-        ));
+        foreach ($statuses as $statusKey) {
+            if ($remainingBudget <= 0) {
+                break;
+            }
 
-        $deleted = 0;
-        foreach ((array) $commentIds as $id) {
-            if (wp_delete_comment((int) $id, true)) {
-                $deleted++;
+            $commentIds = $wpdb->get_col($wpdb->prepare(
+                "SELECT comment_ID FROM `{$wpdb->comments}` WHERE comment_approved = %s AND comment_date_gmt <= %s LIMIT %d",
+                $statusKey,
+                $cutoffDate,
+                $remainingBudget
+            ));
+
+            foreach ((array) $commentIds as $id) {
+                if (wp_delete_comment((int) $id, true)) {
+                    if ($statusKey === 'spam') {
+                        $purgedSpam++;
+                    } else {
+                        $purgedTrash++;
+                    }
+                    $remainingBudget--;
+                    if ($remainingBudget <= 0) {
+                        break;
+                    }
+                }
             }
         }
+
+        $deleted = $purgedSpam + $purgedTrash;
 
         return new WP_REST_Response([
             'ok' => true,
             'target' => $target,
             'older_than_days' => $olderThanDays,
             'deleted' => $deleted,
+            'total_purged' => $deleted,
+            'purged_spam' => $purgedSpam,
+            'purged_trash' => $purgedTrash,
         ]);
     }
 

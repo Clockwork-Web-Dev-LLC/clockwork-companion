@@ -89,4 +89,13 @@ class ClientNotificationsTest extends TestCase
         $this->assertStringContainsString('billing@example.com', $html);
         $this->assertStringContainsString('Active · Monthly', $html);
     }
+
+    public function testSaveRejectsNonSlackWebhookHosts(): void
+    {
+        ClientNotifications::save([
+            'slack_webhook_url' => 'https://evil.example/services/T1/B1/X1',
+        ], 'wp_admin');
+
+        $this->assertSame('', ClientNotifications::getSlackWebhookUrl());
+    }
 }

@@ -88,4 +88,25 @@ class ArchiveExtractorTest extends TestCase
         $this->assertFileExists($destDir . '/wp-content/themes/mytheme/index.php');
         $this->assertFileExists($destDir . '/database/db.sql');
     }
+
+    public function testExtractRejectsArchiveContainingUnixSymlinkEntry(): void
+    {
+        $zipPath = $this->tempDir . '/symlink.zip';
+        $zip = new ZipArchive();
+        $this->assertTrue($zip->open($zipPath, ZipArchive::CREATE) === true);
+        $zip->addFromString('wp-content/uploads/link.txt', '/etc/passwd');
+        $zip->setExternalAttributesName(
+            'wp-content/uploads/link.txt',
+            ZipArchive::OPSYS_UNIX,
+            (0120777 << 16)
+        );
+        $zip->close();
+
+        $destDir = $this->tempDir . '/extract-sym';
+        $extractor = new ArchiveExtractor();
+        $result = $extractor->extract($zipPath, $destDir);
+
+        $this->assertFalse($result['ok']);
+        $this->assertStringContainsString('unsafe_archive', (string) ($result['error'] ?? ''));
+    }
 }

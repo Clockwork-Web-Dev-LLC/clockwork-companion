@@ -65,6 +65,11 @@ class Runner
         $beforeVersion = (string) ($all[$slug]['Version'] ?? '');
         $wasActive = is_plugin_active($slug);
 
+        $priorTransient = get_site_transient('update_plugins');
+        $priorEntry = (is_object($priorTransient) && isset($priorTransient->response[$slug]))
+            ? $priorTransient->response[$slug]
+            : null;
+
         // Force a fresh update check so the upgrader sees the latest available
         // version instead of the cached transient (which may be up to ~12h
         // stale). Cheap on a single targeted call; we deliberately don't do
@@ -72,11 +77,41 @@ class Runner
         if (class_exists(SelfUpdater::class) && $slug === SelfUpdater::PLUGIN_FILE) {
             delete_transient(SelfUpdater::CACHE_KEY);
         }
-        wp_update_plugins();
+        wp_update_plugins(['source' => 'clockwork-runner']);
 
         $updateTransient = get_site_transient('update_plugins');
         $hasUpdate = is_object($updateTransient)
             && isset($updateTransient->response[$slug]);
+
+        // Premium plugins (Elementor Pro, Crocoblock Jet*, PowerPack, Admin
+        // Columns Pro, etc.) only hook pre_set_site_transient_update_plugins
+        // when WP_ADMIN / DOING_AJAX is true. Calling wp_update_plugins() in
+        // REST context above can wipe their entry from the transient. Refresh
+        // via admin-ajax loopback or restore the prior entry when needed.
+        if (! $hasUpdate || empty(((array) $updateTransient->response[$slug])['package'])) {
+            if (class_exists(TransientRefresher::class)) {
+                TransientRefresher::forceRefresh();
+                $updateTransient = get_site_transient('update_plugins');
+                $hasUpdate = is_object($updateTransient)
+                    && isset($updateTransient->response[$slug]);
+            }
+
+            if ($priorEntry !== null) {
+                $currentPackage = $hasUpdate ? (string) (((array) $updateTransient->response[$slug])['package'] ?? '') : '';
+                $priorPackage = (string) (((array) $priorEntry)['package'] ?? '');
+                if (! $hasUpdate || ($currentPackage === '' && $priorPackage !== '')) {
+                    if (! is_object($updateTransient)) {
+                        $updateTransient = new \stdClass();
+                    }
+                    if (! isset($updateTransient->response) || ! is_array($updateTransient->response)) {
+                        $updateTransient->response = [];
+                    }
+                    $updateTransient->response[$slug] = $priorEntry;
+                    set_site_transient('update_plugins', $updateTransient);
+                    $hasUpdate = true;
+                }
+            }
+        }
 
         if (! $hasUpdate) {
             // Already up to date — return success with no version change so
@@ -152,10 +187,12 @@ class Runner
 
         $messages = $this->collectMessages($skin);
 
-        if ($result === false || is_wp_error($result)) {
+        if ($result === false || is_wp_error($result) || $skin->get_errors()->has_errors()) {
             $error = is_wp_error($result)
                 ? $result->get_error_message()
-                : 'Plugin_Upgrader::upgrade returned false.';
+                : ($skin->get_errors()->has_errors()
+                    ? implode('; ', array_map(static fn ($m) => wp_strip_all_tags((string) $m), $skin->get_errors()->get_error_messages()))
+                    : 'Plugin_Upgrader::upgrade returned false.');
             return $this->fail($slug, 'upgrade_failed', $error, $start, $messages);
         }
 

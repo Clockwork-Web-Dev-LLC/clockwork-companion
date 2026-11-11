@@ -87,11 +87,36 @@ class ThemeUpdateRoute
 
         $beforeVersion = (string) $theme->get('Version');
 
+        $priorTransient = get_site_transient('update_themes');
+        $priorEntry = (is_object($priorTransient) && isset($priorTransient->response[$slug]))
+            ? $priorTransient->response[$slug]
+            : null;
+
         // Force fresh update check.
-        wp_update_themes();
+        wp_update_themes(['source' => 'clockwork-runner']);
 
         $transient = get_site_transient('update_themes');
         $hasUpdate = is_object($transient) && isset($transient->response[$slug]);
+
+        if (! $hasUpdate || empty(((array) $transient->response[$slug])['package'])) {
+            if (class_exists(\ClockworkCompanion\Updates\TransientRefresher::class)) {
+                \ClockworkCompanion\Updates\TransientRefresher::forceRefresh();
+                $transient = get_site_transient('update_themes');
+                $hasUpdate = is_object($transient) && isset($transient->response[$slug]);
+            }
+
+            if ($priorEntry !== null && ! $hasUpdate) {
+                if (! is_object($transient)) {
+                    $transient = new \stdClass();
+                }
+                if (! isset($transient->response) || ! is_array($transient->response)) {
+                    $transient->response = [];
+                }
+                $transient->response[$slug] = $priorEntry;
+                set_site_transient('update_themes', $transient);
+                $hasUpdate = true;
+            }
+        }
 
         if (! $hasUpdate) {
             return [
@@ -123,8 +148,12 @@ class ThemeUpdateRoute
 
         $messages = $this->collectMessages($skin);
 
-        if ($result === false || is_wp_error($result)) {
-            $error = is_wp_error($result) ? $result->get_error_message() : 'Theme_Upgrader::upgrade returned false.';
+        if ($result === false || is_wp_error($result) || $skin->get_errors()->has_errors()) {
+            $error = is_wp_error($result)
+                ? $result->get_error_message()
+                : ($skin->get_errors()->has_errors()
+                    ? implode('; ', array_map(static fn ($m) => wp_strip_all_tags((string) $m), $skin->get_errors()->get_error_messages()))
+                    : 'Theme_Upgrader::upgrade returned false.');
 
             return $this->fail($slug, 'upgrade_failed', $error, $start, $messages);
         }

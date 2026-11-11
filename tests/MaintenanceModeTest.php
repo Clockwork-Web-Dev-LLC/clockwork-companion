@@ -110,9 +110,45 @@ class MaintenanceModeTest extends TestCase
         $this->assertFalse($guard->shouldBypass(MaintenanceGuard::getConfig()));
     }
 
+    public function testPublicWpAdminSlugAndUnauthenticatedAjaxDoNotBypassMaintenance(): void
+    {
+        update_option(MaintenanceGuard::OPTION_KEY, ['enabled' => true]);
+        $guard = new MaintenanceGuard();
+
+        $_SERVER['REQUEST_URI'] = '/blog/wp-admin-security-guide/';
+        $this->assertFalse($guard->shouldBypass(MaintenanceGuard::getConfig()));
+
+        $_SERVER['REQUEST_URI'] = '/wp-admin/admin-ajax.php?action=public_form_submit';
+        $this->assertFalse($guard->shouldBypass(MaintenanceGuard::getConfig()));
+
+        $_SERVER['REQUEST_URI'] = '/wp-admin/';
+        $this->assertTrue($guard->shouldBypass(MaintenanceGuard::getConfig()));
+    }
+
+    public function testOnlyActiveUnexpiredSsoNonceBypassesMaintenance(): void
+    {
+        update_option(MaintenanceGuard::OPTION_KEY, ['enabled' => true]);
+        $guard = new MaintenanceGuard();
+
+        $nonce = str_repeat('a', 48);
+        $_SERVER['REQUEST_URI'] = '/?clockwork_sso='.$nonce;
+        $_GET['clockwork_sso'] = $nonce;
+
+        // Unknown nonce must NOT bypass maintenance mode
+        $this->assertFalse($guard->shouldBypass(MaintenanceGuard::getConfig()));
+
+        // Active unexpired nonce DOES bypass so Sso\Interceptor can redeem it
+        update_option('clockwork_sso_'.$nonce, [
+            'user_id' => 1,
+            'expires_at' => time() + 60,
+            'redirect_to' => '/wp-admin/',
+        ]);
+        $this->assertTrue($guard->shouldBypass(MaintenanceGuard::getConfig()));
+    }
+
     protected function tearDown(): void
     {
-        unset($_SERVER['HTTP_X_CLOCKWORK_SIGNATURE'], $_SERVER['REQUEST_URI']);
+        unset($_SERVER['HTTP_X_CLOCKWORK_SIGNATURE'], $_SERVER['REQUEST_URI'], $_GET['clockwork_sso']);
         parent::tearDown();
     }
 }

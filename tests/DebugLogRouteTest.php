@@ -108,6 +108,8 @@ Another error line
 
         $this->assertNull($route->authorizeLogPath(ABSPATH . 'wp-config.php'));
         $this->assertNull($route->authorizeLogPath('/tmp/not-wp-content/debug.log'));
+        $this->assertNull($route->authorizeLogPath(WP_CONTENT_DIR));
+        $this->assertNull($route->authorizeLogPath(WP_CONTENT_DIR . '/object-cache.php'));
         $this->assertNotNull($route->authorizeLogPath(WP_CONTENT_DIR . '/debug.log'));
     }
 

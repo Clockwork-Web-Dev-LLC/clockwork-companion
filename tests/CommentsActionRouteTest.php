@@ -126,11 +126,12 @@ class CommentsActionRouteTest extends TestCase
 
         // Delete permanently
         $deleteRequest = new WP_REST_Request('POST', '/clockwork/v1/comments/moderate', [
-            'ids' => [103],
+            'comment_ids' => [103],
             'action' => 'delete',
         ]);
         $deleteResponse = $route->handleModerate($deleteRequest);
         $this->assertSame(200, $deleteResponse->get_status());
+        $this->assertSame(1, $deleteResponse->get_data()['success_count']);
         $this->assertCount(2, $GLOBALS['wp_test_comments']);
     }
 }

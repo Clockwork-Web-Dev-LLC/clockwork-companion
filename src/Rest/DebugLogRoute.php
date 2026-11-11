@@ -157,14 +157,27 @@ class DebugLogRoute
     private function canonicalizePath(string $path): ?string
     {
         $path = str_replace('\\', '/', $path);
-        $forbidden = ['wp-config.php', 'wp-config-sample.php', '.htaccess', '.env', 'wp-config.php.bak'];
-        if (in_array(strtolower(basename($path)), $forbidden, true)) {
+        $baseLower = strtolower(basename($path));
+        $forbidden = ['wp-config.php', 'wp-config-sample.php', '.htaccess', '.user.ini', '.env', 'wp-config.php.bak'];
+        if (in_array($baseLower, $forbidden, true)) {
+            return null;
+        }
+
+        $ext = strtolower((string) pathinfo($baseLower, PATHINFO_EXTENSION));
+        if (in_array($ext, ['php', 'phtml', 'php7', 'php8', 'phar', 'ini', 'sql', 'pem', 'key', 'sh'], true)) {
+            return null;
+        }
+
+        if (is_dir($path) && ! is_link($path)) {
             return null;
         }
 
         if (is_file($path) || is_link($path)) {
+            if (is_link($path)) {
+                return null;
+            }
             $real = realpath($path);
-            return $real !== false ? $real : null;
+            return ($real !== false && is_file($real)) ? $real : null;
         }
 
         $dir = dirname($path);
@@ -191,8 +204,7 @@ class DebugLogRoute
         $normalized = $this->normalizePath($path);
         $contentNorm = $this->normalizePath($content);
 
-        return $normalized === $contentNorm
-            || str_starts_with($normalized, $contentNorm . '/');
+        return str_starts_with($normalized, $contentNorm . '/');
     }
 
     private function normalizePath(string $path): string

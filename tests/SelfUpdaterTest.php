@@ -103,6 +103,8 @@ class SelfUpdaterTest extends TestCase
             'https://github.com/someone-else/clockwork-companion/releases/download/v9/x.zip',
             'https://github.com/Clockwork-Web-Dev-LLC/clockwork-companion/archive/main.zip',
             'https://github.com/Clockwork-Web-Dev-LLC/clockwork-companion/releases/download/v9/x.php',
+            'https://github.com/Clockwork-Web-Dev-LLC/clockwork-companion/releases/download/../../other/repo/releases/download/v9/x.zip',
+            'https://github.com/Clockwork-Web-Dev-LLC/clockwork-companion/releases/download/%2e%2e/%2e%2e/other/x.zip',
             'https://user@github.com/Clockwork-Web-Dev-LLC/clockwork-companion/releases/download/v9/x.zip',
             '',
         ] as $url) {

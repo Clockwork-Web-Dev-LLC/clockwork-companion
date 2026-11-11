@@ -80,6 +80,12 @@ class HmacVerifier
             return new \WP_Error('missing_headers', 'Missing X-Clockwork-Signature or X-Clockwork-Timestamp', ['status' => 401]);
         }
 
+        if (! ctype_digit((string) $timestamp)) {
+            self::noteFailure($ip, 'stale_timestamp', $request);
+
+            return new \WP_Error('stale_timestamp', 'Timestamp outside replay window', ['status' => 401]);
+        }
+
         $tsInt = (int) $timestamp;
         if (abs(time() - $tsInt) > self::REPLAY_WINDOW_SECONDS) {
             self::noteFailure($ip, 'stale_timestamp', $request);

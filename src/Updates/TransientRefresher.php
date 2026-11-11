@@ -46,6 +46,11 @@ class TransientRefresher
         self::triggerLoopback();
     }
 
+    public static function forceRefresh(): void
+    {
+        self::triggerLoopback();
+    }
+
     private static function shouldRefresh(): bool
     {
         $transient = get_site_transient('update_plugins');
@@ -87,6 +92,13 @@ class TransientRefresher
                 'sig' => $sig,
             ],
         ]);
+
+        if (function_exists('wp_cache_delete')) {
+            wp_cache_delete('update_plugins', 'site-transient');
+            wp_cache_delete('update_themes', 'site-transient');
+            wp_cache_delete('alloptions', 'options');
+            wp_cache_delete('notoptions', 'options');
+        }
         // Soft-fail: ignore errors. Caller falls back to whatever WP cron
         // last cached. Worst case we keep the existing behavior (premium
         // plugin updates invisible).

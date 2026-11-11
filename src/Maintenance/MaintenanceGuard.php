@@ -66,19 +66,51 @@ class MaintenanceGuard
             return true;
         }
 
-        $uri = $_SERVER['REQUEST_URI'] ?? '';
-        $path = (string) (parse_url($uri, PHP_URL_PATH) ?: $uri);
-        if (str_contains($path, 'wp-login.php')) {
+        if (self::isActiveSsoRedemption()) {
             return true;
         }
 
-        // wp-admin (except the Clockwork ajax action, already handled above)
-        // so operators can still sign in and work.
-        if (str_contains($path, 'wp-admin')) {
+        $uri = $_SERVER['REQUEST_URI'] ?? '';
+        $path = (string) (parse_url($uri, PHP_URL_PATH) ?: $uri);
+        if ($path === '/wp-login.php' || str_ends_with($path, '/wp-login.php')) {
+            return true;
+        }
+
+        // Unauthenticated admin-ajax.php actions (other than the signed Clockwork
+        // transient refresh handled in isClockworkApiRequest()) must NOT bypass 503.
+        if ($path === '/wp-admin/admin-ajax.php' || str_ends_with($path, '/wp-admin/admin-ajax.php')) {
+            return false;
+        }
+
+        // wp-admin paths so operators can reach the login redirect and sign in.
+        if (preg_match('#(?:^|/)wp-admin(?:/|$)#', $path) === 1) {
             return true;
         }
 
         return false;
+    }
+
+    /**
+     * Allow genuine, unexpired Clockwork SSO magic-link redemptions through to
+     * Sso\Interceptor on `init`, without waving arbitrary `?clockwork_sso=`
+     * probes past the 503 screen.
+     */
+    private static function isActiveSsoRedemption(): bool
+    {
+        $nonce = isset($_GET['clockwork_sso']) && is_string($_GET['clockwork_sso'])
+            ? $_GET['clockwork_sso']
+            : '';
+
+        if ($nonce === '' || preg_match('/^[a-f0-9]{48}$/', $nonce) !== 1) {
+            return false;
+        }
+
+        $stored = get_option('clockwork_sso_'.$nonce);
+        if (! is_array($stored)) {
+            return false;
+        }
+
+        return (int) ($stored['expires_at'] ?? 0) >= time();
     }
 
     /**
