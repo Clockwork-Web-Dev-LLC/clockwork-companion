@@ -4,6 +4,14 @@ Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earli
 
 ## [Unreleased]
 
+### Security
+- **REST nonce check bypass (`WpForceLoginCompat`, new `Support\RestRequest`)**: The wp-force-login compatibility filter approved REST authentication whenever the request URL merely *contained* the plugin's REST namespace, including inside a query string. Returning `true` from `rest_authentication_errors` also skips core's cookie-nonce (CSRF) check, so a link followed by a logged-in administrator could run any cookie-authenticated REST write, such as creating another administrator. The filter now acts only when the route WordPress has actually parsed is one of the plugin's own signature-gated routes, and serves it as an anonymous user.
+
+### Fixed
+- **Database backups corrupted every `%` (`DatabaseDumper`, `SqlImporter`)**: Values were escaped with `esc_sql()` and written straight to the dump file. `esc_sql()` replaces each `%` with a per-request placeholder token that only `$wpdb->query()` reverses, so permalink structures, URL-encoded content, and serialized options containing a `%` were archived — and restored — as a 66-character token. The dumper now removes the placeholder before writing and stamps the dump with a format marker. Dumps without the marker (every archive taken before this release) are repaired during import, so existing backups restore correctly.
+- **Maintenance mode never took effect (`MaintenanceGuard`)**: The guard hooked `plugins_loaded` at priority 2 from inside the plugin's own priority-5 `plugins_loaded` callback, a priority WordPress had already passed, so the 503 page was never served and restores ran against a live site. It now hooks after boot. **Upgrade note:** a site whose stored maintenance flag is still `enabled` will start serving the 503 page as soon as this version is active — check `GET /maintenance-mode` across the fleet before deploying.
+- **Maintenance bypass rules (`MaintenanceGuard`)**: The Clockwork API, `wp-admin` and `wp-login.php` exemptions matched substrings of the URL. They now use the parsed REST route (honouring a custom REST prefix) and the real admin and login paths, and the 503 response is sent with no-cache headers.
+
 
 ## 1.43.2 — 2026-11-11
 

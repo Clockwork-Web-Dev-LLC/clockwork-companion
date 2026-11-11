@@ -2,6 +2,8 @@
 
 namespace ClockworkCompanion\Compat;
 
+use ClockworkCompanion\Support\RestRequest;
+
 /**
  * Keep the "Force Login" plugin (wp-force-login) from 401'ing Companion's
  * own REST endpoints.
@@ -34,11 +36,19 @@ namespace ClockworkCompanion\Compat;
  * non-null, wp-force-login's own `if (null === $result && ...)` check is
  * false and it returns $result unchanged.
  *
- * URI-substring match rather than a full WP_REST_Request object: the
- * `rest_authentication_errors` filter receives only the current $result,
- * not the request, and REST routing hasn't matched a handler yet at this
- * point in WP_REST_Server::dispatch(). Matching a query-string rest_route
- * too, for sites without pretty permalinks.
+ * The filter receives only the current $result, not the request, so the
+ * route comes from RestRequest::dispatchedRoute() — the `rest_route` query
+ * var WordPress has already parsed and is about to dispatch. It must be that
+ * and nothing looser: returning true here also short-circuits core's own
+ * `rest_cookie_check_errors` (priority 100), the check that requires a REST
+ * nonce on cookie-authenticated requests. An earlier version matched a
+ * substring of REQUEST_URI, so `/wp-json/wp/v2/users?x=/wp-json/clockwork/v1/`
+ * skipped the nonce check for core's users endpoint: a link clicked by a
+ * logged-in administrator could create another administrator.
+ *
+ * For the same reason the request is dropped to an anonymous user before
+ * returning — exactly what core does for a cookie request with no nonce.
+ * Companion's routes authenticate by signature and never use the session.
  *
  * Hook is idempotent and unconditional — if wp-force-login isn't installed
  * the filter simply never fires.
@@ -52,12 +62,15 @@ class WpForceLoginCompat
                 return $result;
             }
 
-            $uri = (string) ($_SERVER['REQUEST_URI'] ?? '');
-            if (str_contains($uri, '/wp-json/clockwork/v1/') || str_contains($uri, 'rest_route=/clockwork/v1/')) {
-                return true;
+            if (! RestRequest::inNamespace(RestRequest::dispatchedRoute(), [CLOCKWORK_COMPANION_NAMESPACE])) {
+                return $result;
             }
 
-            return $result;
+            if (function_exists('wp_set_current_user')) {
+                wp_set_current_user(0);
+            }
+
+            return true;
         }, 10);
     }
 }

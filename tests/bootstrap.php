@@ -66,7 +66,7 @@ if (! defined('CLOCKWORK_COMPANION_FILE')) {
 }
 
 if (! defined('CLOCKWORK_COMPANION_NAMESPACE')) {
-    define('CLOCKWORK_COMPANION_NAMESPACE', 'clockwork-companion/v1');
+    define('CLOCKWORK_COMPANION_NAMESPACE', 'clockwork/v1');
 }
 
 // In-memory options and hooks storage
@@ -250,7 +250,15 @@ if (! function_exists('add_action')) {
     function add_action(string $tag, callable $callback, int $priority = 10, int $accepted_args = 1): bool
     {
         $GLOBALS['wp_test_actions'][$tag][] = $callback;
+        $GLOBALS['wp_test_action_priorities'][$tag][] = $priority;
         return true;
+    }
+}
+
+if (! function_exists('wp_set_current_user')) {
+    function wp_set_current_user(int $id): void
+    {
+        $GLOBALS['wp_test_current_user_set'][] = $id;
     }
 }
 
@@ -522,7 +530,17 @@ if (! function_exists('get_permalink')) {
 if (! function_exists('esc_sql')) {
     function esc_sql(string $data): string
     {
-        return addslashes($data);
+        $escaped = addslashes($data);
+
+        // Mirror core: wpdb::_real_escape() ends with add_placeholder_escape(),
+        // which swaps every "%" for a per-request token. A stub that skips
+        // this hides exactly the bug DatabaseDumperTest exists to catch.
+        $wpdb = $GLOBALS['wpdb'] ?? null;
+        if (is_object($wpdb) && method_exists($wpdb, 'add_placeholder_escape')) {
+            return $wpdb->add_placeholder_escape($escaped);
+        }
+
+        return $escaped;
     }
 }
 

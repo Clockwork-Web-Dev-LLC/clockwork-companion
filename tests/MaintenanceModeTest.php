@@ -151,4 +151,75 @@ class MaintenanceModeTest extends TestCase
         unset($_SERVER['HTTP_X_CLOCKWORK_SIGNATURE'], $_SERVER['REQUEST_URI'], $_GET['clockwork_sso']);
         parent::tearDown();
     }
+
+    /**
+     * Plugin::boot() runs on `plugins_loaded` at priority 5, so the guard
+     * must hook a later priority. Hooked at 2 it was never called and
+     * maintenance mode silently did nothing.
+     */
+    public function testGuardHooksAfterThePriorityBootRunsAt(): void
+    {
+        $GLOBALS['wp_test_actions'] = [];
+        $GLOBALS['wp_test_action_priorities'] = [];
+
+        MaintenanceGuard::register();
+
+        $this->assertCount(1, $GLOBALS['wp_test_actions']['plugins_loaded'] ?? []);
+        $this->assertGreaterThan(5, $GLOBALS['wp_test_action_priorities']['plugins_loaded'][0]);
+
+        $main = file_get_contents(dirname(__DIR__).'/clockwork-companion.php');
+        $this->assertSame(
+            1,
+            preg_match('/->boot\(\);\s*\}, (\d+)\);/', $main, $m),
+            'Could not find the plugins_loaded priority boot() is hooked at.'
+        );
+        $this->assertGreaterThan((int) $m[1], MaintenanceGuard::HOOK_PRIORITY);
+    }
+
+    public function testNamespaceMentionedInAQueryStringDoesNotBypassMaintenance(): void
+    {
+        update_option(MaintenanceGuard::OPTION_KEY, ['enabled' => true]);
+        $guard = new MaintenanceGuard();
+
+        $_SERVER['REQUEST_URI'] = '/some-page/?x=/wp-json/clockwork/v1/';
+        $this->assertFalse($guard->shouldBypass(MaintenanceGuard::getConfig()));
+
+        // The query var wins over the path in WP::parse_request(), so this is
+        // a request for core's posts endpoint, not for ours.
+        $_SERVER['REQUEST_URI'] = '/wp-json/clockwork/v1/health?rest_route=/wp/v2/posts';
+        $_GET['rest_route'] = '/wp/v2/posts';
+        $this->assertFalse($guard->shouldBypass(MaintenanceGuard::getConfig()));
+        unset($_GET['rest_route']);
+    }
+
+    public function testPlainPermalinkClockworkRouteBypassesMaintenance(): void
+    {
+        update_option(MaintenanceGuard::OPTION_KEY, ['enabled' => true]);
+        $_SERVER['REQUEST_URI'] = '/?rest_route=/clockwork/v1/maintenance-mode';
+        $_GET['rest_route'] = '/clockwork/v1/maintenance-mode';
+
+        $guard = new MaintenanceGuard();
+        $this->assertTrue($guard->shouldBypass(MaintenanceGuard::getConfig()));
+        unset($_GET['rest_route']);
+    }
+
+    /**
+     * Only the real wp-admin directory and wp-login.php are exempt. A
+     * front-end URL with a `wp-admin` segment is served by index.php.
+     */
+    public function testLookalikeAdminAndLoginPathsDoNotBypassMaintenance(): void
+    {
+        update_option(MaintenanceGuard::OPTION_KEY, ['enabled' => true]);
+        $guard = new MaintenanceGuard();
+
+        foreach (['/x/wp-admin/?rest_route=/wp/v2/posts', '/x/wp-login.php', '/x/wp-admin/admin-ajax.php'] as $uri) {
+            $_SERVER['REQUEST_URI'] = $uri;
+            $this->assertFalse($guard->shouldBypass(MaintenanceGuard::getConfig()), $uri);
+        }
+
+        foreach (['/wp-login.php', '/wp-login.php?action=lostpassword', '/wp-admin', '/wp-admin/options.php'] as $uri) {
+            $_SERVER['REQUEST_URI'] = $uri;
+            $this->assertTrue($guard->shouldBypass(MaintenanceGuard::getConfig()), $uri);
+        }
+    }
 }

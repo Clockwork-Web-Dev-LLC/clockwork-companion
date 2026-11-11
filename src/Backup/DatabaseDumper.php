@@ -12,6 +12,18 @@ namespace ClockworkCompanion\Backup;
 class DatabaseDumper
 {
     /**
+     * Header line identifying how string values in the dump were escaped.
+     *
+     * Dumps written before format 2 carry no such line, and every `%` in
+     * their string values was replaced by wpdb's per-request placeholder
+     * token (see escapeValue()). SqlImporter uses the absence of this marker
+     * to recognise those dumps and put the `%` back.
+     */
+    public const FORMAT_MARKER = '-- Clockwork-Dump-Format:';
+
+    public const FORMAT = 2;
+
+    /**
      * Total raw SQL bytes written across all table headers and INSERT statements.
      */
     private int $rawBytes = 0;
@@ -85,7 +97,8 @@ class DatabaseDumper
 
         $header = "-- Clockwork Companion Database Backup\n"
             ."-- Generated: ".gmdate('Y-m-d H:i:s')." UTC\n"
-            ."-- Database: ".(defined('DB_NAME') ? constant('DB_NAME') : 'wordpress')."\n\n"
+            ."-- Database: ".(defined('DB_NAME') ? constant('DB_NAME') : 'wordpress')."\n"
+            .self::FORMAT_MARKER.' '.self::FORMAT."\n\n"
             ."SET FOREIGN_KEY_CHECKS=0;\n"
             ."SET SQL_MODE=\"NO_AUTO_VALUE_ON_ZERO\";\n"
             ."SET time_zone = \"+00:00\";\n\n";
@@ -166,8 +179,7 @@ class DatabaseDumper
                         } elseif (is_int($val) || is_float($val)) {
                             $fields[] = $val;
                         } else {
-                            $escaped = function_exists('esc_sql') ? esc_sql($val) : addslashes($val);
-                            $fields[] = "'".$escaped."'";
+                            $fields[] = "'".$this->escapeValue($wpdb, (string) $val)."'";
                         }
                     }
                     $inserts[] = '('.implode(', ', $fields).')';
@@ -197,6 +209,29 @@ class DatabaseDumper
             'size_bytes' => (int) @filesize($outputPath),
             'tables' => $tablesMeta,
         ];
+    }
+
+    /**
+     * Escape a string for use inside a quoted SQL literal in the dump file.
+     *
+     * esc_sql() does more than escape: wpdb::_real_escape() finishes by
+     * swapping every `%` for a random per-request token (`{` + 64 hex + `}`)
+     * so a later $wpdb->prepare() cannot mistake it for a placeholder. wpdb
+     * only swaps it back inside $wpdb->query(), in the same request. A dump
+     * is written to a file instead, so without undoing it here every `%` in
+     * the database — permalink structures, URL-encoded content, CSS, and
+     * the byte counts of serialized options that contain one — reaches the
+     * archive as that token and is restored as that token.
+     */
+    private function escapeValue(object $wpdb, string $value): string
+    {
+        $escaped = function_exists('esc_sql') ? (string) esc_sql($value) : addslashes($value);
+
+        if (method_exists($wpdb, 'remove_placeholder_escape')) {
+            $escaped = (string) $wpdb->remove_placeholder_escape($escaped);
+        }
+
+        return $escaped;
     }
 
     private function write($handle, string $data, bool $useGz): void

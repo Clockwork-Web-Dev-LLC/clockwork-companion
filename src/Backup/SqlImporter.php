@@ -8,6 +8,12 @@ namespace ClockworkCompanion\Backup;
  * Whitelist execution: only SET plus DROP TABLE / CREATE TABLE / INSERT INTO on
  * current-prefix tables ever run; everything else is skipped and counted.
  * Fails closed on prefix mismatch (if zero tables match $wpdb->prefix).
+ *
+ * Dumps written by DatabaseDumper before format 2 have every `%` in their
+ * string values replaced by a wpdb placeholder token. Those dumps are
+ * recognised by their missing format marker and repaired while importing
+ * (see restorePercentSigns()), so archives taken by older plugin versions
+ * still restore correctly.
  */
 class SqlImporter
 {
@@ -81,10 +87,16 @@ class SqlImporter
         $skippedTables = [];
         $skippedStatements = 0;
         $buffer = '';
+        $legacyEscaping = true;
 
         foreach ($this->readLines($handle, $isGz) as $line) {
             $trimmedLine = trim($line);
             if ($buffer === '' && ($trimmedLine === '' || str_starts_with($trimmedLine, '--') || str_starts_with($trimmedLine, '/*'))) {
+                if (str_starts_with($trimmedLine, DatabaseDumper::FORMAT_MARKER)) {
+                    $format = (int) trim(substr($trimmedLine, strlen(DatabaseDumper::FORMAT_MARKER)));
+                    $legacyEscaping = $format < 2;
+                }
+
                 continue;
             }
 
@@ -109,6 +121,9 @@ class SqlImporter
                     $table = $matches[1];
                     if (str_starts_with($table, $prefix)) {
                         $matchedTables[$table] = true;
+                        if ($legacyEscaping && stripos($statement, 'INSERT') === 0) {
+                            $statement = self::restorePercentSigns($statement);
+                        }
                         if (isset($wpdb) && is_object($wpdb)) {
                             $res = $wpdb->query($statement);
                             if ($res === false) {
@@ -156,6 +171,25 @@ class SqlImporter
             'skipped_tables' => count($skippedTables),
             'skipped_statements' => $skippedStatements,
         ];
+    }
+
+    /**
+     * Undo the placeholder escaping baked into dumps written before format 2.
+     *
+     * In those dumps every `%` in a string value is a wpdb placeholder token:
+     * `{`, 64 lowercase hex characters, `}`. Because the substitution covered
+     * every `%`, such a dump contains no literal `%` in its values at all, and
+     * a brace-wrapped SHA-256 does not otherwise occur in WordPress data — so
+     * turning each token back into `%` restores the original rows, including
+     * the byte lengths recorded inside serialized values.
+     */
+    public static function restorePercentSigns(string $statement): string
+    {
+        if (! str_contains($statement, '{')) {
+            return $statement;
+        }
+
+        return (string) preg_replace('/\{[a-f0-9]{64}\}/', '%', $statement);
     }
 
     /**

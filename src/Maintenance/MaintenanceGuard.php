@@ -2,16 +2,35 @@
 
 namespace ClockworkCompanion\Maintenance;
 
+use ClockworkCompanion\Support\RestRequest;
 use ClockworkCompanion\Updates\TransientRefresher;
 
 class MaintenanceGuard
 {
     public const OPTION_KEY = 'clockwork_companion_maintenance_mode';
 
+    /**
+     * Plugin::boot() runs inside a `plugins_loaded` callback at priority 5.
+     * WordPress never goes back to a priority it has already passed, so the
+     * guard has to hook a later one: registered at priority 2 (as it
+     * originally was) the callback was simply never called, and maintenance
+     * mode stored "enabled" without ever serving a 503.
+     */
+    public const HOOK_PRIORITY = 6;
+
     public static function register(): void
     {
         $guard = new self();
-        add_action('plugins_loaded', [$guard, 'intercept'], 2);
+
+        $finished = function_exists('did_action') && did_action('plugins_loaded')
+            && function_exists('doing_action') && ! doing_action('plugins_loaded');
+        if ($finished) {
+            $guard->intercept();
+
+            return;
+        }
+
+        add_action('plugins_loaded', [$guard, 'intercept'], self::HOOK_PRIORITY);
     }
 
     public static function getConfig(): array
@@ -70,24 +89,48 @@ class MaintenanceGuard
             return true;
         }
 
-        $uri = $_SERVER['REQUEST_URI'] ?? '';
-        $path = (string) (parse_url($uri, PHP_URL_PATH) ?: $uri);
-        if ($path === '/wp-login.php' || str_ends_with($path, '/wp-login.php')) {
+        $path = self::requestPath();
+        $admin = self::adminPath();
+
+        if ($path === self::loginPath()) {
             return true;
         }
 
         // Unauthenticated admin-ajax.php actions (other than the signed Clockwork
         // transient refresh handled in isClockworkApiRequest()) must NOT bypass 503.
-        if ($path === '/wp-admin/admin-ajax.php' || str_ends_with($path, '/wp-admin/admin-ajax.php')) {
+        if ($path === $admin.'admin-ajax.php') {
             return false;
         }
 
-        // wp-admin paths so operators can reach the login redirect and sign in.
-        if (preg_match('#(?:^|/)wp-admin(?:/|$)#', $path) === 1) {
-            return true;
+        // The real wp-admin directory, so operators can reach the login
+        // redirect and sign in. Anchored to where WordPress actually lives:
+        // a front-end URL that merely has a `wp-admin` segment
+        // (`/x/wp-admin/?rest_route=/wp/v2/posts`) is served by index.php and
+        // must get the 503 like any other page.
+        return $path === rtrim($admin, '/') || str_starts_with($path, $admin);
+    }
+
+    private static function requestPath(): string
+    {
+        $path = parse_url((string) ($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_PATH);
+
+        return is_string($path) ? $path : '';
+    }
+
+    /** URL path of the wp-admin directory, with a trailing slash. */
+    private static function adminPath(): string
+    {
+        $path = function_exists('admin_url') ? parse_url((string) admin_url(), PHP_URL_PATH) : null;
+        if (! is_string($path) || ! str_ends_with(rtrim($path, '/'), 'wp-admin')) {
+            return '/wp-admin/';
         }
 
-        return false;
+        return rtrim($path, '/').'/';
+    }
+
+    private static function loginPath(): string
+    {
+        return substr(self::adminPath(), 0, -strlen('wp-admin/')).'wp-login.php';
     }
 
     /**
@@ -114,30 +157,33 @@ class MaintenanceGuard
     }
 
     /**
-     * Clockwork Control talks to /wp-json/clockwork/... (pretty permalinks)
-     * or ?rest_route=/clockwork/... (plain permalinks), plus the signed
+     * REST namespaces Clockwork Control calls on this plugin.
+     *
+     * @return list<string>
+     */
+    public static function apiNamespaces(): array
+    {
+        return [CLOCKWORK_COMPANION_NAMESPACE];
+    }
+
+    /**
+     * Clockwork Control talks to /wp-json/clockwork/v1/... (pretty permalinks)
+     * or ?rest_route=/clockwork/v1/... (plain permalinks), plus the signed
      * admin-ajax loopback that refreshes premium update transients.
+     *
+     * The route is the one WordPress will dispatch (see RestRequest), not a
+     * substring of the URL, and honours a custom REST prefix — so a site that
+     * renamed `wp-json` can still be reached, and taken out of maintenance,
+     * by Control.
      */
     public static function isClockworkApiRequest(): bool
     {
-        $uri = $_SERVER['REQUEST_URI'] ?? '';
-        $path = (string) (parse_url($uri, PHP_URL_PATH) ?: '');
-        $query = (string) (parse_url($uri, PHP_URL_QUERY) ?: '');
-
-        if (str_contains($path, '/wp-json/clockwork/')) {
+        if (RestRequest::inNamespace(RestRequest::anticipatedRoute(), self::apiNamespaces())) {
             return true;
         }
 
-        if ($query !== '') {
-            parse_str($query, $params);
-            $restRoute = isset($params['rest_route']) ? (string) $params['rest_route'] : '';
-            if (str_starts_with($restRoute, '/clockwork/')) {
-                return true;
-            }
-        }
-
-        if (str_contains($path, 'admin-ajax.php')) {
-            $action = (string) ($_REQUEST['action'] ?? $_GET['action'] ?? $_POST['action'] ?? '');
+        if (self::requestPath() === self::adminPath().'admin-ajax.php') {
+            $action = $_REQUEST['action'] ?? $_GET['action'] ?? $_POST['action'] ?? '';
             if ($action === TransientRefresher::AJAX_ACTION) {
                 return true;
             }
@@ -158,6 +204,13 @@ class MaintenanceGuard
                 status_header(503);
             } else {
                 header('HTTP/1.1 503 Service Temporarily Unavailable');
+            }
+            // A cached 503 outlives the maintenance window: tell every layer
+            // (page cache, CDN, browser) not to keep it.
+            if (function_exists('nocache_headers')) {
+                nocache_headers();
+            } else {
+                header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
             }
             header('Retry-After: ' . $retryAfter);
             header('Content-Type: text/html; charset=utf-8');
