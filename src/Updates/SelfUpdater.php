@@ -118,8 +118,20 @@ class SelfUpdater
             && defined('CLOCKWORK_COMPANION_FILE')
             && is_file((string) CLOCKWORK_COMPANION_FILE)
         ) {
-            $newValue[] = self::PLUGIN_FILE;
-            sort($newValue);
+            // Put it back where it was rather than appending and sorting the
+            // whole list: re-sorting active_plugins changes every plugin's
+            // load order, which some plugins depend on (see
+            // Runner::restorePluginInOrder()).
+            $oldList = array_values($oldValue);
+            $preceding = array_slice($oldList, 0, (int) array_search(self::PLUGIN_FILE, $oldList, true));
+            $newValue = array_values($newValue);
+            $insertAt = 0;
+            foreach ($newValue as $i => $plugin) {
+                if (in_array($plugin, $preceding, true)) {
+                    $insertAt = $i + 1;
+                }
+            }
+            array_splice($newValue, $insertAt, 0, [self::PLUGIN_FILE]);
         }
 
         return $newValue;
@@ -129,30 +141,64 @@ class SelfUpdater
      * Once Companion is running from `wp-content/plugins/clockwork-companion`,
      * clean up any leftover `wp-content/mu-plugins/clockwork-companion*` files
      * from an older mu-plugin installation.
+     *
+     * Runs on every request, and deletes code, so it acts only when it is
+     * certain: the running file must resolve (realpath) to a location inside
+     * WP_PLUGIN_DIR and not inside WPMU_PLUGIN_DIR. Comparing the raw
+     * strings, a symlinked wp-content or mu-plugins directory, or a custom
+     * WPMU_PLUGIN_DIR, made a copy running from mu-plugins look like it was
+     * not — and it deleted itself.
      */
     public static function cleanupLegacyMuPlugin(): void
     {
-        if (! defined('WPMU_PLUGIN_DIR') || ! defined('CLOCKWORK_COMPANION_DIR')) {
+        if (! defined('WPMU_PLUGIN_DIR') || ! defined('WP_PLUGIN_DIR') || ! defined('CLOCKWORK_COMPANION_FILE')) {
             return;
         }
 
-        $muDir = rtrim((string) WPMU_PLUGIN_DIR, '/\\');
-        $currentDir = rtrim((string) CLOCKWORK_COMPANION_DIR, '/\\');
+        self::cleanupLegacyMuPluginIn((string) CLOCKWORK_COMPANION_FILE, (string) WP_PLUGIN_DIR, (string) WPMU_PLUGIN_DIR);
+    }
 
-        // Do nothing if Companion is currently running from inside WPMU_PLUGIN_DIR.
-        if ($currentDir === $muDir || str_starts_with($currentDir, $muDir.'/') || str_starts_with($currentDir, $muDir.'\\')) {
+    /** @internal Public for tests; see cleanupLegacyMuPlugin(). */
+    public static function cleanupLegacyMuPluginIn(string $runningFile, string $pluginsDir, string $muDir): void
+    {
+        $running = self::canonicalPath($runningFile);
+        $plugins = self::canonicalPath($pluginsDir);
+        $mu = self::canonicalPath($muDir);
+        if ($running === null || $plugins === null || $mu === null) {
             return;
         }
+        if (! self::isInside($running, $plugins) || self::isInside($running, $mu)) {
+            return;
+        }
+
+        $muDir = rtrim($muDir, '/\\');
 
         $legacyLoader = $muDir.'/clockwork-companion.php';
-        if (is_file($legacyLoader)) {
+        $loaderPath = self::canonicalPath($legacyLoader);
+        if ($loaderPath !== null && $loaderPath !== $running && is_file($legacyLoader)) {
             @unlink($legacyLoader);
         }
 
         $legacySubdir = $muDir.'/clockwork-companion';
-        if (is_dir($legacySubdir)) {
+        $subdirPath = self::canonicalPath($legacySubdir);
+        if ($subdirPath !== null && ! self::isInside($running, $subdirPath) && is_dir($legacySubdir)) {
             Paths::rmrf($legacySubdir);
         }
+    }
+
+    private static function canonicalPath(string $path): ?string
+    {
+        $real = realpath($path);
+        if ($real === false) {
+            return null;
+        }
+
+        return rtrim(wp_normalize_path($real), '/');
+    }
+
+    private static function isInside(string $path, string $dir): bool
+    {
+        return $path === $dir || str_starts_with($path, $dir.'/');
     }
 
     /**
