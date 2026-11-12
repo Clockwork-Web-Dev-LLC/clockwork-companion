@@ -41,8 +41,10 @@ use WP_REST_Request;
  *
  * Rate limit: 256-bit HMAC is uncrackable, so the threat we're defending
  * against isn't brute force — it's noise. A flood of bad-signature requests
- * is otherwise free DB writes (transient counters) and free CPU. Cap each
- * IP at RATE_MAX failures per RATE_WINDOW seconds, return 429 above that.
+ * is otherwise free DB writes (transient counters, audit rows). Each IP may
+ * record RATE_MAX failures per RATE_WINDOW seconds; after that its failing
+ * requests get a 429 and nothing more is written until the window lapses.
+ * The limit never applies to a request whose signature verifies.
  *
  * Behind a CDN (Cloudflare etc.), `REMOTE_ADDR` is the edge IP — every
  * attacker shares one bucket and one noisy probe locks out the world.
@@ -116,34 +118,27 @@ class HmacVerifier
     {
         $ip = self::clientIp();
 
-        if (self::isRateLimited($ip)) {
-            // Record the rate-limit hit too — operators want to see HOW MUCH
-            // probing was attempted, not just "the threshold was crossed once".
-            self::noteFailure($ip, 'rate_limited', $request);
-
-            return new \WP_Error('rate_limited', 'Too many failed verifications', ['status' => 429]);
-        }
+        // Read once, before anything is recorded. The limit only ever answers
+        // requests that fail verification: a correctly signed request is
+        // served however many bad ones share its IP, otherwise anyone able to
+        // send (or spoof) unsigned requests from the caller's address could
+        // lock the real caller out.
+        $limited = self::isRateLimited($ip);
 
         $signature = $request->get_header('x_clockwork_signature');
         $timestamp = $request->get_header('x_clockwork_timestamp');
 
         if (! $signature || ! $timestamp) {
-            self::noteFailure($ip, 'missing_headers', $request);
-
-            return new \WP_Error('missing_headers', 'Missing X-Clockwork-Signature or X-Clockwork-Timestamp', ['status' => 401]);
+            return self::reject($ip, $limited, $request, 'missing_headers', 'Missing X-Clockwork-Signature or X-Clockwork-Timestamp');
         }
 
         if (! ctype_digit((string) $timestamp)) {
-            self::noteFailure($ip, 'stale_timestamp', $request);
-
-            return new \WP_Error('stale_timestamp', 'Timestamp outside replay window', ['status' => 401]);
+            return self::reject($ip, $limited, $request, 'stale_timestamp', 'Timestamp outside replay window');
         }
 
         $tsInt = (int) $timestamp;
         if (abs(time() - $tsInt) > self::REPLAY_WINDOW_SECONDS) {
-            self::noteFailure($ip, 'stale_timestamp', $request);
-
-            return new \WP_Error('stale_timestamp', 'Timestamp outside replay window', ['status' => 401]);
+            return self::reject($ip, $limited, $request, 'stale_timestamp', 'Timestamp outside replay window');
         }
 
         $secret = Secret::get();
@@ -156,9 +151,7 @@ class HmacVerifier
         if ($query !== '') {
             $signature = $request->get_header('x_clockwork_signature_v2');
             if (! $signature) {
-                self::noteFailure($ip, 'missing_headers', $request);
-
-                return new \WP_Error('missing_headers', 'Requests with query parameters must send X-Clockwork-Signature-V2', ['status' => 401]);
+                return self::reject($ip, $limited, $request, 'missing_headers', 'Requests with query parameters must send X-Clockwork-Signature-V2');
             }
             $path .= '?'.$query;
         }
@@ -171,9 +164,7 @@ class HmacVerifier
         $expected = hash_hmac('sha256', $payload, $secret);
 
         if (! hash_equals($expected, $signature)) {
-            self::noteFailure($ip, 'invalid_signature', $request);
-
-            return new \WP_Error('invalid_signature', 'Signature mismatch', ['status' => 401]);
+            return self::reject($ip, $limited, $request, 'invalid_signature', 'Signature mismatch');
         }
 
         // Mutating methods only: consume this exact signed payload so a
@@ -182,9 +173,7 @@ class HmacVerifier
         // empty bodies, and two calls in the same second would otherwise
         // collide on an identical signature.
         if (self::isMutating($request) && self::alreadyConsumed($expected, $tsInt)) {
-            self::noteFailure($ip, 'replayed_request', $request);
-
-            return new \WP_Error('replayed_request', 'Request already consumed', ['status' => 401]);
+            return self::reject($ip, $limited, $request, 'replayed_request', 'Request already consumed');
         }
 
         if (function_exists('update_option')) {
@@ -192,6 +181,24 @@ class HmacVerifier
         }
 
         return true;
+    }
+
+    /**
+     * Refuse a request that failed verification. Below the limit the failure
+     * is counted and audited and the specific reason returned. Once the IP is
+     * over the limit the answer is a bare 429 and nothing is written — a
+     * flood must not be able to turn every request into a transient write
+     * plus an audit row.
+     */
+    private static function reject(string $ip, bool $limited, WP_REST_Request $request, string $code, string $message): \WP_Error
+    {
+        if ($limited) {
+            return new \WP_Error('rate_limited', 'Too many failed verifications', ['status' => 429]);
+        }
+
+        self::noteFailure($ip, $code, $request);
+
+        return new \WP_Error($code, $message, ['status' => 401]);
     }
 
     private static function isMutating(WP_REST_Request $request): bool
@@ -279,9 +286,14 @@ class HmacVerifier
             if (! empty($_SERVER['HTTP_CF_CONNECTING_IP'])) {
                 $candidate = trim((string) $_SERVER['HTTP_CF_CONNECTING_IP']);
             } elseif (! empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
-                // Generic XFF: leftmost entry is the original client per
-                // RFC convention. Operator opted in via the constant above.
-                $candidate = trim(explode(',', (string) $_SERVER['HTTP_X_FORWARDED_FOR'])[0]);
+                // Generic XFF: take the RIGHTMOST entry — the address the
+                // trusted proxy itself appended. Everything to its left is
+                // whatever the client chose to send, even through an honest
+                // proxy, so the leftmost entry would let a caller pick its
+                // own rate-limit bucket (or impersonate Clockwork's). Same
+                // rule as Renegade's Gatekeeper\ClientIp.
+                $parts = array_map('trim', explode(',', (string) $_SERVER['HTTP_X_FORWARDED_FOR']));
+                $candidate = (string) end($parts);
             }
         }
 
@@ -314,10 +326,22 @@ class HmacVerifier
     private static function noteFailure(string $ip, string $reason, WP_REST_Request $request): void
     {
         $key = self::transientKey($ip);
-        $count = (int) get_transient($key);
-        // Refresh the TTL on every failure — a steady stream stays locked out.
-        set_transient($key, $count + 1, self::RATE_WINDOW);
+        $count = (int) get_transient($key) + 1;
+        // Refresh the TTL on every counted failure. Failures stop being
+        // counted once the limit is reached (see reject()), so the window
+        // runs from the failure that reached it.
+        set_transient($key, $count, self::RATE_WINDOW);
 
+        self::audit($ip, $reason, $request);
+        if ($count === self::RATE_MAX) {
+            // One marker row so operators can see the limit engaged; the
+            // requests refused after this point are deliberately not logged.
+            self::audit($ip, 'rate_limited', $request);
+        }
+    }
+
+    private static function audit(string $ip, string $reason, WP_REST_Request $request): void
+    {
         // Persist to the audit table for operator visibility. Best-effort:
         // wrapped so a DB issue inside the failure path can't itself become
         // a failure path. We never want logging to break auth.

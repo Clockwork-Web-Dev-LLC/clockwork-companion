@@ -225,6 +225,83 @@ class HmacVerifierTest extends TestCase
         $this->assertSame('invalid_signature', $result->get_error_code());
     }
 
+    public function testValidSignatureIsServedEvenWhenTheCallersIpIsRateLimited(): void
+    {
+        $_SERVER['REMOTE_ADDR'] = '192.0.2.10';
+        for ($i = 0; $i < 40; $i++) {
+            HmacVerifier::verify($this->request('GET', '/clockwork/v1/health', []));
+        }
+
+        $ts = time();
+        $request = $this->request('GET', '/clockwork/v1/health', [
+            'x-clockwork-timestamp' => (string) $ts,
+            'x-clockwork-signature' => $this->sign('GET', '/wp-json/clockwork/v1/health', $ts, ''),
+        ]);
+
+        $this->assertTrue(HmacVerifier::verify($request));
+    }
+
+    public function testRateLimitedIpGets429AndNothingMoreIsWritten(): void
+    {
+        $_SERVER['REMOTE_ADDR'] = '192.0.2.11';
+        $audit = $this->recordingWpdb();
+
+        for ($i = 0; $i < 30; $i++) {
+            $result = HmacVerifier::verify($this->request('GET', '/clockwork/v1/health', []));
+            $this->assertSame('missing_headers', $result->get_error_code());
+        }
+        // 30 failures plus one marker row when the limit engaged.
+        $this->assertCount(31, $audit->inserted);
+        $this->assertSame('rate_limited', end($audit->inserted)['reason']);
+
+        $countersBefore = $this->failureCounters();
+
+        for ($i = 0; $i < 10; $i++) {
+            $result = HmacVerifier::verify($this->request('GET', '/clockwork/v1/health', []));
+            $this->assertInstanceOf(WP_Error::class, $result);
+            $this->assertSame('rate_limited', $result->get_error_code());
+            $this->assertSame(429, $result->get_error_data()['status']);
+        }
+
+        $this->assertCount(31, $audit->inserted, 'refused requests are not audited');
+        $this->assertSame($countersBefore, $this->failureCounters(), 'counter is not touched');
+    }
+
+    public function testForwardedForUsesTheEntryAppendedByTheTrustedProxy(): void
+    {
+        if (! defined('CLOCKWORK_COMPANION_TRUST_PROXY')) {
+            define('CLOCKWORK_COMPANION_TRUST_PROXY', true);
+        }
+        $_SERVER['REMOTE_ADDR'] = '198.51.100.1';
+        $_SERVER['HTTP_X_FORWARDED_FOR'] = '203.0.113.99, 192.0.2.20';
+        $audit = $this->recordingWpdb();
+
+        try {
+            HmacVerifier::verify($this->request('GET', '/clockwork/v1/health', []));
+        } finally {
+            unset($_SERVER['HTTP_X_FORWARDED_FOR']);
+        }
+
+        $this->assertSame('192.0.2.20', $audit->inserted[0]['ip']);
+    }
+
+    private function recordingWpdb(): wpdb
+    {
+        $GLOBALS['wpdb'] = new class extends wpdb {
+            /** @var array<int, array<string, mixed>> */
+            public array $inserted = [];
+
+            public function insert(string $table, array $data, array|string $format = []): int|false
+            {
+                $this->inserted[] = $data;
+
+                return 1;
+            }
+        };
+
+        return $GLOBALS['wpdb'];
+    }
+
     /**
      * @return array<string, int> per-IP failure counters currently stored
      */
