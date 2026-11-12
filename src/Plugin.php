@@ -158,6 +158,9 @@ class Plugin
         // the request lifecycle it captures.
         (new ResourceSampler())->register();
 
+        // No-store headers on every response from our REST namespace.
+        \ClockworkCompanion\Rest\NoStoreHeaders::register();
+
         add_action('rest_api_init', function (): void {
             (new HealthRoute())->register();
             (new DetectRoute())->register();
