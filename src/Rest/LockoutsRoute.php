@@ -3,13 +3,20 @@
 namespace ClockworkCompanion\Rest;
 
 use ClockworkCompanion\Auth\HmacVerifier;
+use ClockworkCompanion\Gatekeeper\Store as GatekeeperStore;
 use WP_REST_Request;
 use WP_REST_Response;
 
 /**
- * GET    /wp-json/clockwork/v1/lockouts        — list active LLAR lockouts.
+ * GET    /wp-json/clockwork/v1/lockouts        — list active lockouts.
  * DELETE /wp-json/clockwork/v1/lockouts        — clear all lockouts.
  * DELETE /wp-json/clockwork/v1/lockouts?ip=x  — clear one IP.
+ *
+ * Two lockout layers are covered: Companion's own Gatekeeper (one table,
+ * network-wide on multisite; an IPv6 lockout is listed as its /64 network
+ * address) and Limit Login Attempts Reloaded on sites still running it.
+ * Gatekeeper rows come first; an IP both layers lock is listed once.
+ * DELETE clears both.
  *
  * LLAR stores active lockouts in two places depending on plugin version:
  *   1. A dedicated table `<prefix>limit_login_lockouts` (newer versions).
@@ -50,6 +57,10 @@ class LockoutsRoute
     public function handle(WP_REST_Request $request): WP_REST_Response
     {
         $byIp = [];
+
+        foreach (GatekeeperStore::activeLockouts() as $row) {
+            $byIp[$row['ip']] ??= $row;
+        }
 
         foreach ($this->siteIds() as $siteId) {
             $this->maybeSwitchBlog($siteId);
@@ -110,7 +121,8 @@ class LockoutsRoute
 
     private function unlockIp(string $ip): WP_REST_Response
     {
-        $wasLocked = false;
+        $wasLocked = GatekeeperStore::isLocked($ip) !== null;
+        GatekeeperStore::clearNativeIp($ip);
         $unlockedUsernames = [];
 
         foreach ($this->siteIds() as $siteId) {
@@ -181,7 +193,7 @@ class LockoutsRoute
 
     private function unlockAll(): WP_REST_Response
     {
-        $clearedIps = [];
+        $clearedIps = array_fill_keys(GatekeeperStore::clearNativeAll(), true);
 
         foreach ($this->siteIds() as $siteId) {
             $this->maybeSwitchBlog($siteId);

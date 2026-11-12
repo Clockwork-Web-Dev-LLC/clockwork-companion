@@ -269,7 +269,10 @@ class LoginInterceptor
         self::audit('2fa_bad_code');
 
         $user = get_userdata($userId);
-        // Core's signature: the attempted username and the error.
+        // Core's signature: the attempted username and the error. With
+        // Gatekeeper enabled, its wp_login_failed handler counts this
+        // against the client IP through Store::incrementFailure() — calling
+        // the Store here as well would count every bad code twice.
         do_action(
             'wp_login_failed',
             $user ? (string) $user->user_login : '',
@@ -288,10 +291,26 @@ class LoginInterceptor
         return true;
     }
 
-    /** Hook for an IP-level lockout layer (Renegade's Gatekeeper). */
+    /**
+     * Gatekeeper's lockout stops new password attempts from a locked IP at
+     * the start of the authenticate chain, but someone already holding a
+     * challenge token could otherwise keep guessing codes from that IP.
+     */
     private static function ipLockedOut(): bool
     {
-        return false;
+        if (! \ClockworkCompanion\Gatekeeper\Settings::enabled()) {
+            return false;
+        }
+
+        // Same exemption rule as Gate: a private address is only exempt when
+        // it is the TCP peer, not when a proxy relays it as the client's.
+        $client = \ClockworkCompanion\Gatekeeper\ClientIp::resolve();
+        $fromPeer = $client['source'] === \ClockworkCompanion\Gatekeeper\ClientIp::SOURCE_PEER;
+        if (\ClockworkCompanion\Gatekeeper\Store::isIgnored($client['ip'], $fromPeer)) {
+            return false;
+        }
+
+        return \ClockworkCompanion\Gatekeeper\Store::isLocked($client['ip']) !== null;
     }
 
     private static function audit(string $reason): void
