@@ -46,9 +46,12 @@ use ClockworkCompanion\Admin\Pages\TwoFactorPage;
  * buttons in the adjacent column.
  *
  * Enforcement: while a user's deadline is in the future, they get a
- * dismissible-for-24h nag banner with a day countdown. Once it passes, the
- * banner becomes non-dismissible and every wp-admin request from that user
- * is redirect-locked to the Login Security page until they enroll.
+ * dismissible-for-24h nag banner with a day countdown. Once it passes,
+ * every wp-admin request from that user is redirect-locked to the Login
+ * Security page until they enroll — except that "Remind me tomorrow" can
+ * still postpone the lock by a day, at most MAX_POST_EXPIRY_DISMISSALS
+ * times (a buffer for someone away from their phone, not an indefinite
+ * opt-out). The count resets whenever their deadline is set again.
  *
  * Deliberately does NOT touch the wp-login.php flow the way LoginInterceptor
  * does — enrollment is an interactive multi-step admin-page flow (QR scan +
@@ -71,6 +74,11 @@ class EnrollmentNudge
     private const META_REQUIRED = '_clockwork_2fa_required';
 
     private const META_DISMISSED_UNTIL = '_clockwork_2fa_nudge_dismissed_until';
+
+    /** How many times the lock has been postponed since the deadline passed. */
+    private const META_POST_EXPIRY_DISMISSALS = '_clockwork_2fa_post_expiry_dismissals';
+
+    private const MAX_POST_EXPIRY_DISMISSALS = 3;
 
     private const DEFAULT_GRACE_DAYS = 30;
 
@@ -112,10 +120,22 @@ class EnrollmentNudge
             return;
         }
 
+        $left = self::postponementsLeft($userId);
+        if ($left > 0) {
+            printf(
+                '<div class="notice notice-error"><p><strong>Two-factor authentication is now required</strong> on this account — please set it up on the <a href="%s">Login Security page</a>. It only takes a minute. You can postpone this %d more time%s. &nbsp;%s</p></div>',
+                $setupUrl,
+                $left,
+                $left === 1 ? '' : 's',
+                self::dismissLink('Remind me tomorrow')
+            );
+
+            return;
+        }
+
         printf(
-            '<div class="notice notice-error"><p><strong>Two-factor authentication is now required</strong> on this account — please set it up on the <a href="%s">Login Security page</a>. It only takes a minute. &nbsp;%s</p></div>',
-            $setupUrl,
-            self::dismissLink('Remind me tomorrow')
+            '<div class="notice notice-error"><p><strong>Two-factor authentication is now required</strong> on this account — wp-admin is locked to the <a href="%s">Login Security page</a> until it&rsquo;s set up. It only takes a minute.</p></div>',
+            $setupUrl
         );
     }
 
@@ -176,9 +196,39 @@ class EnrollmentNudge
     public function handleDismiss(): void
     {
         check_admin_referer(self::DISMISS_ACTION);
-        update_user_meta(get_current_user_id(), self::META_DISMISSED_UNTIL, time() + DAY_IN_SECONDS);
+        self::recordDismissal(get_current_user_id());
         wp_safe_redirect(wp_get_referer() ?: admin_url());
         exit;
+    }
+
+    /**
+     * Snooze the nudge for a day. Before the deadline that is unlimited;
+     * after it, each snooze also postpones the wp-admin lock and only
+     * MAX_POST_EXPIRY_DISMISSALS are granted. Returns whether it was granted.
+     */
+    public static function recordDismissal(int $userId): bool
+    {
+        if ($userId <= 0) {
+            return false;
+        }
+
+        if (self::isEligible($userId) && self::daysLeftFor($userId) === 0) {
+            $used = (int) get_user_meta($userId, self::META_POST_EXPIRY_DISMISSALS, true);
+            if ($used >= self::MAX_POST_EXPIRY_DISMISSALS) {
+                return false;
+            }
+            update_user_meta($userId, self::META_POST_EXPIRY_DISMISSALS, $used + 1);
+        }
+
+        update_user_meta($userId, self::META_DISMISSED_UNTIL, time() + DAY_IN_SECONDS);
+
+        return true;
+    }
+
+    /** Lock postponements still available to $userId after their deadline. */
+    public static function postponementsLeft(int $userId): int
+    {
+        return max(0, self::MAX_POST_EXPIRY_DISMISSALS - (int) get_user_meta($userId, self::META_POST_EXPIRY_DISMISSALS, true));
     }
 
     /**
@@ -208,6 +258,7 @@ class EnrollmentNudge
 
         if (($_POST['grace_op'] ?? '') === 'reset') {
             delete_user_meta($targetId, self::META_GRACE_DEADLINE);
+            delete_user_meta($targetId, self::META_POST_EXPIRY_DISMISSALS);
             $flash = sprintf("Reset %s's two-factor grace period back to the default.", $target->display_name);
         } else {
             $days = isset($_POST['days']) ? (int) $_POST['days'] : -1;
@@ -317,6 +368,7 @@ class EnrollmentNudge
     {
         delete_user_meta($userId, self::META_REQUIRED);
         delete_user_meta($userId, self::META_GRACE_DEADLINE);
+        delete_user_meta($userId, self::META_POST_EXPIRY_DISMISSALS);
     }
 
     /**
@@ -353,6 +405,8 @@ class EnrollmentNudge
     public static function setGraceDeadline(int $userId, int $days): void
     {
         update_user_meta($userId, self::META_GRACE_DEADLINE, time() + max(0, $days) * DAY_IN_SECONDS);
+        // A new deadline is a fresh start for the post-deadline snoozes too.
+        delete_user_meta($userId, self::META_POST_EXPIRY_DISMISSALS);
     }
 
     /**

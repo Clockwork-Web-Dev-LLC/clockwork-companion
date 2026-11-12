@@ -1369,6 +1369,12 @@ if (! function_exists('wp_normalize_path')) {
         return (string) preg_replace('|(?<=.)/+|', '/', $path);
     }
 }
+if (! function_exists('wp_nonce_url')) {
+    function wp_nonce_url(string $url, string|int $action = -1, string $name = '_wpnonce'): string
+    {
+        return $url . (str_contains($url, '?') ? '&' : '?') . $name . '=' . wp_create_nonce((string) $action);
+    }
+}
 // ---- end plugins-a stubs ----
 
 // ---- plugins-a stubs: updater helpers ----
