@@ -171,6 +171,42 @@ class ChecksumsRunner
             ];
         }
 
+        return $this->verifyAgainstManifest($checksums, rtrim(ABSPATH, '/').'/', $version);
+    }
+
+    /**
+     * Files that are in wp-admin/ or wp-includes/ but not in the manifest and
+     * still not suspicious. Keyed by the first core version they apply to.
+     * - WordPress 7.0 ships the AI client library and protective .htaccess
+     *   files inside wp-includes that the checksum manifest does not list.
+     *
+     * @var array<string, list<array{prefix?: string, name?: string}>>
+     */
+    private const KNOWN_EXTRA = [
+        '7.0' => [
+            ['prefix' => 'wp-includes/php-ai-client/'],
+            ['name' => '.htaccess'],
+        ],
+    ];
+
+    /** At most this many unexpected files are listed (the count is exact). */
+    private const MAX_UNEXPECTED_LISTED = 200;
+
+    /**
+     * Compare an install under $root against a manifest (relative path =>
+     * md5/sha256): modified and missing manifest files, plus files in
+     * wp-admin/ and wp-includes/ the manifest does not list — the equivalent
+     * of wp-cli's "File should not exist", which is how a backdoor dropped as
+     * a new core-looking file shows up. Only files PHP or the web server
+     * would act on (PHP extensions, .htaccess, .user.ini) are reported as
+     * unexpected; logs and other inert leftovers are not.
+     *
+     * @param  array<string, string>  $checksums
+     * @return array{status: string, summary: string, details: array<string, mixed>, error: ?string, modified_files_count: int}
+     */
+    public function verifyAgainstManifest(array $checksums, string $root, string $version): array
+    {
+        $root = rtrim($root, '/').'/';
         $modified = [];
         $missing = [];
         foreach ($checksums as $relative => $expected) {
@@ -178,7 +214,7 @@ class ChecksumsRunner
             if (str_starts_with((string) $relative, 'wp-content/')) {
                 continue;
             }
-            $abs = ABSPATH.$relative;
+            $abs = $root.$relative;
             if (! is_readable($abs)) {
                 // license.txt / readme.html etc. are commonly stripped for
                 // hardening; their absence isn't tampering signal.
@@ -200,7 +236,9 @@ class ChecksumsRunner
             }
         }
 
-        $total = count($modified) + count($missing);
+        [$unexpected, $unexpectedCount] = $this->unexpectedFiles($checksums, $root, $version);
+
+        $total = count($modified) + count($missing) + $unexpectedCount;
 
         if ($total === 0) {
             return [
@@ -223,6 +261,9 @@ class ChecksumsRunner
         if ($missing !== []) {
             $bits[] = count($missing).' missing';
         }
+        if ($unexpectedCount > 0) {
+            $bits[] = $unexpectedCount.' unexpected';
+        }
 
         return [
             'status' => 'issues_found',
@@ -232,11 +273,88 @@ class ChecksumsRunner
                 'wp_version' => $version,
                 'modified' => $modified,
                 'missing' => $missing,
+                'should_not_exist' => $unexpected,
+                'should_not_exist_count' => $unexpectedCount,
                 'modified_files_count' => $total,
             ],
             'error' => null,
             'modified_files_count' => $total,
         ];
+    }
+
+    /**
+     * @param  array<string, string>  $checksums
+     * @return array{0: list<string>, 1: int} Listed paths (capped) and the exact count.
+     */
+    private function unexpectedFiles(array $checksums, string $root, string $version): array
+    {
+        $listed = [];
+        $count = 0;
+
+        foreach (['wp-admin', 'wp-includes'] as $dir) {
+            if (! is_dir($root.$dir)) {
+                continue;
+            }
+            try {
+                $iter = new \RecursiveIteratorIterator(
+                    new \RecursiveDirectoryIterator($root.$dir, \FilesystemIterator::SKIP_DOTS),
+                    \RecursiveIteratorIterator::LEAVES_ONLY,
+                    \RecursiveIteratorIterator::CATCH_GET_CHILD
+                );
+                foreach ($iter as $file) {
+                    if (! $file->isFile()) {
+                        continue;
+                    }
+                    $relative = substr($file->getPathname(), strlen($root));
+                    if (isset($checksums[$relative]) || ! self::isActionable($relative) || self::isKnownExtra($relative, $version, $file->getPathname())) {
+                        continue;
+                    }
+                    $count++;
+                    if (count($listed) < self::MAX_UNEXPECTED_LISTED) {
+                        $listed[] = $relative;
+                    }
+                }
+            } catch (\UnexpectedValueException $e) {
+                // Unreadable directory: nothing to report from it.
+            }
+        }
+
+        sort($listed);
+
+        return [$listed, $count];
+    }
+
+    private static function isActionable(string $relative): bool
+    {
+        $name = strtolower(basename($relative));
+        if ($name === '.htaccess' || $name === '.user.ini') {
+            return true;
+        }
+
+        return MalwareScanner::isPhpFile($relative);
+    }
+
+    private static function isKnownExtra(string $relative, string $version, string $abs): bool
+    {
+        foreach (self::KNOWN_EXTRA as $since => $rules) {
+            if (version_compare($version, $since, '<')) {
+                continue;
+            }
+            foreach ($rules as $rule) {
+                if (isset($rule['prefix']) && str_starts_with($relative, $rule['prefix'])) {
+                    return true;
+                }
+                if (isset($rule['name']) && basename($relative) === $rule['name'] && str_starts_with($relative, 'wp-includes/')) {
+                    // Only the protective kind: one that maps files to PHP
+                    // or prepends code is reported however it got there.
+                    $contents = (string) @file_get_contents($abs, false, null, 0, 65536);
+
+                    return preg_match('/(Add|Set)Handler|AddType|ForceType|auto_(prepend|append)_file|php_value/i', $contents) !== 1;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**

@@ -72,6 +72,12 @@ class MaintenanceGuard
      */
     public function shouldBypass(array $config): bool
     {
+        // WP-CLI is the operator's own shell on the server, and the way to
+        // turn maintenance off when the site cannot be reached otherwise.
+        if (defined('WP_CLI') && WP_CLI) {
+            return true;
+        }
+
         if (function_exists('is_user_logged_in') && is_user_logged_in() && function_exists('current_user_can') && current_user_can('manage_options')) {
             return true;
         }
@@ -101,6 +107,17 @@ class MaintenanceGuard
         if ($path === $admin.'admin-ajax.php') {
             return false;
         }
+
+        // admin-post.php runs `admin_post_nopriv_*` handlers (form plugins,
+        // newsletter sign-ups) for anonymous visitors; during a restore those
+        // would write into a half-imported database. Signed-in users keep it.
+        if ($path === $admin.'admin-post.php') {
+            return function_exists('is_user_logged_in') && is_user_logged_in();
+        }
+
+        // Deliberately NOT bypassed, so they get the 503 like any page:
+        // wp-cron.php (scheduled jobs would run against the site being
+        // repaired; they catch up once maintenance ends) and xmlrpc.php.
 
         // The real wp-admin directory, so operators can reach the login
         // redirect and sign in. Anchored to where WordPress actually lives:

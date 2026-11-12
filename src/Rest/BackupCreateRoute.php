@@ -56,9 +56,16 @@ class BackupCreateRoute
 
         $tempDir = Paths::stagingDir();
 
-        $token = bin2hex(random_bytes(8));
+        // Temp files of earlier runs that died before their own cleanup.
+        Paths::sweepStale();
+
+        $token = Paths::token();
         $dbDumpFile = $tempDir."/db-{$token}.sql.gz";
         $zipFile = $tempDir."/backup-{$token}.zip";
+
+        // The finally block below does not run after a fatal error or a
+        // timeout; this does.
+        Paths::removeOnShutdown([$dbDumpFile, $zipFile]);
 
         try {
             // 1. Dump database
@@ -106,6 +113,7 @@ class BackupCreateRoute
             if (file_exists($zipFile)) {
                 @unlink($zipFile);
             }
+            Paths::forgetOnShutdown([$dbDumpFile, $zipFile]);
         }
     }
 }

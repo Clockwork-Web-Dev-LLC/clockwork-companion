@@ -1344,10 +1344,12 @@ if (! function_exists('add_query_arg')) {
     }
 }
 
+
 if (! function_exists('is_user_logged_in')) {
     function is_user_logged_in(): bool
     {
         // Opt-in per test: many tests leave a current user behind.
+        // (Also used by the plugins-b maintenance-bypass tests.)
         return ! empty($GLOBALS['wp_test_logged_in']);
     }
 }
@@ -1427,17 +1429,19 @@ foreach (['class-plugin-upgrader.php', 'class-plugin-upgrader-skin.php', 'class-
 }
 
 if (! function_exists('remove_filter')) {
+    // Shared by plugins-a and plugins-b: removes every registration of the
+    // callback (core keys by callback, so a callback is registered once).
     function remove_filter(string $tag, mixed $callback, int $priority = 10): bool
     {
+        $removed = false;
         foreach ($GLOBALS['wp_test_filters'][$tag] ?? [] as $i => $registered) {
             if ($registered === $callback) {
                 unset($GLOBALS['wp_test_filters'][$tag][$i]);
-
-                return true;
+                $removed = true;
             }
         }
 
-        return false;
+        return $removed;
     }
 }
 
@@ -1485,10 +1489,16 @@ if (! function_exists('download_url')) {
 
 // ---- plugins-a stubs: options-table double ----
 if (! function_exists('maybe_unserialize')) {
+    // Shared by plugins-a (options-table double) and plugins-b (backup
+    // PluginState): serialized strings come back as values, including a
+    // serialized false; anything else is returned unchanged.
     function maybe_unserialize(mixed $data): mixed
     {
-        if (is_string($data) && ($un = @unserialize($data, ['allowed_classes' => false])) !== false) {
-            return $un;
+        if (is_string($data)) {
+            $un = @unserialize($data, ['allowed_classes' => false]);
+            if ($un !== false || $data === 'b:0;') {
+                return $un;
+            }
         }
 
         return $data;
@@ -1502,3 +1512,48 @@ if (! function_exists('maybe_serialize')) {
     }
 }
 // ---- end plugins-a options-table double ----
+
+// ===== plugins-b stubs =====
+
+// -----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
+// Connection page credential reveal (ConnectionPageTest).
+// -----------------------------------------------------------------------------
+
+if (! function_exists('wp_send_json_success')) {
+    function wp_send_json_success(mixed $data = null, ?int $status_code = null, int $options = 0): void
+    {
+        echo json_encode(['success' => true, 'data' => $data]);
+    }
+}
+
+// Maintenance bypass tests use is_user_logged_in() from the plugins-a block
+// above ($GLOBALS['wp_test_logged_in'], default logged out).
+
+if (! function_exists('rest_get_url_prefix')) {
+    function rest_get_url_prefix(): string
+    {
+        // Same as core: the default prefix, through the rest_url_prefix filter.
+        return (string) apply_filters('rest_url_prefix', 'wp-json');
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Contact-form lab mode: hooks must be removable so tests can check cleanup.
+// -----------------------------------------------------------------------------
+
+if (! function_exists('remove_action')) {
+    function remove_action(string $tag, callable $callback, int $priority = 10): bool
+    {
+        $removed = false;
+        foreach ($GLOBALS['wp_test_actions'][$tag] ?? [] as $i => $registered) {
+            if ($registered === $callback) {
+                unset($GLOBALS['wp_test_actions'][$tag][$i]);
+                $removed = true;
+            }
+        }
+
+        return $removed;
+    }
+}
+// ===== end plugins-b stubs =====

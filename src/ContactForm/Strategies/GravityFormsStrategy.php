@@ -8,8 +8,16 @@ use ClockworkCompanion\ContactForm\StrategyResult;
  * Submits a Gravity Forms form via GFAPI::submit_form() — Gravity's
  * official programmatic submission API.
  *
- * Gravity stores entries by default. In lab mode we hook
- * gform_entry_pre_save_lead and return false to skip storage.
+ * Gravity stores every submission as an entry and offers no supported way
+ * to skip that. In lab mode the test therefore:
+ *   - returns no feeds from gform_addon_pre_process_feeds, so feed add-ons
+ *     (mailing lists, CRMs, webhooks, payment) do not act on the lead;
+ *   - turns post creation off (gform_disable_post_creation);
+ *   - detaches every callback on gform_entry_created and
+ *     gform_after_submission (and the form-specific variant);
+ *   - deletes the entry GFAPI created once the submission is done.
+ * Notifications are left alone: they go through wp_mail(), which lab mode
+ * captures instead of sending.
  *
  * GFAPI::submit_form() returns:
  *   - 'is_valid' (bool) — passed validation
@@ -20,23 +28,40 @@ use ClockworkCompanion\ContactForm\StrategyResult;
  */
 class GravityFormsStrategy extends AbstractStrategy
 {
-    private $entrySuppressionFilter;
+    private bool $lab = false;
 
-    public function suppressStorage(string $mode): void
+    /** @var array<string, callable> */
+    private array $labFilters = [];
+
+    protected function integrationHooks(string $formId): array
     {
+        return ['gform_entry_created', 'gform_after_submission', 'gform_after_submission_'.(int) $formId];
+    }
+
+    public function suppressStorage(string $mode, string $formId = ''): void
+    {
+        parent::suppressStorage($mode, $formId);
         if ($mode !== 'lab') {
             return;
         }
-        $this->entrySuppressionFilter = static fn () => false;
-        add_filter('gform_entry_pre_save_lead', $this->entrySuppressionFilter, 10, 1);
+        $this->lab = true;
+        $this->labFilters = [
+            'gform_addon_pre_process_feeds' => static fn () => [],
+            'gform_disable_post_creation' => static fn () => true,
+        ];
+        foreach ($this->labFilters as $hook => $callback) {
+            add_filter($hook, $callback, PHP_INT_MAX, 1);
+        }
     }
 
     public function releaseStorage(): void
     {
-        if ($this->entrySuppressionFilter) {
-            remove_filter('gform_entry_pre_save_lead', $this->entrySuppressionFilter, 10);
-            $this->entrySuppressionFilter = null;
+        foreach ($this->labFilters as $hook => $callback) {
+            remove_filter($hook, $callback, PHP_INT_MAX);
         }
+        $this->labFilters = [];
+        $this->lab = false;
+        parent::releaseStorage();
     }
 
     public function submit(string $formId, string $marker, string $mode): StrategyResult
@@ -71,6 +96,11 @@ class GravityFormsStrategy extends AbstractStrategy
             return StrategyResult::rejected('Gravity submit threw: '.$e->getMessage());
         } finally {
             $this->restoreCaptchaFilters($suspended);
+        }
+
+        // The entry exists whatever the outcome; in lab mode it must not stay.
+        if ($this->lab && is_array($result) && ! empty($result['entry_id']) && method_exists(\GFAPI::class, 'delete_entry')) {
+            \GFAPI::delete_entry((int) $result['entry_id']);
         }
 
         if (is_wp_error($result)) {
@@ -280,7 +310,7 @@ class GravityFormsStrategy extends AbstractStrategy
      * CAPTCHA/anti-bot enforcement, and detach them. Returns a list of
      * (hook, priority, callback) triples so we can re-attach in restore().
      *
-     * @return list<array{hook: string, priority: int, callback: callable}>
+     * @return list<array{hook: string, priority: int, callback: callable, accepted_args: int}>
      */
     private function suspendCaptchaFilters(): array
     {
@@ -304,6 +334,7 @@ class GravityFormsStrategy extends AbstractStrategy
                         'hook' => $hook,
                         'priority' => (int) $priority,
                         'callback' => $cb['function'],
+                        'accepted_args' => (int) ($cb['accepted_args'] ?? 1),
                     ];
                 }
             }
@@ -317,7 +348,7 @@ class GravityFormsStrategy extends AbstractStrategy
     private function restoreCaptchaFilters(array $suspended): void
     {
         foreach ($suspended as $entry) {
-            add_filter($entry['hook'], $entry['callback'], $entry['priority']);
+            add_filter($entry['hook'], $entry['callback'], $entry['priority'], $entry['accepted_args'] ?? 1);
         }
     }
 

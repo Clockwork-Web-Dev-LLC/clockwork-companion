@@ -222,4 +222,65 @@ class MaintenanceModeTest extends TestCase
             $this->assertTrue($guard->shouldBypass(MaintenanceGuard::getConfig()), $uri);
         }
     }
+
+    /**
+     * admin-post.php sits in wp-admin/, which was bypassed wholesale, so any
+     * anonymous admin_post_nopriv_* handler ran during maintenance.
+     */
+    public function testAnonymousAdminPostIsBlockedButSignedInUsersPass(): void
+    {
+        update_option(MaintenanceGuard::OPTION_KEY, ['enabled' => true]);
+        $guard = new MaintenanceGuard();
+        $_SERVER['REQUEST_URI'] = '/wp-admin/admin-post.php?action=newsletter_signup';
+
+        $GLOBALS['wp_test_logged_in'] = false;
+        $this->assertFalse($guard->shouldBypass(MaintenanceGuard::getConfig()));
+
+        $GLOBALS['wp_test_logged_in'] = true;
+        $this->assertTrue($guard->shouldBypass(MaintenanceGuard::getConfig()));
+
+        unset($GLOBALS['wp_test_logged_in'], $_SERVER['REQUEST_URI']);
+    }
+
+    public function testCronAndXmlrpcGetTheMaintenancePage(): void
+    {
+        update_option(MaintenanceGuard::OPTION_KEY, ['enabled' => true]);
+        $guard = new MaintenanceGuard();
+
+        foreach (['/wp-cron.php?doing_wp_cron=1', '/xmlrpc.php'] as $uri) {
+            $_SERVER['REQUEST_URI'] = $uri;
+            $this->assertFalse($guard->shouldBypass(MaintenanceGuard::getConfig()), $uri);
+        }
+
+        unset($_SERVER['REQUEST_URI']);
+    }
+
+    public function testCustomRestPrefixStillReachesClockworkRoutes(): void
+    {
+        update_option(MaintenanceGuard::OPTION_KEY, ['enabled' => true]);
+        $guard = new MaintenanceGuard();
+        add_filter('rest_url_prefix', fn () => 'api');
+
+        $_SERVER['REQUEST_URI'] = '/api/'.CLOCKWORK_COMPANION_NAMESPACE.'/maintenance-mode';
+        $viaPrefix = $guard->shouldBypass(MaintenanceGuard::getConfig());
+        $_SERVER['REQUEST_URI'] = '/wp-json/'.CLOCKWORK_COMPANION_NAMESPACE.'/maintenance-mode';
+        $viaDefault = $guard->shouldBypass(MaintenanceGuard::getConfig());
+
+        $GLOBALS['wp_test_filters']['rest_url_prefix'] = [];
+        unset($_SERVER['REQUEST_URI']);
+
+        $this->assertTrue($viaPrefix);
+        $this->assertFalse($viaDefault, 'With a custom prefix, /wp-json/ is an ordinary page');
+    }
+
+    #[\PHPUnit\Framework\Attributes\RunInSeparateProcess]
+    #[\PHPUnit\Framework\Attributes\PreserveGlobalState(false)]
+    public function testWpCliIsNeverBlocked(): void
+    {
+        define('WP_CLI', true);
+        update_option(MaintenanceGuard::OPTION_KEY, ['enabled' => true]);
+        unset($_SERVER['REQUEST_URI']);
+
+        $this->assertTrue((new MaintenanceGuard())->shouldBypass(MaintenanceGuard::getConfig()));
+    }
 }

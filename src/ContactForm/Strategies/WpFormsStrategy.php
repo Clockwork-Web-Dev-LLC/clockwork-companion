@@ -9,9 +9,15 @@ use ClockworkCompanion\ContactForm\StrategyResult;
  * wpforms()->process->process($_POST['wpforms']) — the same entry array the
  * front-end listen() / ajax_submit() handlers pass in.
  *
- * WPForms stores entries by default (paid version stores via DB; lite
- * doesn't). In lab mode we hook wpforms_disable_entries to suppress
- * the write.
+ * In lab mode the synthetic lead must leave no trace: the form's
+ * "disable entries" setting is forced on, every callback on the entry-save
+ * and process-complete hooks (where Pro stores entries and providers such
+ * as mailing lists and webhooks act) is detached, and the legacy
+ * wpforms_disable_entries filter is still answered.
+ *
+ * Confirmations are forced to the "message" type: a redirect or page
+ * confirmation makes process() call wp_redirect() and exit, which would
+ * end the REST request that runs the test.
  *
  * Field-name mapping is driven by each form's saved settings. Field
  * IDs are integers; we map by best-guess on field type
@@ -22,11 +28,25 @@ class WpFormsStrategy extends AbstractStrategy
 {
     private $entrySuppressionFilter;
 
-    public function suppressStorage(string $mode): void
+    private bool $lab = false;
+
+    protected function integrationHooks(string $formId): array
     {
+        return [
+            'wpforms_process_entry_save',
+            'wpforms_process_entry_saved',
+            'wpforms_process_complete',
+            'wpforms_process_complete_'.(int) $formId,
+        ];
+    }
+
+    public function suppressStorage(string $mode, string $formId = ''): void
+    {
+        parent::suppressStorage($mode, $formId);
         if ($mode !== 'lab') {
             return;
         }
+        $this->lab = true;
         $this->entrySuppressionFilter = static fn () => true;
         add_filter('wpforms_disable_entries', $this->entrySuppressionFilter);
     }
@@ -37,6 +57,49 @@ class WpFormsStrategy extends AbstractStrategy
             remove_filter('wpforms_disable_entries', $this->entrySuppressionFilter);
             $this->entrySuppressionFilter = null;
         }
+        $this->lab = false;
+        parent::releaseStorage();
+    }
+
+    /**
+     * Form settings used for a test submission: non-AJAX, anti-spam off (the
+     * test cannot solve a challenge), message confirmations only, and — in
+     * lab mode — entry storage disabled.
+     *
+     * @param  mixed  $formData
+     * @return mixed
+     */
+    public static function testFormData($formData, bool $lab)
+    {
+        if (! is_array($formData)) {
+            return $formData;
+        }
+        if (! isset($formData['settings']) || ! is_array($formData['settings'])) {
+            $formData['settings'] = [];
+        }
+        $settings = &$formData['settings'];
+        $settings['ajax_submit'] = '0';
+        $settings['antispam_v3'] = '0';
+        $settings['antispam'] = '0';
+        $settings['honeypot'] = '0';
+        $settings['recaptcha'] = '0';
+        $settings['anti_spam'] = [];
+
+        // A redirect/page confirmation would wp_redirect() and exit.
+        $settings['confirmation_type'] = 'message';
+        if (isset($settings['confirmations']) && is_array($settings['confirmations'])) {
+            foreach ($settings['confirmations'] as $key => $confirmation) {
+                if (is_array($confirmation)) {
+                    $settings['confirmations'][$key]['type'] = 'message';
+                }
+            }
+        }
+
+        if ($lab) {
+            $settings['disable_entries'] = '1';
+        }
+
+        return $formData;
     }
 
     public function submit(string $formId, string $marker, string $mode): StrategyResult
@@ -60,22 +123,8 @@ class WpFormsStrategy extends AbstractStrategy
         $originalPost = $_POST;
         $_POST = $this->buildPostData((int) $formId, $formData['fields'], $payload);
 
-        $beforeFormDataFilter = static function ($decodedFormData) {
-            if (! is_array($decodedFormData)) {
-                return $decodedFormData;
-            }
-            if (! isset($decodedFormData['settings']) || ! is_array($decodedFormData['settings'])) {
-                $decodedFormData['settings'] = [];
-            }
-            $decodedFormData['settings']['ajax_submit'] = '0';
-            $decodedFormData['settings']['antispam_v3'] = '0';
-            $decodedFormData['settings']['antispam'] = '0';
-            $decodedFormData['settings']['honeypot'] = '0';
-            $decodedFormData['settings']['recaptcha'] = '0';
-            $decodedFormData['settings']['anti_spam'] = [];
-
-            return $decodedFormData;
-        };
+        $lab = $this->lab;
+        $beforeFormDataFilter = static fn ($decodedFormData) => self::testFormData($decodedFormData, $lab);
         $bypassTrue = static fn () => true;
 
         if (function_exists('add_filter')) {

@@ -7,6 +7,7 @@ use ClockworkCompanion\Backup\ArchiveDownloader;
 use ClockworkCompanion\Backup\ArchiveExtractor;
 use ClockworkCompanion\Backup\FileApplier;
 use ClockworkCompanion\Backup\Paths;
+use ClockworkCompanion\Backup\PluginState;
 use ClockworkCompanion\Backup\RestoreState;
 use ClockworkCompanion\Backup\SqlImporter;
 use ClockworkCompanion\Maintenance\MaintenanceGuard;
@@ -55,7 +56,7 @@ class BackupRestoreRoute
         }
 
         try {
-            Paths::sweepStale(86400);
+            $previous = RestoreState::get();
 
             $params = $request->get_json_params();
             if (! is_array($params)) {
@@ -78,14 +79,42 @@ class BackupRestoreRoute
             }
 
             $expectedBytes = isset($params['expected_bytes']) ? (int) $params['expected_bytes'] : 0;
-            $stagedId = bin2hex(random_bytes(8));
+            $stagedId = Paths::token();
 
             $stagingBase = Paths::stagingDir();
             $archivePath = $stagingBase."/restore-archive-{$stagedId}.zip";
             $extractDir = $stagingBase."/restore-{$stagedId}";
 
+            // A new stage replaces the previous one, which can no longer be
+            // applied: remove its files now rather than when they age out.
+            // A partial download of the same archive is kept and resumed; its
+            // random name lives only in the restore state.
+            $partialFile = null;
+            $previousBase = self::stagingBaseFor($previous);
+            if (! empty($previous['staged_id']) && preg_match('/^[a-z0-9_]+$/i', (string) $previous['staged_id'])) {
+                Paths::rmrf($previousBase.'/restore-'.$previous['staged_id']);
+                Paths::rmrf($previousBase.'/restore-archive-'.$previous['staged_id'].'.zip');
+            }
+            $previousPartial = (string) ($previous['partial_file'] ?? '');
+            if ($previousPartial !== '' && preg_match('/^restore-dl-[a-f0-9]{32}\.zip\.part$/', $previousPartial)) {
+                if (($previous['archive_key'] ?? null) === $archiveKey && $previousBase === $stagingBase && is_file($stagingBase.'/'.$previousPartial)) {
+                    $partialFile = $previousPartial;
+                } else {
+                    Paths::rmrf($previousBase.'/'.$previousPartial);
+                }
+            }
+            $partialFile ??= 'restore-dl-'.Paths::token().'.zip.part';
+
+            Paths::sweepStale(null, [$partialFile]);
+
+            // If this request dies (fatal error, timeout) the half-written
+            // archive and extract must not stay behind.
+            Paths::removeOnShutdown([$archivePath, $extractDir]);
+
             RestoreState::update([
                 'staged_id' => $stagedId,
+                'staging_base' => $stagingBase,
+                'partial_file' => $partialFile,
                 'phase' => 'stage',
                 'status' => 'downloading',
                 'archive_key' => $archiveKey,
@@ -120,11 +149,12 @@ class BackupRestoreRoute
                     'bytes_done' => $done,
                     'bytes_total' => $total,
                 ]);
-            }, $archiveKey);
+            }, $archiveKey, $stagingBase.'/'.$partialFile);
 
             if (! ($downloadResult['ok'] ?? false)) {
-                // Keep the .part file (keyed by archive_key) on disk so a retry of the
-                // same archive can resume; only remove a (never expected) completed zip.
+                // Keep the .part file (random name, recorded in the restore state)
+                // so a retry of the same archive can resume; only remove a (never
+                // expected) completed zip.
                 if (file_exists($archivePath)) {
                     @unlink($archivePath);
                 }
@@ -198,8 +228,10 @@ class BackupRestoreRoute
             }
 
             $bytesFinal = (int) filesize($archivePath);
+            Paths::forgetOnShutdown([$archivePath, $extractDir]);
             RestoreState::update([
                 'status' => 'staged',
+                'partial_file' => null,
                 'has_sql' => $hasSql,
                 'has_files' => $hasFiles,
                 'table_prefix' => $tablePrefix,
@@ -223,15 +255,57 @@ class BackupRestoreRoute
     public function handleStatus(WP_REST_Request $request): WP_REST_Response
     {
         $state = RestoreState::get();
+        $base = self::stagingBaseFor($state);
+
+        // Safe without the operation lock: a running stage or apply only
+        // touches files far younger than the sweep's age limits.
+        Paths::sweepStale(null, self::filesInUse($state));
 
         if (($state['status'] ?? '') === 'staged' && ! empty($state['staged_id'])) {
-            $stagingDir = Paths::stagingDir().'/restore-'.$state['staged_id'];
+            $stagingDir = $base.'/restore-'.$state['staged_id'];
             if (! is_dir($stagingDir)) {
                 $state['error_detail'] = 'staging_dir_missing';
             }
         }
 
+        // Internal file locations are not part of the status contract.
+        unset($state['staging_base'], $state['partial_file']);
+
         return new WP_REST_Response($state, 200);
+    }
+
+    /**
+     * The directory a restore state's files were written to: the one
+     * recorded at stage time when it still exists, else the current one.
+     *
+     * @param  array<string, mixed>  $state
+     */
+    private static function stagingBaseFor(array $state): string
+    {
+        $recorded = (string) ($state['staging_base'] ?? '');
+        $current = Paths::stagingDir();
+
+        return $recorded !== '' && $recorded !== $current && is_dir($recorded) ? rtrim($recorded, '/') : $current;
+    }
+
+    /**
+     * Names in the staging directory the current restore state still needs.
+     *
+     * @param  array<string, mixed>  $state
+     * @return list<string>
+     */
+    private static function filesInUse(array $state): array
+    {
+        $keep = [];
+        if (($state['status'] ?? '') === 'staged' && ! empty($state['staged_id'])) {
+            $keep[] = 'restore-'.$state['staged_id'];
+            $keep[] = 'restore-archive-'.$state['staged_id'].'.zip';
+        }
+        if (! empty($state['partial_file'])) {
+            $keep[] = (string) $state['partial_file'];
+        }
+
+        return $keep;
     }
 
     public function handleApply(WP_REST_Request $request): WP_REST_Response|WP_Error
@@ -243,6 +317,11 @@ class BackupRestoreRoute
         if (! OperationLock::acquire('backup_restore', 900)) {
             return new WP_REST_Response(['ok' => false, 'error' => 'busy'], 429);
         }
+
+        // Files of a staged restore this call has taken on. Once apply has
+        // run, successful or not, they cannot be applied again (a retry
+        // re-stages), and they hold the database dump and wp-config.php.
+        $consumed = [];
 
         try {
             $params = $request->get_json_params();
@@ -271,9 +350,10 @@ class BackupRestoreRoute
                 return new WP_Error('archive_mismatch', 'Provided archive_key does not match the staged archive.', ['status' => 409]);
             }
 
-            $stagingBase = Paths::stagingDir();
+            $stagingBase = self::stagingBaseFor($state);
             $extractDir = $stagingBase."/restore-{$stagedId}";
             $archivePath = $stagingBase."/restore-archive-{$stagedId}.zip";
+            Paths::sweepStale(null, self::filesInUse($state));
 
             // Verify the staged payload still exists BEFORE touching maintenance mode:
             // Paths::sweepStale() may have removed a staging dir older than 24h, and
@@ -297,6 +377,35 @@ class BackupRestoreRoute
                 return new WP_Error('staging_missing', $stagingProblem.' Re-stage the archive before applying.', ['status' => 409]);
             }
 
+            $consumed = [$extractDir, $archivePath];
+            Paths::removeOnShutdown($consumed);
+
+            $dbFiles = [];
+            if (! empty($state['has_sql'])) {
+                $dbFiles = glob($extractDir.'/database/*.sql*') ?: [];
+                sort($dbFiles, SORT_STRING);
+            }
+
+            // Check every dump before anything changes. Importing drops each
+            // table before refilling it, so a truncated dump (or one for
+            // another table prefix) is rejected here, while the site is still
+            // live and untouched.
+            $importer = new SqlImporter();
+            foreach ($dbFiles as $dbFile) {
+                $check = $importer->verify($dbFile);
+                if (! ($check['ok'] ?? false)) {
+                    RestoreState::update([
+                        'status' => 'failed',
+                        'error' => $check['error'] ?? 'sql_failed',
+                        'error_detail' => $check['detail'] ?? 'Database dump failed verification',
+                        'skipped_tables' => (int) ($check['skipped_tables'] ?? 0),
+                        'skipped_statements' => (int) ($check['skipped_statements'] ?? 0),
+                    ]);
+
+                    return new WP_Error($check['error'] ?? 'sql_failed', ($check['detail'] ?? 'Database dump failed verification').' The site was not changed.', ['status' => 422]);
+                }
+            }
+
             // 1. Enter Maintenance Mode (D7)
             $maint = MaintenanceGuard::getConfig();
             $maint['enabled'] = true;
@@ -308,40 +417,51 @@ class BackupRestoreRoute
                 'status' => 'applying_sql',
             ]);
 
-            if (! empty($state['has_sql'])) {
-                $dbFiles = glob($extractDir.'/database/*.sql*') ?: [];
-                sort($dbFiles, SORT_STRING);
+            if ($dbFiles !== []) {
+                $totalSkippedTables = 0;
+                $totalSkippedStatements = 0;
+                $failure = null;
 
-                if (! empty($dbFiles)) {
-                    $importer = new SqlImporter();
-                    $totalSkippedTables = 0;
-                    $totalSkippedStatements = 0;
+                // The import replaces the options table, including this
+                // plugin's own rows (secret, restore state, maintenance flag,
+                // lock, replay markers). Captured after maintenance was
+                // switched on, so putting them back also keeps it on.
+                $preserved = PluginState::capture();
 
-                    // Import every database/*.sql* file in sorted order, aggregating counters.
-                    foreach ($dbFiles as $dbFile) {
-                        $importResult = $importer->import($dbFile);
-                        $totalSkippedTables += (int) ($importResult['skipped_tables'] ?? 0);
-                        $totalSkippedStatements += (int) ($importResult['skipped_statements'] ?? 0);
+                // Import every database/*.sql* file in sorted order, aggregating counters.
+                foreach ($dbFiles as $dbFile) {
+                    $importResult = $importer->import($dbFile);
+                    $totalSkippedTables += (int) ($importResult['skipped_tables'] ?? 0);
+                    $totalSkippedStatements += (int) ($importResult['skipped_statements'] ?? 0);
 
-                        if (! ($importResult['ok'] ?? false)) {
-                            RestoreState::update([
-                                'status' => 'failed',
-                                'error' => $importResult['error'] ?? 'sql_failed',
-                                'error_detail' => $importResult['detail'] ?? 'Database import failed',
-                                'skipped_tables' => $totalSkippedTables,
-                                'skipped_statements' => $totalSkippedStatements,
-                            ]);
-
-                            // Fail-closed: Maintenance mode stays ENABLED!
-                            return new WP_Error($importResult['error'] ?? 'sql_failed', $importResult['detail'] ?? 'Database import failed', ['status' => 500]);
-                        }
+                    if (! ($importResult['ok'] ?? false)) {
+                        $failure = $importResult;
+                        break;
                     }
+                }
 
+                // Before any further RestoreState update: those would land on
+                // rows the import may have removed or rolled back.
+                PluginState::restore($preserved);
+
+                if ($failure !== null) {
                     RestoreState::update([
+                        'status' => 'failed',
+                        'error' => $failure['error'] ?? 'sql_failed',
+                        'error_detail' => $failure['detail'] ?? 'Database import failed',
                         'skipped_tables' => $totalSkippedTables,
                         'skipped_statements' => $totalSkippedStatements,
                     ]);
+
+                    // Fail-closed: the database is partly restored, so
+                    // maintenance mode stays enabled.
+                    return new WP_Error($failure['error'] ?? 'sql_failed', $failure['detail'] ?? 'Database import failed', ['status' => 500]);
                 }
+
+                RestoreState::update([
+                    'skipped_tables' => $totalSkippedTables,
+                    'skipped_statements' => $totalSkippedStatements,
+                ]);
             }
 
             // 3. Copy files (D6)
@@ -398,6 +518,9 @@ class BackupRestoreRoute
                 'staged_id' => $stagedId,
             ], 200);
         } finally {
+            foreach ($consumed as $path) {
+                Paths::rmrf($path);
+            }
             OperationLock::release('backup_restore');
         }
     }
