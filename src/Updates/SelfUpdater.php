@@ -54,6 +54,7 @@ class SelfUpdater
 
         add_filter('update_plugins_github.com', [self::class, 'filterUpdate'], 10, 4);
         add_filter('plugins_api', [self::class, 'filterPluginsApi'], 10, 3);
+        add_filter('upgrader_pre_download', [self::class, 'verifyPackageDownload'], 10, 4);
     }
 
     public static function enabled(): bool
@@ -290,8 +291,66 @@ class SelfUpdater
         ];
     }
 
+    /**
+     * `upgrader_pre_download` callback: when WordPress is about to download
+     * this plugin's release package and the release publishes a
+     * `.zip.sha256` asset, download the package here and refuse it unless
+     * its SHA-256 matches. Without this the only integrity check was TLS to
+     * GitHub. Releases without a checksum asset are left to core as before;
+     * once a release does publish one, failing to fetch it is a refusal too.
+     *
+     * @param  mixed  $reply  false to let core download; a file path or WP_Error short-circuits
+     * @param  mixed  $package
+     * @param  mixed  $upgrader
+     * @param  mixed  $hookExtra
+     * @return mixed
+     */
+    public static function verifyPackageDownload($reply, $package, $upgrader = null, $hookExtra = [])
+    {
+        if ($reply !== false || ! is_string($package) || ! self::isTrustedPackageUrl($package)) {
+            return $reply;
+        }
+
+        $release = self::latestRelease();
+        if ($release === null || ($release['package'] ?? '') !== $package || empty($release['sha256_url'])) {
+            return $reply;
+        }
+
+        $response = wp_remote_get((string) $release['sha256_url'], [
+            'timeout' => 15,
+            'headers' => ['User-Agent' => 'clockwork-companion/'.(defined('CLOCKWORK_COMPANION_VERSION') ? CLOCKWORK_COMPANION_VERSION : 'dev')],
+        ]);
+        $body = is_array($response) && (int) ($response['response']['code'] ?? 0) === 200 ? (string) ($response['body'] ?? '') : '';
+        if (! preg_match('/\b([a-f0-9]{64})\b/i', $body, $m)) {
+            return new \WP_Error('clockwork_checksum_unavailable', 'The release checksum could not be fetched; refusing to install an unverified package.');
+        }
+        $expected = strtolower($m[1]);
+
+        if (! function_exists('download_url')) {
+            require_once ABSPATH.'wp-admin/includes/file.php';
+        }
+        $file = download_url($package, 300);
+        if (is_wp_error($file)) {
+            return $file;
+        }
+
+        $actual = is_file($file) ? strtolower((string) hash_file('sha256', $file)) : '';
+        if (! hash_equals($expected, $actual)) {
+            @unlink($file);
+
+            return new \WP_Error('clockwork_checksum_mismatch', 'The downloaded package does not match the published SHA-256 checksum.');
+        }
+
+        return $file;
+    }
+
     /** Only HTTPS release-asset downloads from this plugin's own repository are accepted. */
     public static function isTrustedPackageUrl(string $url): bool
+    {
+        return self::isTrustedAssetUrl($url, '.zip');
+    }
+
+    private static function isTrustedAssetUrl(string $url, string $suffix): bool
     {
         $parts = wp_parse_url($url);
         if (! is_array($parts)) {
@@ -315,7 +374,7 @@ class SelfUpdater
         return ($parts['scheme'] ?? '') === 'https'
             && ($parts['host'] ?? '') === 'github.com'
             && str_starts_with($rawPath, '/'.self::REPO.'/releases/download/')
-            && str_ends_with($rawPath, '.zip')
+            && str_ends_with($rawPath, $suffix)
             && ! isset($parts['user'])
             && ! isset($parts['pass'])
             && ! isset($parts['port']);
@@ -325,7 +384,7 @@ class SelfUpdater
      * Reduce a GitHub "latest release" API payload to what we use.
      *
      * @param  array<string, mixed>  $payload
-     * @return array{version: string, package: string, body: string}|null
+     * @return array{version: string, package: string, sha256_url?: string, body: string}|null
      */
     public static function normalizeRelease(array $payload): ?array
     {
@@ -338,14 +397,20 @@ class SelfUpdater
             return null;
         }
 
-        $package = '';
+        $urls = [];
         foreach ((array) ($payload['assets'] ?? []) as $asset) {
-            if (! is_array($asset)) {
-                continue;
+            if (is_array($asset) && isset($asset['name'])) {
+                $urls[(string) $asset['name']] ??= (string) ($asset['browser_download_url'] ?? '');
             }
-            $name = (string) ($asset['name'] ?? '');
-            if ($name === 'clockwork-companion.zip' || $name === 'clockwork-companion-'.$version.'.zip') {
-                $package = (string) ($asset['browser_download_url'] ?? '');
+        }
+
+        $package = '';
+        $sha256Url = '';
+        foreach (['clockwork-companion.zip', 'clockwork-companion-'.$version.'.zip'] as $zipName) {
+            if (isset($urls[$zipName])) {
+                $package = $urls[$zipName];
+                $checksum = $urls[$zipName.'.sha256'] ?? '';
+                $sha256Url = self::isTrustedAssetUrl($checksum, '.zip.sha256') ? $checksum : '';
                 break;
             }
         }
@@ -353,12 +418,13 @@ class SelfUpdater
         return [
             'version' => $version,
             'package' => $package,
+            'sha256_url' => $sha256Url,
             'body' => (string) ($payload['body'] ?? ''),
         ];
     }
 
     /**
-     * @return array{version: string, package: string, body: string}|null
+     * @return array{version: string, package: string, sha256_url?: string, body: string}|null
      */
     public static function latestRelease(): ?array
     {
@@ -374,7 +440,7 @@ class SelfUpdater
     }
 
     /**
-     * @return array{version: string, package: string, body: string}|null
+     * @return array{version: string, package: string, sha256_url?: string, body: string}|null
      */
     private static function fetchLatestRelease(): ?array
     {

@@ -1427,6 +1427,18 @@ if (! function_exists('get_plugin_data')) {
         return $GLOBALS['wp_test_plugin_data'][$file] ?? ['Version' => ''];
     }
 }
+if (! function_exists('download_url')) {
+    /** Tests set $GLOBALS['wp_test_download_url'] to a callable returning a path or WP_Error. */
+    function download_url(string $url, int $timeout = 300, bool $signatureVerification = false): string|\WP_Error
+    {
+        $GLOBALS['wp_test_download_url_calls'][] = $url;
+        if (isset($GLOBALS['wp_test_download_url']) && is_callable($GLOBALS['wp_test_download_url'])) {
+            return ($GLOBALS['wp_test_download_url'])($url);
+        }
+
+        return new \WP_Error('http_request_failed', 'No network in tests');
+    }
+}
 // ---- end plugins-a updater stubs ----
 
 // ---- plugins-a stubs: options-table double ----
