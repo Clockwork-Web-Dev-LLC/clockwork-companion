@@ -151,4 +151,50 @@ class BrandingRouteTest extends TestCase
         $this->assertSame('hub.clockworkwd.com', $saved['unlock_hub_domain']);
         $this->assertSame('hub.clockworkwd.com', WhiteLabel::getUnlockHubDomain());
     }
+
+    public function testHandlePostKeepsSettingsThePayloadDoesNotCarry(): void
+    {
+        update_option(WhiteLabel::OPTION_KEY, [
+            'enabled' => true,
+            'company_name' => 'Acme Corp',
+            'agency_email_domains' => 'example.com',
+            'menu_icon_url' => 'https://example.com/icon.svg',
+            'hide_version' => true,
+            'page_bg_color' => '#F0F0F0',
+            'support_button_label' => 'Ask Acme',
+        ]);
+
+        $route = new BrandingRoute();
+        $response = $route->handlePost(new WP_REST_Request('POST', '/clockwork/v1/branding', [
+            'enabled' => true,
+            'company_name' => 'Acme Corp Renamed',
+            'primary_color' => '#112233',
+        ]));
+
+        $this->assertSame(200, $response->get_status());
+        $saved = get_option(WhiteLabel::OPTION_KEY);
+        $this->assertSame('Acme Corp Renamed', $saved['company_name']);
+        $this->assertSame('example.com', $saved['agency_email_domains']);
+        $this->assertSame('https://example.com/icon.svg', $saved['menu_icon_url']);
+        $this->assertTrue($saved['hide_version']);
+        $this->assertSame('#F0F0F0', $saved['page_bg_color']);
+        $this->assertSame('Ask Acme', $saved['support_button_label']);
+        $this->assertSame(['@example.com'], WhiteLabel::getAgencyEmailDomains());
+    }
+
+    public function testHandlePostAcceptsAndSanitisesAgencyEmailDomains(): void
+    {
+        $route = new BrandingRoute();
+        $route->handlePost(new WP_REST_Request('POST', '/clockwork/v1/branding', [
+            'agency_email_domains' => "@Example.com, ops@example.org;\n<script>, example.com, not a domain",
+        ]));
+
+        $saved = get_option(WhiteLabel::OPTION_KEY);
+        $this->assertSame('example.com, example.org', $saved['agency_email_domains']);
+
+        $route->handlePost(new WP_REST_Request('POST', '/clockwork/v1/branding', [
+            'agency_email_domains' => ['example.net'],
+        ]));
+        $this->assertSame('example.net', get_option(WhiteLabel::OPTION_KEY)['agency_email_domains']);
+    }
 }

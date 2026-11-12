@@ -129,9 +129,10 @@ if (! function_exists('get_userdata')) {
 }
 
 if (! function_exists('user_can')) {
-    function user_can(int $userId, string $capability): bool
+    function user_can(int|WP_User $userId, string $capability): bool
     {
-        $user = $GLOBALS['wp_test_users'][$userId] ?? null;
+        // Core accepts a user ID or a WP_User.
+        $user = $userId instanceof WP_User ? $userId : ($GLOBALS['wp_test_users'][$userId] ?? null);
         if (! $user) {
             return false;
         }
@@ -158,6 +159,10 @@ if (! function_exists('get_user_meta')) {
 if (! function_exists('update_user_meta')) {
     function update_user_meta(int $userId, string $key, mixed $value): bool
     {
+        // Lets a test simulate a failed write for one meta key.
+        if (! empty($GLOBALS['wp_test_update_user_meta_fails'][$key])) {
+            return false;
+        }
         $GLOBALS['wp_test_user_meta'][$userId][$key] = $value;
 
         return true;
@@ -192,6 +197,10 @@ if (! function_exists('get_option')) {
 if (! function_exists('update_option')) {
     function update_option(string $option, mixed $value, bool $autoload = true): bool
     {
+        // Lets a test simulate a failed DB write for one option name.
+        if (! empty($GLOBALS['wp_test_update_option_fails'][$option])) {
+            return false;
+        }
         $GLOBALS['wp_test_options'][$option] = $value;
         return true;
     }
@@ -555,6 +564,9 @@ if (! class_exists('WP_REST_Response')) {
 
         public function get_data(): mixed { return $this->data; }
         public function get_status(): int { return $this->status; }
+        public function header(string $key, string $value, bool $replace = true): void { $this->headers[$key] = $value; }
+        /** @return array<string, string> */
+        public function get_headers(): array { return $this->headers; }
     }
 }
 
@@ -593,6 +605,10 @@ if (! class_exists('WP_Error')) {
         public function get_error_code(): string { return $this->code; }
         public function get_error_message(): string { return $this->message; }
         public function get_error_data(): mixed { return $this->data; }
+        // An error constructed with a code holds one error, as in core.
+        public function has_errors(): bool { return $this->code !== ''; }
+        /** @return array<int, string> */
+        public function get_error_messages(): array { return $this->code !== '' ? [$this->message] : []; }
     }
 }
 
@@ -625,7 +641,8 @@ if (! function_exists('delete_site_option')) {
 if (! function_exists('is_multisite')) {
     function is_multisite(): bool
     {
-        return false;
+        // Single-site unless a test opts in.
+        return ! empty($GLOBALS['wp_test_is_multisite']);
     }
 }
 
@@ -863,7 +880,7 @@ if (! function_exists('get_plugins')) {
 if (! function_exists('wp_get_themes')) {
     function wp_get_themes(): array
     {
-        return [];
+        return $GLOBALS['wp_test_themes'] ?? [];
     }
 }
 
@@ -1123,6 +1140,12 @@ if (! function_exists('wp_unslash')) {
 if (! function_exists('wp_remote_post')) {
     function wp_remote_post(string $url, array $args = []): array|\WP_Error
     {
+        // A test can install a callable to answer (and inspect) requests.
+        $GLOBALS['wp_test_remote_post_calls'][] = ['url' => $url, 'args' => $args];
+        if (isset($GLOBALS['wp_test_remote_post']) && is_callable($GLOBALS['wp_test_remote_post'])) {
+            return ($GLOBALS['wp_test_remote_post'])($url, $args);
+        }
+
         return ['response' => ['code' => 200]];
     }
 }
@@ -1130,6 +1153,12 @@ if (! function_exists('wp_remote_post')) {
 if (! function_exists('wp_remote_get')) {
     function wp_remote_get(string $url, array $args = []): array|\WP_Error
     {
+        // A test can install a callable to answer (and inspect) requests.
+        $GLOBALS['wp_test_remote_get_calls'][] = ['url' => $url, 'args' => $args];
+        if (isset($GLOBALS['wp_test_remote_get']) && is_callable($GLOBALS['wp_test_remote_get'])) {
+            return ($GLOBALS['wp_test_remote_get'])($url, $args);
+        }
+
         return ['response' => ['code' => 200]];
     }
 }
@@ -1227,3 +1256,249 @@ if (! function_exists('wp_nonce_field')) {
         return $field;
     }
 }
+
+
+// ---------------------------------------------------------------------------
+// plugins-a stubs: login, SSO and security-header helpers. Every stub is
+// guarded, so whichever bootstrap block defines a function first wins.
+// ---------------------------------------------------------------------------
+
+if (! function_exists('sanitize_user')) {
+    function sanitize_user(string $username, bool $strict = false): string
+    {
+        return $strict ? (string) preg_replace('/[^a-z0-9 _.\-@]/i', '', $username) : trim($username);
+    }
+}
+
+if (! function_exists('get_user_by')) {
+    function get_user_by(string $field, int|string $value): WP_User|false
+    {
+        foreach ($GLOBALS['wp_test_users'] ?? [] as $user) {
+            if (($field === 'id' && (int) $user->ID === (int) $value)
+                || ($field === 'login' && $user->user_login === (string) $value)
+                || ($field === 'email' && $user->user_email === (string) $value)) {
+                return $user;
+            }
+        }
+
+        return false;
+    }
+}
+
+if (! function_exists('do_action')) {
+    /** Records every fired action and runs callbacks added via add_action(). */
+    function do_action(string $tag, mixed ...$args): void
+    {
+        $GLOBALS['wp_test_did_actions'][$tag][] = $args;
+        foreach ($GLOBALS['wp_test_actions'][$tag] ?? [] as $callback) {
+            $callback(...$args);
+        }
+    }
+}
+
+if (! function_exists('did_action')) {
+    function did_action(string $tag): int
+    {
+        return count($GLOBALS['wp_test_did_actions'][$tag] ?? []);
+    }
+}
+
+if (! function_exists('wp_set_auth_cookie')) {
+    function wp_set_auth_cookie(int $userId, bool $remember = false, bool|string $secure = '', string $token = ''): void
+    {
+        $GLOBALS['wp_test_auth_cookie_set'][] = $userId;
+    }
+}
+
+if (! function_exists('wp_clear_auth_cookie')) {
+    function wp_clear_auth_cookie(): void
+    {
+    }
+}
+
+if (! function_exists('wp_login_url')) {
+    function wp_login_url(string $redirect = ''): string
+    {
+        return 'https://example.com/wp-login.php';
+    }
+}
+
+if (! function_exists('add_query_arg')) {
+    function add_query_arg(mixed ...$args): string
+    {
+        if (is_array($args[0])) {
+            $params = $args[0];
+            $url = (string) ($args[1] ?? '');
+        } else {
+            $params = [(string) $args[0] => $args[1]];
+            $url = (string) ($args[2] ?? '');
+        }
+
+        // Like core's build_query(): keys and values are NOT encoded.
+        $pairs = [];
+        foreach ($params as $k => $v) {
+            $pairs[] = $k . '=' . $v;
+        }
+
+        return $url . (str_contains($url, '?') ? '&' : '?') . implode('&', $pairs);
+    }
+}
+
+if (! function_exists('is_user_logged_in')) {
+    function is_user_logged_in(): bool
+    {
+        // Opt-in per test: many tests leave a current user behind.
+        return ! empty($GLOBALS['wp_test_logged_in']);
+    }
+}
+
+if (! function_exists('nocache_headers')) {
+    function nocache_headers(): void
+    {
+        $GLOBALS['wp_test_nocache_headers'] = ($GLOBALS['wp_test_nocache_headers'] ?? 0) + 1;
+    }
+}
+
+if (! function_exists('wp_strip_all_tags')) {
+    function wp_strip_all_tags(string $text, bool $removeBreaks = false): string
+    {
+        return trim(strip_tags($text));
+    }
+}
+
+if (! function_exists('wp_normalize_path')) {
+    function wp_normalize_path(string $path): string
+    {
+        $path = str_replace('\\', '/', $path);
+
+        return (string) preg_replace('|(?<=.)/+|', '/', $path);
+    }
+}
+if (! function_exists('wp_nonce_url')) {
+    function wp_nonce_url(string $url, string|int $action = -1, string $name = '_wpnonce'): string
+    {
+        return $url . (str_contains($url, '?') ? '&' : '?') . $name . '=' . wp_create_nonce((string) $action);
+    }
+}
+if (! function_exists('get_sites')) {
+    function get_sites(array $args = []): array
+    {
+        return $GLOBALS['wp_test_site_ids'] ?? [1];
+    }
+}
+
+if (! function_exists('switch_to_blog')) {
+    /** Points $wpdb's per-blog table names at the blog, as core does. */
+    function switch_to_blog(int $blogId): bool
+    {
+        $GLOBALS['wp_test_blog_stack'][] = $blogId;
+        $prefix = $blogId > 1 ? 'wp_' . $blogId . '_' : 'wp_';
+        $GLOBALS['wpdb']->prefix = $prefix;
+        $GLOBALS['wpdb']->options = $prefix . 'options';
+
+        return true;
+    }
+}
+
+if (! function_exists('restore_current_blog')) {
+    function restore_current_blog(): bool
+    {
+        array_pop($GLOBALS['wp_test_blog_stack']);
+        $GLOBALS['wpdb']->prefix = 'wp_';
+        $GLOBALS['wpdb']->options = 'wp_options';
+
+        return true;
+    }
+}
+
+if (! function_exists('get_current_network_id')) {
+    function get_current_network_id(): int
+    {
+        return 1;
+    }
+}
+// ---- end plugins-a stubs ----
+
+// ---- plugins-a stubs: updater helpers ----
+foreach (['class-plugin-upgrader.php', 'class-plugin-upgrader-skin.php', 'class-theme-upgrader.php'] as $plugins_a_stub_file) {
+    if (! file_exists(ABSPATH . 'wp-admin/includes/' . $plugins_a_stub_file)) {
+        @touch(ABSPATH . 'wp-admin/includes/' . $plugins_a_stub_file);
+    }
+}
+
+if (! function_exists('remove_filter')) {
+    function remove_filter(string $tag, mixed $callback, int $priority = 10): bool
+    {
+        foreach ($GLOBALS['wp_test_filters'][$tag] ?? [] as $i => $registered) {
+            if ($registered === $callback) {
+                unset($GLOBALS['wp_test_filters'][$tag][$i]);
+
+                return true;
+            }
+        }
+
+        return false;
+    }
+}
+
+if (! function_exists('wp_update_plugins')) {
+    function wp_update_plugins(array $extra = []): void
+    {
+        $GLOBALS['wp_test_update_plugins_calls'][] = $extra;
+    }
+}
+
+if (! function_exists('wp_update_themes')) {
+    function wp_update_themes(array $extra = []): void
+    {
+        $GLOBALS['wp_test_update_themes_calls'][] = $extra;
+    }
+}
+
+if (! function_exists('set_site_transient')) {
+    // Same storage the get_site_transient() stub reads.
+    function set_site_transient(string $transient, mixed $value, int $expiration = 0): bool
+    {
+        return set_transient($transient, $value, $expiration);
+    }
+}
+
+if (! function_exists('get_plugin_data')) {
+    function get_plugin_data(string $file, bool $markup = true, bool $translate = true): array
+    {
+        return $GLOBALS['wp_test_plugin_data'][$file] ?? ['Version' => ''];
+    }
+}
+if (! function_exists('download_url')) {
+    /** Tests set $GLOBALS['wp_test_download_url'] to a callable returning a path or WP_Error. */
+    function download_url(string $url, int $timeout = 300, bool $signatureVerification = false): string|\WP_Error
+    {
+        $GLOBALS['wp_test_download_url_calls'][] = $url;
+        if (isset($GLOBALS['wp_test_download_url']) && is_callable($GLOBALS['wp_test_download_url'])) {
+            return ($GLOBALS['wp_test_download_url'])($url);
+        }
+
+        return new \WP_Error('http_request_failed', 'No network in tests');
+    }
+}
+// ---- end plugins-a updater stubs ----
+
+// ---- plugins-a stubs: options-table double ----
+if (! function_exists('maybe_unserialize')) {
+    function maybe_unserialize(mixed $data): mixed
+    {
+        if (is_string($data) && ($un = @unserialize($data, ['allowed_classes' => false])) !== false) {
+            return $un;
+        }
+
+        return $data;
+    }
+}
+
+if (! function_exists('maybe_serialize')) {
+    function maybe_serialize(mixed $data): mixed
+    {
+        return is_array($data) || is_object($data) ? serialize($data) : $data;
+    }
+}
+// ---- end plugins-a options-table double ----

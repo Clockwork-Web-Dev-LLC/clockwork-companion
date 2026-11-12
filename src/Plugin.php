@@ -8,7 +8,6 @@ use ClockworkCompanion\Admin\DashboardWidget;
 use ClockworkCompanion\Admin\FormsAjaxHandlers;
 use ClockworkCompanion\Admin\Menu;
 use ClockworkCompanion\Admin\UpdatesRefreshAjaxHandler;
-use ClockworkCompanion\Auth\Secret;
 use ClockworkCompanion\AuthAudit\Schema as AuthAuditSchema;
 use ClockworkCompanion\Rest\ActionLogAppendRoute;
 use ClockworkCompanion\Rest\AdminsRoute;
@@ -127,10 +126,12 @@ class Plugin
     public function boot(): void
     {
         (new WhiteLabel())->boot();
-        Secret::ensure();
-        ActionLogSchema::ensureInstalled();
-        AuthAuditSchema::ensureInstalled();
-        ResourceSchema::ensureInstalled();
+        // Secret + table schemas, checked through one autoloaded record.
+        \ClockworkCompanion\Updates\InstallState::ensure([
+            ActionLogSchema::class,
+            AuthAuditSchema::class,
+            ResourceSchema::class,
+        ]);
 
         // Third-party plugin compatibility shims — run before route registration
         // so any filters they install are live by the time WordPress's REST
@@ -147,6 +148,9 @@ class Plugin
         // hooks shutdown internally, so the earlier this runs, the more of
         // the request lifecycle it captures.
         (new ResourceSampler())->register();
+
+        // No-store headers on every response from our REST namespace.
+        \ClockworkCompanion\Rest\NoStoreHeaders::register();
 
         add_action('rest_api_init', function (): void {
             (new HealthRoute())->register();

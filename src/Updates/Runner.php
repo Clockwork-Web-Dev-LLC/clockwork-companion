@@ -14,8 +14,14 @@ use WP_Ajax_Upgrader_Skin;
  *   3. Force a fresh wp_update_plugins() so the upgrader sees the latest.
  *   4. Initialise WP_Filesystem (direct mode — SpinupWP runs PHP as the file
  *      owner so we don't fall back to FTP credentials prompts).
- *   5. Run Plugin_Upgrader::upgrade().
- *   6. Capture after_version.
+ *   5. Run Plugin_Upgrader::upgrade(). For an active plugin the site is in
+ *      core maintenance mode from just before the old files are removed
+ *      until the new version has been checked (step 6).
+ *   6. Active plugin only: load the home page through core's fatal-error
+ *      scrape. A fatal rolls the plugin back to the previous version
+ *      (core's temporary backup) — or, where that is not possible,
+ *      deactivates it — and the call reports ok=false.
+ *   6b. Capture after_version.
  *   7. Re-activate if it was active before. Plugin_Upgrader::upgrade() does
  *      NOT re-activate; if you don't do this yourself, the site is left
  *      running with the plugin off — the dangerous failure mode. If
@@ -31,6 +37,14 @@ use WP_Ajax_Upgrader_Skin;
  */
 class Runner
 {
+    /** Builds the upgrader for a skin; null means a real Plugin_Upgrader. Test seam. */
+    private ?\Closure $upgraderFactory;
+
+    public function __construct(?\Closure $upgraderFactory = null)
+    {
+        $this->upgraderFactory = $upgraderFactory;
+    }
+
     /**
      * @return array{
      *     ok: bool,
@@ -81,7 +95,8 @@ class Runner
 
         $updateTransient = get_site_transient('update_plugins');
         $hasUpdate = is_object($updateTransient)
-            && isset($updateTransient->response[$slug]);
+            && isset($updateTransient->response[$slug])
+            && self::offersNewerVersion($updateTransient->response[$slug], $beforeVersion);
 
         // Premium plugins (Elementor Pro, Crocoblock Jet*, PowerPack, Admin
         // Columns Pro, etc.) only hook pre_set_site_transient_update_plugins
@@ -93,10 +108,13 @@ class Runner
                 TransientRefresher::forceRefresh();
                 $updateTransient = get_site_transient('update_plugins');
                 $hasUpdate = is_object($updateTransient)
-                    && isset($updateTransient->response[$slug]);
+                    && isset($updateTransient->response[$slug])
+                    && self::offersNewerVersion($updateTransient->response[$slug], $beforeVersion);
             }
 
-            if ($priorEntry !== null) {
+            // A stale entry (new_version already installed) must not be put
+            // back — the upgrader would download and reinstall the same version.
+            if ($priorEntry !== null && self::offersNewerVersion($priorEntry, $beforeVersion)) {
                 $currentPackage = $hasUpdate ? (string) (((array) $updateTransient->response[$slug])['package'] ?? '') : '';
                 $priorPackage = (string) (((array) $priorEntry)['package'] ?? '');
                 if (! $hasUpdate || ($currentPackage === '' && $priorPackage !== '')) {
@@ -137,10 +155,12 @@ class Runner
         require_once ABSPATH . 'wp-admin/includes/class-wp-ajax-upgrader-skin.php';
 
         $skin = new WP_Ajax_Upgrader_Skin();
-        $upgrader = new Plugin_Upgrader($skin);
+        $upgrader = $this->upgraderFactory !== null ? ($this->upgraderFactory)($skin) : new Plugin_Upgrader($skin);
 
         $preventDeactivate = null;
         $preserveActivePlugins = null;
+        $enterMaintenance = null;
+        $maintenanceOn = false;
         if ($wasActive && function_exists('add_filter')) {
             // Plugin_Upgrader::upgrade() hooks deactivate_plugin_before_upgrade at
             // priority 10 on upgrader_pre_install, which calls deactivate_plugins($slug, true)
@@ -150,8 +170,10 @@ class Runner
             // incomplete array in memory, and plugins with shutdown hooks that rewrite
             // active_plugins (e.g. NextGEN Gallery's C_NextGEN_Bootstrap::fix_loading_order)
             // overwrite the DB with the deactivated state even after Runner finishes.
-            // Removing deactivate_plugin_before_upgrade lets Plugin_Upgrader::active_before()
-            // use brief .maintenance mode instead (matching bulk_upgrade() / cron behavior).
+            // So the plugin stays active through the swap, and the site goes into
+            // maintenance mode instead (below): core's own active_before() only does
+            // that for cron-driven updates, and without either guard a concurrent
+            // request could load a half-removed plugin and fatal.
             $preventDeactivate = static function ($response) use ($upgrader) {
                 if (function_exists('remove_filter')) {
                     remove_filter('upgrader_pre_install', [$upgrader, 'deactivate_plugin_before_upgrade'], 10);
@@ -172,16 +194,48 @@ class Runner
                 return array_values($newValue);
             };
             add_filter('pre_update_option_active_plugins', $preserveActivePlugins, 9999, 1);
+
+            // Enter maintenance only once the package is downloaded and
+            // unpacked (upgrader_pre_install runs right before the old
+            // directory is removed), so the downtime covers just the swap
+            // and the load check.
+            $enterMaintenance = static function ($response) use ($upgrader, &$maintenanceOn) {
+                if (! is_wp_error($response) && ! $maintenanceOn) {
+                    $upgrader->maintenance_mode(true);
+                    $maintenanceOn = true;
+                }
+
+                return $response;
+            };
+            add_filter('upgrader_pre_install', $enterMaintenance, 11, 1);
         }
 
+        $loadCheck = null;
+        $rollback = null;
         try {
             $result = $upgrader->upgrade($slug);
+
+            // Plugin_Upgrader::upgrade() leaves an active plugin active
+            // (it was never deactivated), so activate_plugin() below is a
+            // no-op and cannot tell us the new code loads. Ask the site.
+            if ($wasActive && $result !== false && ! is_wp_error($result) && ! $skin->get_errors()->has_errors()) {
+                $loadCheck = self::scrapeForFatal();
+                if ($loadCheck['status'] === 'fatal') {
+                    $rollback = $this->rollBack($upgrader, $slug);
+                }
+            }
         } finally {
             if ($preventDeactivate !== null && function_exists('remove_filter')) {
                 remove_filter('upgrader_pre_install', $preventDeactivate, 1);
             }
             if ($preserveActivePlugins !== null && function_exists('remove_filter')) {
                 remove_filter('pre_update_option_active_plugins', $preserveActivePlugins, 9999);
+            }
+            if ($enterMaintenance !== null && function_exists('remove_filter')) {
+                remove_filter('upgrader_pre_install', $enterMaintenance, 11);
+            }
+            if ($maintenanceOn) {
+                $upgrader->maintenance_mode(false);
             }
         }
 
@@ -194,6 +248,15 @@ class Runner
                     ? implode('; ', array_map(static fn ($m) => wp_strip_all_tags((string) $m), $skin->get_errors()->get_error_messages()))
                     : 'Plugin_Upgrader::upgrade returned false.');
             return $this->fail($slug, 'upgrade_failed', $error, $start, $messages);
+        }
+
+        if ($loadCheck !== null && $loadCheck['status'] === 'fatal') {
+            return $this->fatalResult($slug, $beforeVersion, $wasActive, (string) $loadCheck['detail'], (array) $rollback, $messages, $start);
+        }
+        if ($loadCheck !== null && $loadCheck['status'] === 'unverified') {
+            // Loopback blocked or unreadable: nothing proves a fatal, so the
+            // update stands, but say that it was not checked.
+            $messages[] = 'Load check skipped: ' . $loadCheck['detail'];
         }
 
         // After upgrade: re-read the plugin file to get the new version.
@@ -283,9 +346,189 @@ class Runner
             'after_version' => $afterVersion,
             'was_active' => $wasActive,
             'reactivated' => $reactivated,
+            // Only meaningful for a plugin that was active: true when the
+            // site was loaded with the new version and did not fatal.
+            'load_verified' => $loadCheck !== null && $loadCheck['status'] === 'ok',
             'messages' => $messages,
             'elapsed_ms' => $this->elapsed($start),
         ];
+    }
+
+    /**
+     * Load the home page through core's fatal-error scrape (the mechanism
+     * WP_Automatic_Updater uses after background plugin updates and the
+     * plugin editor uses after a save): wp-settings.php reports the last
+     * fatal error between two markers when the request carries a scrape key
+     * matching a short-lived transient. While the site is in maintenance mode
+     * the key must be derived from the .maintenance timestamp — that is what
+     * lets this one request through wp_is_maintenance_mode().
+     *
+     * Only an explicit fatal in the scrape output counts as a failure. A
+     * blocked or unreadable loopback is 'unverified', not 'fatal': many hosts
+     * block loopback requests, and rolling back every update there would be
+     * worse than not checking.
+     *
+     * @return array{status: string, detail: string} status is ok|fatal|unverified
+     */
+    public static function scrapeForFatal(): array
+    {
+        $upgrading = self::maintenanceTimestamp();
+        if ($upgrading !== null) {
+            $key = md5((string) $upgrading);
+            $nonce = (string) $upgrading;
+        } else {
+            $key = bin2hex(random_bytes(16));
+            $nonce = bin2hex(random_bytes(16));
+        }
+
+        $transient = 'scrape_key_' . $key;
+        set_transient($transient, $nonce, 60);
+
+        $url = add_query_arg(['wp_scrape_key' => $key, 'wp_scrape_nonce' => $nonce], home_url('/'));
+        $response = wp_remote_get($url, [
+            'timeout' => 30,
+            'headers' => ['Cache-Control' => 'no-cache'],
+            // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- core filter.
+            'sslverify' => (bool) apply_filters('https_local_ssl_verify', false, $url),
+        ]);
+
+        delete_transient($transient);
+
+        if (is_wp_error($response)) {
+            return ['status' => 'unverified', 'detail' => 'loopback request failed: ' . $response->get_error_message()];
+        }
+
+        $body = (string) (is_array($response) ? ($response['body'] ?? '') : '');
+        $start = "###### wp_scraping_result_start:{$key} ######";
+        $end = "###### wp_scraping_result_end:{$key} ######";
+        $from = strpos($body, $start);
+        $to = $from === false ? false : strpos($body, $end, $from);
+        if ($from === false || $to === false) {
+            $code = is_array($response) ? (int) ($response['response']['code'] ?? 0) : 0;
+
+            return ['status' => 'unverified', 'detail' => "no scrape result in the response (HTTP {$code})"];
+        }
+
+        $result = json_decode(trim(substr($body, $from + strlen($start), $to - $from - strlen($start))), true);
+        if (is_array($result) && isset($result['type'])) {
+            return [
+                'status' => 'fatal',
+                'detail' => sprintf(
+                    '%s in %s:%d',
+                    (string) ($result['message'] ?? 'fatal error'),
+                    (string) ($result['file'] ?? '?'),
+                    (int) ($result['line'] ?? 0)
+                ),
+            ];
+        }
+
+        return ['status' => 'ok', 'detail' => ''];
+    }
+
+    /** The $upgrading timestamp from ABSPATH/.maintenance, read without executing the file. */
+    private static function maintenanceTimestamp(): ?int
+    {
+        $file = ABSPATH . '.maintenance';
+        if (! is_file($file)) {
+            return null;
+        }
+
+        $contents = (string) @file_get_contents($file);
+
+        return preg_match('/\$upgrading\s*=\s*(\d+)/', $contents, $m) ? (int) $m[1] : null;
+    }
+
+    /**
+     * Put the previous version back from core's temporary backup (made by
+     * Plugin_Upgrader::upgrade() since WordPress 6.3 and kept until shutdown).
+     * restore_temp_backup() only takes the backup list from WordPress 6.6;
+     * where it cannot, or the restore fails, the plugin is deactivated so the
+     * site stops fataling.
+     *
+     * @return array{rolled_back: bool, deactivated: bool, detail: string}
+     */
+    private function rollBack(object $upgrader, string $slug): array
+    {
+        $dir = dirname($slug);
+        $canRestore = $dir !== '.'
+            && method_exists($upgrader, 'restore_temp_backup')
+            && (new \ReflectionMethod($upgrader, 'restore_temp_backup'))->getNumberOfParameters() > 0;
+
+        if ($canRestore) {
+            $restored = $upgrader->restore_temp_backup([
+                ['dir' => 'plugins', 'slug' => $dir, 'src' => WP_PLUGIN_DIR],
+            ]);
+            if ($restored === true) {
+                if (function_exists('wp_clean_plugins_cache')) {
+                    wp_clean_plugins_cache(false);
+                }
+
+                return ['rolled_back' => true, 'deactivated' => false, 'detail' => 'previous version restored'];
+            }
+            $detail = is_wp_error($restored) ? $restored->get_error_message() : 'restore failed';
+        } else {
+            $detail = 'no restorable backup on this WordPress version';
+        }
+
+        if (function_exists('deactivate_plugins')) {
+            deactivate_plugins($slug, true);
+        }
+
+        return ['rolled_back' => false, 'deactivated' => true, 'detail' => $detail . '; plugin deactivated'];
+    }
+
+    /**
+     * @param  array{rolled_back?: bool, deactivated?: bool, detail?: string}  $rollback
+     * @param  array<int, string>  $messages
+     * @return array<string, mixed>
+     */
+    private function fatalResult(string $slug, string $beforeVersion, bool $wasActive, string $fatal, array $rollback, array $messages, float $start): array
+    {
+        $rolledBack = ! empty($rollback['rolled_back']);
+        $messages[] = 'Load check failed: ' . $fatal;
+        $messages[] = 'Recovery: ' . (string) ($rollback['detail'] ?? 'none');
+
+        if (defined('WP_DEBUG_LOG') && WP_DEBUG_LOG) {
+            // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+            error_log("[clockwork-updates] {$slug} fataled after update: {$fatal}");
+        }
+
+        return [
+            'ok' => false,
+            // Rolled back: the files are the old version again, so there is
+            // no completed update to verify. Deactivated instead: the new
+            // files are in place, the plugin is just off.
+            'upgrade_completed' => ! $rolledBack,
+            'slug' => $slug,
+            'before_version' => $beforeVersion,
+            'after_version' => $rolledBack ? $beforeVersion : null,
+            'was_active' => $wasActive,
+            'reactivated' => $rolledBack,
+            'rolled_back' => $rolledBack,
+            'load_verified' => false,
+            'messages' => $messages,
+            'elapsed_ms' => $this->elapsed($start),
+            'error' => sprintf(
+                'load_failed: the updated plugin caused a fatal error (%s). %s.',
+                $fatal,
+                $rolledBack ? 'The previous version was restored' : 'The plugin was deactivated'
+            ),
+        ];
+    }
+
+    /**
+     * Whether an update_plugins / update_themes entry offers a version newer
+     * than $installed. Stale transients keep entries whose new_version is the
+     * version already installed ("X → X"). An entry without new_version is
+     * given the benefit of the doubt.
+     *
+     * @param  mixed  $entry  object (plugins) or array (themes)
+     */
+    public static function offersNewerVersion($entry, string $installed): bool
+    {
+        $newVersion = (string) (((array) $entry)['new_version'] ?? '');
+
+        return $newVersion === '' || $installed === '' || version_compare($newVersion, $installed, '>');
     }
 
     /**

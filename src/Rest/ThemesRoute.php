@@ -86,10 +86,13 @@ class ThemesRoute
         $updateCount = 0;
 
         foreach ($all as $slug => $theme) {
-            $hasUpdate  = isset($updates[$slug]);
-            $newVersion = $hasUpdate && isset($updates[$slug]['new_version'])
-                ? (string) $updates[$slug]['new_version']
+            $newVersion = isset($updates[$slug]) && isset(((array) $updates[$slug])['new_version'])
+                ? (string) ((array) $updates[$slug])['new_version']
                 : null;
+            // Same rule as PluginsRoute: a stale transient can keep an entry
+            // for the version already installed, which would show as "X → X".
+            $hasUpdate = $newVersion !== null
+                && version_compare($newVersion, (string) $theme->get('Version'), '>');
 
             if ($hasUpdate) {
                 $updateCount++;

@@ -39,11 +39,14 @@ class TwoFactorMigrateRoute
             return new WP_REST_Response(['ok' => false, 'error' => 'user_not_found'], 422);
         }
 
-        $result = WflsMigrator::migrate($userId);
+        // Nobody sees backup codes over this route, so none are kept: the
+        // user generates a set from the Login Security page.
+        $result = WflsMigrator::migrate($userId, false);
 
         return new WP_REST_Response([
             'ok'       => true,
             'migrated' => $result !== false,
+            'backup_codes_need_regenerating' => $result !== false,
         ]);
     }
 }

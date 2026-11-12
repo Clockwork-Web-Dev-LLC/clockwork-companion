@@ -18,19 +18,30 @@ use ClockworkCompanion\AuthAudit\Repository as AuthAuditRepository;
  * pattern) means there is no window where a half-authenticated session
  * exists.
  *
- * Deliberate bypasses:
- *   - XML-RPC and REST requests: application-password auth flows through
- *     the same `authenticate` filter and cannot answer an HTML challenge.
- *     Consequence: XML-RPC password auth is NOT 2FA-gated — block xmlrpc
- *     at nginx/Cloudflare (we already do on most of the fleet).
- *   - CLOCKWORK_2FA_DISABLE constant: fleet rescue hatch. If a bug here
- *     ever locks admins out, `wp config set CLOCKWORK_2FA_DISABLE true --raw`
- *     over SSH turns the gate off instantly.
+ * XML-RPC and REST requests cannot answer an HTML challenge. For a user
+ * enrolled in 2FA, a plain password is therefore refused there outright —
+ * otherwise a password alone would open xmlrpc.php (wp.newPost,
+ * wp.uploadFile, ...) for an enrolled administrator. Application passwords
+ * keep working: over XML-RPC core checks them in the same `authenticate`
+ * chain and fires `application_password_did_authenticate` when one
+ * matches, which is what lets them through here; over REST (Basic auth)
+ * core checks them from `determine_current_user` and never runs this
+ * filter at all.
  *
- * Challenge attempts are capped per pending login; the transient dies
- * after TTL or MAX_ATTEMPTS, forcing a full password re-entry. Failures
- * are recorded in the auth-failures audit table so the monitoring app can
- * see OTP brute-force attempts alongside HMAC failures.
+ * Rescue hatch: the CLOCKWORK_2FA_DISABLE constant. If a bug here ever
+ * locks admins out, `wp config set CLOCKWORK_2FA_DISABLE true --raw` over
+ * SSH turns the gate off instantly.
+ *
+ * Brute-force limits, two layers:
+ *   - per pending login: MAX_ATTEMPTS codes, then the token dies and the
+ *     password must be entered again;
+ *   - per user: a fresh token is issued for every correct password, so the
+ *     real cap is a failure counter in user meta — MAX_USER_FAILURES bad
+ *     codes within FAILURE_WINDOW locks that account's second step for
+ *     LOCKOUT_SECONDS. Cleared by a successful code.
+ * Every bad code fires `wp_login_failed`, so login limiters count it like a
+ * bad password, and is recorded in the auth-failures audit table. A
+ * successful challenge fires `wp_login`, as a normal login would.
  */
 class LoginInterceptor
 {
@@ -40,13 +51,38 @@ class LoginInterceptor
 
     private const MAX_ATTEMPTS = 5;
 
+    /** Bad codes per user within FAILURE_WINDOW before the account's second step locks. */
+    private const MAX_USER_FAILURES = 10;
+
+    private const FAILURE_WINDOW = 900;
+
+    private const LOCKOUT_SECONDS = 900;
+
+    public const META_FAILURES = '_clockwork_2fa_failures';
+
+    public const META_LOCKED_UNTIL = '_clockwork_2fa_locked_until';
+
     public const ACTION = 'clockwork-2fa';
+
+    /** @var array<int, true> users authenticated by an application password in this request */
+    private static array $applicationPasswordUsers = [];
 
     public function register(): void
     {
         add_filter('authenticate', [$this, 'maybeChallenge'], PHP_INT_MAX);
+        add_action('application_password_did_authenticate', [self::class, 'rememberApplicationPassword'], 10, 1);
         add_action('login_form_'.self::ACTION, [$this, 'handleChallenge']);
         add_filter('login_message', [$this, 'maybeShowExpiredNotice']);
+    }
+
+    /**
+     * @param  mixed  $user
+     */
+    public static function rememberApplicationPassword($user): void
+    {
+        if ($user instanceof \WP_User) {
+            self::$applicationPasswordUsers[(int) $user->ID] = true;
+        }
     }
 
     /**
@@ -61,14 +97,24 @@ class LoginInterceptor
         if (self::isDisabled()) {
             return $user;
         }
-        if (defined('XMLRPC_REQUEST') && XMLRPC_REQUEST) {
-            return $user;
-        }
-        if (defined('REST_REQUEST') && REST_REQUEST) {
-            return $user;
-        }
         if (! UserSettings::isEnabled($user->ID)) {
             return $user;
+        }
+        if ((defined('XMLRPC_REQUEST') && XMLRPC_REQUEST) || (defined('REST_REQUEST') && REST_REQUEST)) {
+            if (isset(self::$applicationPasswordUsers[(int) $user->ID])) {
+                return $user;
+            }
+
+            return new \WP_Error(
+                'clockwork_2fa_required',
+                'Two-factor authentication is enabled for this account, so its password cannot be used here. Use an application password.'
+            );
+        }
+        if (self::isLockedOut($user->ID)) {
+            return new \WP_Error(
+                'clockwork_2fa_locked',
+                'Too many incorrect verification codes. Sign-in for this account is paused for a few minutes.'
+            );
         }
 
         $token = bin2hex(random_bytes(24));
@@ -107,23 +153,58 @@ class LoginInterceptor
 
         // get_transient → increment → set_transient is not atomic under Redis/Memcached.
         // Acceptable: races here allow at most ~2× the attempt cap under concurrent
-        // burst, which is well within brute-force infeasibility for 6-digit TOTP.
+        // burst; the per-user counter in verifyCode() is the real limit.
         $state['attempts']++;
         if ($state['attempts'] > self::MAX_ATTEMPTS) {
             delete_transient($key);
-            AuthAuditRepository::insert([
-                'ip' => (string) ($_SERVER['REMOTE_ADDR'] ?? ''),
-                'reason' => '2fa_attempts_exhausted',
-                'request_path' => '/wp-login.php',
-                'request_method' => 'POST',
-            ]);
+            self::audit('2fa_attempts_exhausted');
             $this->bounceToLogin();
         }
         set_transient($key, $state, self::TTL);
 
         $userId = (int) $state['user_id'];
-        $code = (string) ($_POST['clockwork_2fa_code'] ?? '');
-        $normalized = preg_replace('/\s+/', '', $code);
+        $outcome = self::verifyCode($userId, (string) ($_POST['clockwork_2fa_code'] ?? ''));
+
+        if ($outcome === 'locked') {
+            delete_transient($key);
+            $this->bounceToLogin('locked');
+        }
+
+        if ($outcome !== 'ok') {
+            $remaining = self::MAX_ATTEMPTS - $state['attempts'];
+            if ($remaining <= 0) {
+                delete_transient($key);
+                $this->bounceToLogin();
+            }
+            $this->renderChallenge($token, sprintf(
+                'That code didn&rsquo;t work. %d attempt%s left.',
+                $remaining,
+                $remaining === 1 ? '' : 's'
+            ));
+            exit;
+        }
+
+        delete_transient($key);
+        self::completeLogin($userId, ! empty($state['remember']));
+
+        $redirect = (string) $state['redirect_to'];
+        wp_safe_redirect($redirect !== '' ? $redirect : admin_url());
+        exit;
+    }
+
+    /**
+     * Check a submitted TOTP or backup code for $userId and do the
+     * bookkeeping: per-user failure count and lockout, `wp_login_failed`,
+     * audit row. Returns 'ok', 'bad', or 'locked' (the account's second step
+     * is locked — nothing was checked, or this failure engaged the lock).
+     */
+    public static function verifyCode(int $userId, string $code): string
+    {
+        if (self::isLockedOut($userId) || self::ipLockedOut()) {
+            return 'locked';
+        }
+
+        $normalized = (string) preg_replace('/\s+/', '', $code);
 
         if (preg_match('/^\d{6}$/', $normalized)) {
             $stepResult = Totp::verify(
@@ -140,32 +221,92 @@ class LoginInterceptor
             $valid = UserSettings::useBackupCode($userId, $normalized);
         }
 
-        if (! $valid) {
+        if ($valid) {
+            delete_user_meta($userId, self::META_FAILURES);
+            delete_user_meta($userId, self::META_LOCKED_UNTIL);
+
+            return 'ok';
+        }
+
+        return self::recordFailure($userId) ? 'locked' : 'bad';
+    }
+
+    /**
+     * Grant the session after a verified code, and announce it the way a
+     * normal login does so audit and login-limit plugins see 2FA logins.
+     */
+    public static function completeLogin(int $userId, bool $remember): void
+    {
+        wp_set_auth_cookie($userId, $remember);
+
+        $user = get_userdata($userId);
+        if ($user) {
+            if (function_exists('wp_set_current_user')) {
+                wp_set_current_user($userId);
+            }
+            do_action('wp_login', $user->user_login, $user);
+        }
+    }
+
+    public static function isLockedOut(int $userId): bool
+    {
+        return (int) get_user_meta($userId, self::META_LOCKED_UNTIL, true) > time();
+    }
+
+    /**
+     * Count a bad code. Returns true when this failure engaged the lockout.
+     */
+    private static function recordFailure(int $userId): bool
+    {
+        $now = time();
+        $failures = get_user_meta($userId, self::META_FAILURES, true);
+        if (! is_array($failures) || (int) ($failures['first'] ?? 0) < $now - self::FAILURE_WINDOW) {
+            $failures = ['count' => 0, 'first' => $now];
+        }
+        $failures['count'] = (int) $failures['count'] + 1;
+        update_user_meta($userId, self::META_FAILURES, $failures);
+
+        self::audit('2fa_bad_code');
+
+        $user = get_userdata($userId);
+        // Core's signature: the attempted username and the error.
+        do_action(
+            'wp_login_failed',
+            $user ? (string) $user->user_login : '',
+            new \WP_Error('clockwork_2fa_bad_code', 'Incorrect two-factor verification code.')
+        );
+
+        $max = max(1, (int) apply_filters('clockwork_companion_2fa_max_failures', self::MAX_USER_FAILURES));
+        if ($failures['count'] < $max) {
+            return false;
+        }
+
+        update_user_meta($userId, self::META_LOCKED_UNTIL, $now + self::LOCKOUT_SECONDS);
+        delete_user_meta($userId, self::META_FAILURES);
+        self::audit('2fa_user_locked');
+
+        return true;
+    }
+
+    /** Hook for an IP-level lockout layer (Renegade's Gatekeeper). */
+    private static function ipLockedOut(): bool
+    {
+        return false;
+    }
+
+    private static function audit(string $reason): void
+    {
+        // Best-effort: a logging problem must never turn into a login problem.
+        try {
             AuthAuditRepository::insert([
-                'ip' => (string) ($_SERVER['REMOTE_ADDR'] ?? ''),
-                'reason' => '2fa_bad_code',
+                'ip' => \ClockworkCompanion\Auth\HmacVerifier::clientIp(),
+                'reason' => $reason,
                 'request_path' => '/wp-login.php',
                 'request_method' => 'POST',
             ]);
-            $remaining = self::MAX_ATTEMPTS - $state['attempts'];
-            if ($remaining <= 0) {
-                delete_transient($key);
-                $this->bounceToLogin();
-            }
-            $this->renderChallenge($token, sprintf(
-                'That code didn&rsquo;t work. %d attempt%s left.',
-                $remaining,
-                $remaining === 1 ? '' : 's'
-            ));
-            exit;
+        } catch (\Throwable $e) {
+            unset($e);
         }
-
-        delete_transient($key);
-        wp_set_auth_cookie($userId, ! empty($state['remember']));
-
-        $redirect = (string) $state['redirect_to'];
-        wp_safe_redirect($redirect !== '' ? $redirect : admin_url());
-        exit;
     }
 
     /**
@@ -178,6 +319,10 @@ class LoginInterceptor
         // strict string here fatals the login screen (same class of bug as
         // WhiteLabel::filterAdminFooterText on a client site, 2026-09-15).
         $message ??= '';
+
+        if (! empty($_GET['clockwork_2fa_locked'])) {
+            return '<div id="login_error">Too many incorrect verification codes. Please wait a few minutes and sign in again.</div>'.$message;
+        }
 
         if (empty($_GET['clockwork_2fa_expired'])) {
             return $message;
@@ -195,9 +340,9 @@ class LoginInterceptor
         return (bool) apply_filters('clockwork_companion_2fa_disabled', false);
     }
 
-    private function bounceToLogin(): void
+    private function bounceToLogin(string $reason = 'expired'): void
     {
-        wp_safe_redirect(add_query_arg('clockwork_2fa_expired', '1', wp_login_url()));
+        wp_safe_redirect(add_query_arg('clockwork_2fa_'.$reason, '1', wp_login_url()));
         exit;
     }
 
