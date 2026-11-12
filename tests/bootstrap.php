@@ -875,7 +875,7 @@ if (! function_exists('get_plugins')) {
 if (! function_exists('wp_get_themes')) {
     function wp_get_themes(): array
     {
-        return [];
+        return $GLOBALS['wp_test_themes'] ?? [];
     }
 }
 

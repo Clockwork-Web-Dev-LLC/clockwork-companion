@@ -95,7 +95,8 @@ class Runner
 
         $updateTransient = get_site_transient('update_plugins');
         $hasUpdate = is_object($updateTransient)
-            && isset($updateTransient->response[$slug]);
+            && isset($updateTransient->response[$slug])
+            && self::offersNewerVersion($updateTransient->response[$slug], $beforeVersion);
 
         // Premium plugins (Elementor Pro, Crocoblock Jet*, PowerPack, Admin
         // Columns Pro, etc.) only hook pre_set_site_transient_update_plugins
@@ -107,10 +108,13 @@ class Runner
                 TransientRefresher::forceRefresh();
                 $updateTransient = get_site_transient('update_plugins');
                 $hasUpdate = is_object($updateTransient)
-                    && isset($updateTransient->response[$slug]);
+                    && isset($updateTransient->response[$slug])
+                    && self::offersNewerVersion($updateTransient->response[$slug], $beforeVersion);
             }
 
-            if ($priorEntry !== null) {
+            // A stale entry (new_version already installed) must not be put
+            // back — the upgrader would download and reinstall the same version.
+            if ($priorEntry !== null && self::offersNewerVersion($priorEntry, $beforeVersion)) {
                 $currentPackage = $hasUpdate ? (string) (((array) $updateTransient->response[$slug])['package'] ?? '') : '';
                 $priorPackage = (string) (((array) $priorEntry)['package'] ?? '');
                 if (! $hasUpdate || ($currentPackage === '' && $priorPackage !== '')) {
@@ -510,6 +514,21 @@ class Runner
                 $rolledBack ? 'The previous version was restored' : 'The plugin was deactivated'
             ),
         ];
+    }
+
+    /**
+     * Whether an update_plugins / update_themes entry offers a version newer
+     * than $installed. Stale transients keep entries whose new_version is the
+     * version already installed ("X → X"). An entry without new_version is
+     * given the benefit of the doubt.
+     *
+     * @param  mixed  $entry  object (plugins) or array (themes)
+     */
+    public static function offersNewerVersion($entry, string $installed): bool
+    {
+        $newVersion = (string) (((array) $entry)['new_version'] ?? '');
+
+        return $newVersion === '' || $installed === '' || version_compare($newVersion, $installed, '>');
     }
 
     /**
