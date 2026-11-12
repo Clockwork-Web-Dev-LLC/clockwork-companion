@@ -20,12 +20,21 @@ use ClockworkCompanion\Auth\Secret;
  * (loopback can't reach itself, ajax returns 5xx, etc.) is swallowed — the
  * caller continues with whatever the cron-driven transient already had,
  * which is strictly better than blocking the snapshot.
+ *
+ * A failed loopback is remembered for FAILURE_BACKOFF_SEC. The request is
+ * blocking with a 30 s timeout, so on a host that blocks loopback requests
+ * retrying it on every /plugins, /themes and /snapshot call would push each
+ * of those past Control's own timeout.
  */
 class TransientRefresher
 {
     public const MIN_REFRESH_INTERVAL_SEC = 30 * 60;
 
     public const AJAX_ACTION = 'clockwork_refresh_updates';
+
+    public const FAILURE_BACKOFF_SEC = 15 * 60;
+
+    public const FAILURE_TRANSIENT = 'clockwork_companion_loopback_failed';
 
     /**
      * Build the HMAC signed by the loopback request, verified by the
@@ -74,6 +83,10 @@ class TransientRefresher
             return;
         }
 
+        if (get_transient(self::FAILURE_TRANSIENT)) {
+            return;
+        }
+
         $ts = time();
         $sig = self::sign($ts, $secret);
         $url = admin_url('admin-ajax.php');
@@ -82,7 +95,7 @@ class TransientRefresher
         // we need the refresh to complete before the caller reads the transient.
         // sslverify=false because some sites front themselves with self-signed
         // or CF-edge certs that fail strict validation on loopback.
-        wp_remote_post($url, [
+        $response = wp_remote_post($url, [
             'timeout' => 30,
             'blocking' => true,
             'sslverify' => false,
@@ -93,6 +106,12 @@ class TransientRefresher
             ],
         ]);
 
+        if (! self::succeeded($response)) {
+            set_transient(self::FAILURE_TRANSIENT, 1, self::FAILURE_BACKOFF_SEC);
+
+            return;
+        }
+
         if (function_exists('wp_cache_delete')) {
             wp_cache_delete('update_plugins', 'site-transient');
             wp_cache_delete('update_themes', 'site-transient');
@@ -102,5 +121,24 @@ class TransientRefresher
         // Soft-fail: ignore errors. Caller falls back to whatever WP cron
         // last cached. Worst case we keep the existing behavior (premium
         // plugin updates invisible).
+    }
+
+    /**
+     * Only the handler's own JSON success counts — a 200 that is really a
+     * login page, a WAF challenge or a cached HTML page is a failure too.
+     *
+     * @param  mixed  $response
+     */
+    private static function succeeded($response): bool
+    {
+        if (is_wp_error($response) || ! is_array($response)) {
+            return false;
+        }
+        if ((int) ($response['response']['code'] ?? 0) !== 200) {
+            return false;
+        }
+        $decoded = json_decode((string) ($response['body'] ?? ''), true);
+
+        return is_array($decoded) && ! empty($decoded['success']);
     }
 }
