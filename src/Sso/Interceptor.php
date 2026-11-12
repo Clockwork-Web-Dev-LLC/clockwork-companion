@@ -16,8 +16,8 @@ use ClockworkCompanion\Auth\RemoteActionAudit;
  *   - valid + unexpired + unredeemed → log user in, delete nonce, redirect to redirect_to
  *   - missing/malformed/expired/already-redeemed → redirect to wp-login.php?clockwork_sso_error=1
  *
- * The nonce option is deleted on every redemption attempt (success or
- * already-used). Expired-but-not-yet-deleted nonces are a non-issue because
+ * The nonce row is deleted on every redemption attempt that finds it
+ * (see claimNonce()). Expired-but-not-yet-deleted nonces are a non-issue because
  * the expires_at check rejects them; the GC transient cleans up the option
  * within ttl+60s anyway.
  */
@@ -48,13 +48,7 @@ class Interceptor
             return;
         }
 
-        $option = get_option(self::OPTION_PREFIX.$nonce);
-
-        // One-time semantics: delete first, decide second. Even if validation
-        // fails below, we don't want the row to survive — every attempted
-        // redemption invalidates the nonce.
-        delete_option(self::OPTION_PREFIX.$nonce);
-        delete_transient(self::OPTION_PREFIX.$nonce.'_gc');
+        $option = self::claimNonce($nonce);
 
         if (! is_array($option)) {
             $this->failTo('used_or_unknown');
@@ -110,6 +104,47 @@ class Interceptor
 
         wp_safe_redirect($redirectTo);
         exit;
+    }
+
+    /**
+     * Look the nonce up and consume it in one step, without going through
+     * get_option(). get_option() records every miss in the `notoptions`
+     * cache entry, which is loaded on every request and which delete_option()
+     * on a missing row never cleans — so a flood of
+     * `/?clockwork_sso=<random>` grew that entry without bound on sites with
+     * a persistent object cache.
+     *
+     * One-time semantics are kept, and tightened: the row is deleted on
+     * every attempt that finds it (valid or not), and only the request whose
+     * DELETE actually removed the row may use it, so two simultaneous
+     * redemptions of one link cannot both log in.
+     *
+     * @return array<string, mixed>|null the stored payload, or null when unknown, already used or malformed
+     */
+    public static function claimNonce(string $nonce): ?array
+    {
+        global $wpdb;
+
+        $name = self::OPTION_PREFIX.$nonce;
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- deliberately bypasses the options cache, see above.
+        $raw = $wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s LIMIT 1", $name));
+        if ($raw === null) {
+            return null;
+        }
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+        $deleted = $wpdb->delete($wpdb->options, ['option_name' => $name], ['%s']);
+        // The row was written with update_option(), which may have cached it.
+        wp_cache_delete($name, 'options');
+        delete_transient($name.'_gc');
+
+        if (! $deleted) {
+            return null;
+        }
+
+        $value = maybe_unserialize($raw);
+
+        return is_array($value) ? $value : null;
     }
 
     public function maybeShowError(?string $message): string

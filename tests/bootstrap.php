@@ -1416,3 +1416,23 @@ if (! function_exists('get_plugin_data')) {
     }
 }
 // ---- end plugins-a updater stubs ----
+
+// ---- plugins-a stubs: options-table double ----
+if (! function_exists('maybe_unserialize')) {
+    function maybe_unserialize(mixed $data): mixed
+    {
+        if (is_string($data) && ($un = @unserialize($data, ['allowed_classes' => false])) !== false) {
+            return $un;
+        }
+
+        return $data;
+    }
+}
+
+if (! function_exists('maybe_serialize')) {
+    function maybe_serialize(mixed $data): mixed
+    {
+        return is_array($data) || is_object($data) ? serialize($data) : $data;
+    }
+}
+// ---- end plugins-a options-table double ----
