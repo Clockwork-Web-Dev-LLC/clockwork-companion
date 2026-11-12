@@ -1256,3 +1256,22 @@ if (! function_exists('wp_send_json_success')) {
         echo json_encode(['success' => true, 'data' => $data]);
     }
 }
+
+// -----------------------------------------------------------------------------
+// Maintenance bypass: logged-in state is test-controlled (default logged out).
+// -----------------------------------------------------------------------------
+
+if (! function_exists('is_user_logged_in')) {
+    function is_user_logged_in(): bool
+    {
+        return ! empty($GLOBALS['wp_test_logged_in']);
+    }
+}
+
+if (! function_exists('rest_get_url_prefix')) {
+    function rest_get_url_prefix(): string
+    {
+        // Same as core: the default prefix, through the rest_url_prefix filter.
+        return (string) apply_filters('rest_url_prefix', 'wp-json');
+    }
+}
