@@ -13,7 +13,7 @@ use WP_REST_Response;
  * POST /wp-json/clockwork/v1/wp-core/update
  *
  * Upgrades WordPress core via Core_Upgrader::upgrade(). Major-version bumps
- * (e.g. 6.x → 7.x) require explicit confirm_major=true in the body — the
+ * (any X.Y change, e.g. 6.8 → 6.9 or 6.9 → 7.0) require explicit confirm_major=true in the body — the
  * Clockwork UI enforces the same gate so this is belt-and-suspenders.
  *
  * Request body:
@@ -89,18 +89,7 @@ class CoreUpdateRoute
             ];
         }
 
-        // Find the best available update: prefer 'autoupdate' (minor), fall
-        // back to 'upgrade' (major), skip 'development' builds.
-        $update = null;
-        foreach ($transient->updates as $candidate) {
-            if (! isset($candidate->version) || $candidate->version === $beforeVersion) {
-                continue;
-            }
-            if (in_array($candidate->response ?? '', ['autoupdate', 'upgrade'], true)) {
-                $update = $candidate;
-                break;
-            }
-        }
+        $update = self::selectUpdate((array) $transient->updates, $beforeVersion, $confirmMajor);
 
         if ($update === null) {
             return [
@@ -113,7 +102,7 @@ class CoreUpdateRoute
         }
 
         $newVersion = (string) $update->version;
-        $isMajor    = $this->isMajorBump($beforeVersion, $newVersion);
+        $isMajor    = self::isMajorBump($beforeVersion, $newVersion);
 
         if ($isMajor && ! $confirmMajor) {
             return $this->fail(
@@ -160,12 +149,78 @@ class CoreUpdateRoute
         ];
     }
 
-    private function isMajorBump(string $from, string $to): bool
+    /**
+     * Choose the offer to install from update_core's list.
+     *
+     * Without confirm_major: the newest offer on the site's current X.Y
+     * branch (preferring core's 'autoupdate' offer at equal versions), so a
+     * site on an older branch still gets its minor/security release instead
+     * of being stopped at major_not_confirmed. Only when its branch has
+     * nothing newer is the newest offer overall returned — which then needs
+     * confirmation. With confirm_major: the newest offer overall.
+     * 'development' and other offer types are never chosen.
+     *
+     * @param  array<int, mixed>  $offers
+     */
+    public static function selectUpdate(array $offers, string $current, bool $confirmMajor): ?object
     {
-        $fromMajor = (int) explode('.', $from)[0];
-        $toMajor   = (int) explode('.', $to)[0];
+        $branch = self::branch($current);
+        $best = null;
+        $bestInBranch = null;
 
-        return $toMajor > $fromMajor;
+        foreach ($offers as $offer) {
+            if (! is_object($offer) || ! isset($offer->version)) {
+                continue;
+            }
+            $response = (string) ($offer->response ?? '');
+            if (! in_array($response, ['autoupdate', 'upgrade'], true)) {
+                continue;
+            }
+            $version = (string) $offer->version;
+            if (! version_compare($version, $current, '>')) {
+                continue;
+            }
+
+            if ($best === null || self::better($offer, $best)) {
+                $best = $offer;
+            }
+            if (self::branch($version) === $branch && ($bestInBranch === null || self::better($offer, $bestInBranch))) {
+                $bestInBranch = $offer;
+            }
+        }
+
+        if ($confirmMajor) {
+            return $best;
+        }
+
+        return $bestInBranch ?? $best;
+    }
+
+    /** Higher version wins; at the same version an 'autoupdate' offer wins. */
+    private static function better(object $a, object $b): bool
+    {
+        $cmp = version_compare((string) $a->version, (string) $b->version);
+        if ($cmp !== 0) {
+            return $cmp > 0;
+        }
+
+        return ($a->response ?? '') === 'autoupdate' && ($b->response ?? '') !== 'autoupdate';
+    }
+
+    /**
+     * WordPress's major releases are X.Y (6.8 → 6.9 is a major update), so
+     * anything that changes X.Y needs confirm_major.
+     */
+    public static function isMajorBump(string $from, string $to): bool
+    {
+        return version_compare(self::branch($to), self::branch($from), '>');
+    }
+
+    private static function branch(string $version): string
+    {
+        $parts = explode('.', $version);
+
+        return (int) ($parts[0] ?? 0).'.'.(int) ($parts[1] ?? 0);
     }
 
     /** @param array<int, string> $messages */
