@@ -8,7 +8,6 @@ use ClockworkCompanion\Admin\DashboardWidget;
 use ClockworkCompanion\Admin\FormsAjaxHandlers;
 use ClockworkCompanion\Admin\Menu;
 use ClockworkCompanion\Admin\UpdatesRefreshAjaxHandler;
-use ClockworkCompanion\Auth\Secret;
 use ClockworkCompanion\AuthAudit\Schema as AuthAuditSchema;
 use ClockworkCompanion\Rest\ActionLogAppendRoute;
 use ClockworkCompanion\Rest\AdminsRoute;
@@ -127,20 +126,12 @@ class Plugin
     public function boot(): void
     {
         (new WhiteLabel())->boot();
-        try {
-            Secret::ensure();
-        } catch (\Throwable $e) {
-            // Never let the secret bootstrap take the whole site down: every
-            // front-end and admin request runs boot(). HmacVerifier answers
-            // no_secret until a secret can be stored.
-            if (defined('WP_DEBUG_LOG') && WP_DEBUG_LOG) {
-                // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
-                error_log('[clockwork] secret bootstrap failed: '.$e->getMessage());
-            }
-        }
-        ActionLogSchema::ensureInstalled();
-        AuthAuditSchema::ensureInstalled();
-        ResourceSchema::ensureInstalled();
+        // Secret + table schemas, checked through one autoloaded record.
+        \ClockworkCompanion\Updates\InstallState::ensure([
+            ActionLogSchema::class,
+            AuthAuditSchema::class,
+            ResourceSchema::class,
+        ]);
 
         // Third-party plugin compatibility shims — run before route registration
         // so any filters they install are live by the time WordPress's REST

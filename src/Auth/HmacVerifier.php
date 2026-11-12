@@ -199,7 +199,8 @@ class HmacVerifier
             Secret::promote($promote);
         }
 
-        if (function_exists('update_option')) {
+        // At most one write a minute: this runs for every signed request.
+        if (function_exists('update_option') && time() - (int) get_option('clockwork_companion_last_contact_at', 0) >= 60) {
             update_option('clockwork_companion_last_contact_at', time(), false);
         }
 
