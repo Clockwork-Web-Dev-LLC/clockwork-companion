@@ -302,6 +302,52 @@ class HmacVerifierTest extends TestCase
         return $GLOBALS['wpdb'];
     }
 
+    public function testReplayMarkerLastsAsLongAsAFutureStampedSignature(): void
+    {
+        $ts = time() + 240; // caller's clock four minutes ahead: still accepted
+        $body = '{"slug":"akismet"}';
+        $request = $this->request('POST', '/clockwork/v1/plugins/update', [
+            'x-clockwork-timestamp' => (string) $ts,
+            'x-clockwork-signature' => $this->sign('POST', '/wp-json/clockwork/v1/plugins/update', $ts, $body),
+        ], $body);
+
+        $this->assertTrue(HmacVerifier::verify($request));
+
+        $insert = array_values(array_filter(
+            $GLOBALS['wpdb']->queries,
+            fn (string $q) => str_starts_with($q, 'INSERT IGNORE INTO wp_options')
+        ))[0];
+        preg_match("/VALUES \('[^']+', '(\d+)'/", $insert, $m);
+        $this->assertGreaterThanOrEqual($ts + 300, (int) $m[1], 'marker outlives the signature');
+    }
+
+    public function testEmptyBodyWithFormFieldsIsRejected(): void
+    {
+        $ts = time();
+        $request = $this->request('POST', '/clockwork/v1/plugins/update', [
+            'x-clockwork-timestamp' => (string) $ts,
+            'x-clockwork-signature' => $this->sign('POST', '/wp-json/clockwork/v1/plugins/update', $ts, ''),
+            'content-type' => 'multipart/form-data; boundary=x',
+        ]);
+
+        $result = HmacVerifier::verify($request);
+        $this->assertInstanceOf(WP_Error::class, $result);
+        $this->assertSame('unsigned_body', $result->get_error_code());
+
+        $_POST = ['slug' => 'evil'];
+        try {
+            $request = $this->request('POST', '/clockwork/v1/plugins/update', [
+                'x-clockwork-timestamp' => (string) $ts,
+                'x-clockwork-signature' => $this->sign('POST', '/wp-json/clockwork/v1/plugins/update', $ts, ''),
+            ]);
+            $result = HmacVerifier::verify($request);
+        } finally {
+            $_POST = [];
+        }
+        $this->assertInstanceOf(WP_Error::class, $result);
+        $this->assertSame('unsigned_body', $result->get_error_code());
+    }
+
     /**
      * @return array<string, int> per-IP failure counters currently stored
      */

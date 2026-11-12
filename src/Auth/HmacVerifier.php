@@ -141,6 +141,15 @@ class HmacVerifier
             return self::reject($ip, $limited, $request, 'stale_timestamp', 'Timestamp outside replay window');
         }
 
+        // The signature covers the raw body. For multipart/form-data PHP
+        // leaves the raw body empty and puts the fields in $_POST/$_FILES,
+        // where get_param() would read them unsigned — so a captured
+        // empty-body signed POST could be resent with any form fields.
+        // Clockwork only ever sends JSON; refuse anything else of that shape.
+        if (self::hasUnsignedBodyParams($request)) {
+            return self::reject($ip, $limited, $request, 'unsigned_body', 'Form or file fields are not covered by the signature; send a JSON body');
+        }
+
         $secret = Secret::get();
         if ($secret === '') {
             return new \WP_Error('no_secret', 'Companion secret not initialised', ['status' => 500]);
@@ -215,6 +224,24 @@ class HmacVerifier
         return new \WP_Error($code, $message, ['status' => 401]);
     }
 
+    private static function hasUnsignedBodyParams(WP_REST_Request $request): bool
+    {
+        if ($request->get_body() !== '') {
+            return false;
+        }
+
+        $type = strtolower((string) $request->get_header('content_type'));
+        if (str_starts_with($type, 'multipart/form-data')) {
+            return true;
+        }
+
+        $bodyParams = method_exists($request, 'get_body_params') ? (array) $request->get_body_params() : [];
+        $fileParams = method_exists($request, 'get_file_params') ? (array) $request->get_file_params() : [];
+
+        // phpcs:ignore WordPress.Security.NonceVerification.Missing -- only checking for presence; HMAC is the auth.
+        return $bodyParams !== [] || $fileParams !== [] || ! empty($_POST) || ! empty($_FILES);
+    }
+
     private static function isMutating(WP_REST_Request $request): bool
     {
         return in_array(strtoupper($request->get_method()), ['POST', 'PUT', 'PATCH', 'DELETE'], true);
@@ -252,10 +279,15 @@ class HmacVerifier
         $key = 'clockwork_hmac_used_'.substr(hash('sha256', $signature."\n".$timestamp), 0, 32);
 
         if (! isset($wpdb) || ! is_object($wpdb)) {
-            return self::alreadyConsumedViaTransient($key);
+            return self::alreadyConsumedViaTransient($key, max(time(), $timestamp) + self::REPLAY_WINDOW_SECONDS - time());
         }
 
         $now = time();
+        // Keep the marker as long as the signature itself is acceptable:
+        // verify() takes timestamps up to REPLAY_WINDOW_SECONDS in the
+        // future, so a marker counted from receipt time could be purged
+        // while a request stamped ahead of our clock still verifies.
+        $expiresAt = max($now, $timestamp) + self::REPLAY_WINDOW_SECONDS;
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
         $wpdb->query($wpdb->prepare(
             "DELETE FROM {$wpdb->options} WHERE option_name LIKE %s AND CAST(option_value AS UNSIGNED) < %d",
@@ -267,25 +299,25 @@ class HmacVerifier
         $inserted = $wpdb->query($wpdb->prepare(
             "INSERT IGNORE INTO {$wpdb->options} (option_name, option_value, autoload) VALUES (%s, %s, 'off')",
             $key,
-            (string) ($now + self::REPLAY_WINDOW_SECONDS)
+            (string) $expiresAt
         ));
 
         if ($inserted === false) {
             // DB error — don't let a broken options table lock Clockwork
             // out; fall back to the non-atomic check.
-            return self::alreadyConsumedViaTransient($key);
+            return self::alreadyConsumedViaTransient($key, $expiresAt - $now);
         }
 
         return (int) $inserted === 0;
     }
 
-    private static function alreadyConsumedViaTransient(string $key): bool
+    private static function alreadyConsumedViaTransient(string $key, int $ttl): bool
     {
         if (get_transient($key)) {
             return true;
         }
 
-        set_transient($key, 1, self::REPLAY_WINDOW_SECONDS);
+        set_transient($key, 1, max(1, $ttl));
 
         return false;
     }
