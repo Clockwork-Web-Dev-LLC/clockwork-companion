@@ -337,7 +337,8 @@ class BackupRestoreRouteTest extends TestCase
             . "DROP TABLE IF EXISTS `neighbor_users`;\n"
             . "CREATE TABLE `neighbor_users` (`id` int);\n"
             . "INSERT INTO `neighbor_users` VALUES (99);\n"
-            . "SET FOREIGN_KEY_CHECKS=1;\n";
+            . "SET FOREIGN_KEY_CHECKS=1;\n"
+            . "-- Dump completed\n";
 
         file_put_contents($stagingDir . '/database/db-test.sql', $dumpSql);
 
@@ -388,7 +389,12 @@ class BackupRestoreRouteTest extends TestCase
         $this->assertFalse($maint['enabled']);
     }
 
-    public function testHandleApplyPrefixMismatchLeavesMaintenanceEnabled(): void
+    /**
+     * Every dump is verified before maintenance mode is switched on or a
+     * single statement runs, so a dump for another prefix leaves the site
+     * live and untouched.
+     */
+    public function testHandleApplyPrefixMismatchFailsBeforeTouchingTheSite(): void
     {
         $stagedId = 'mismatch_xyz';
         $stagingDir = Paths::stagingDir() . '/restore-' . $stagedId;
@@ -397,7 +403,8 @@ class BackupRestoreRouteTest extends TestCase
         // All foreign prefix dump
         $dumpSql = "-- Foreign dump\n"
             . "DROP TABLE IF EXISTS `otherprefix_options`;\n"
-            . "CREATE TABLE `otherprefix_options` (`id` int);\n";
+            . "CREATE TABLE `otherprefix_options` (`id` int);\n"
+            . "-- Dump completed\n";
 
         file_put_contents($stagingDir . '/database/db-test.sql', $dumpSql);
 
@@ -424,11 +431,10 @@ class BackupRestoreRouteTest extends TestCase
         $response = $route->handleApply($request);
         $this->assertInstanceOf(WP_Error::class, $response);
         $this->assertSame('prefix_mismatch', $response->get_error_code());
-        $this->assertSame(500, $response->get_error_data()['status']);
+        $this->assertSame(422, $response->get_error_data()['status']);
 
-        // D5 & D7: Fail closed! Maintenance mode MUST remain enabled
-        $maint = MaintenanceGuard::getConfig();
-        $this->assertTrue($maint['enabled'], 'Expected maintenance mode to stay enabled on SQL failure/prefix mismatch');
+        $this->assertFalse(MaintenanceGuard::getConfig()['enabled'], 'Nothing was imported, so maintenance mode must not be switched on');
+        $this->assertSame('failed', RestoreState::get()['status']);
     }
 
     public function testHandleApplyWithMissingStagingDirFailsWithoutTouchingMaintenance(): void
@@ -534,11 +540,13 @@ class BackupRestoreRouteTest extends TestCase
             "CREATE TABLE `wp_posts` (`id` int);\n"
             . "INSERT INTO `wp_posts` VALUES (1);\n"
             . "LOCK TABLES `wp_posts` WRITE;\n"
+            . "-- Dump completed\n"
         );
         file_put_contents(
             $stagingDir . '/database/02-second.sql',
             "CREATE TABLE `wp_users` (`id` int);\n"
             . "DROP TABLE IF EXISTS `foreign_options`;\n"
+            . "-- Dump completed\n"
         );
 
         $executedQueries = [];
@@ -602,5 +610,144 @@ class BackupRestoreRouteTest extends TestCase
         $this->assertSame('busy', $data['error']);
 
         OperationLock::release('backup_restore');
+    }
+
+    /**
+     * Stage a fixture with the given dump files and a wpdb double whose
+     * options table is rolled back to $backupOptions when the dump drops it,
+     * the way a real import replaces the live rows.
+     *
+     * @param  array<string, string>  $files
+     * @param  array<string, mixed>  $backupOptions
+     * @param  list<string>  $executed
+     */
+    private function stageRestoreWithOptionsRollback(string $stagedId, array $files, array $backupOptions, array &$executed, bool $failInserts = false): void
+    {
+        $stagingDir = Paths::stagingDir() . '/restore-' . $stagedId;
+        @mkdir($stagingDir . '/database', 0755, true);
+        foreach ($files as $name => $sql) {
+            file_put_contents($stagingDir . '/database/' . $name, $sql);
+        }
+
+        $GLOBALS['wpdb'] = new class($executed, $backupOptions, $failInserts) {
+            public string $prefix = 'wp_';
+
+            public string $options = 'wp_options';
+
+            public string $last_error = '';
+
+            public $executed;
+
+            public function __construct(&$executed, private array $backupOptions, private bool $failInserts)
+            {
+                $this->executed = &$executed;
+            }
+
+            public function prepare(string $query, mixed ...$args): string
+            {
+                return $query;
+            }
+
+            /** Rows of the live options table that the capture query asks for. */
+            public function get_results(string $query, $output = null): array
+            {
+                $rows = [];
+                foreach ($GLOBALS['wp_test_options'] as $name => $value) {
+                    if (str_starts_with($name, 'clockwork_') || str_starts_with($name, '_transient_clockwork_lock_')) {
+                        $rows[] = ['option_name' => $name, 'option_value' => is_scalar($value) ? (string) $value : serialize($value), 'autoload' => 'off'];
+                    }
+                }
+
+                return $rows;
+            }
+
+            public function query(string $sql): bool
+            {
+                $this->executed[] = $sql;
+                if (str_starts_with($sql, 'DROP TABLE IF EXISTS `wp_options`')) {
+                    $GLOBALS['wp_test_options'] = $this->backupOptions;
+                }
+                if ($this->failInserts && str_starts_with($sql, 'INSERT')) {
+                    $this->last_error = 'Duplicate entry';
+
+                    return false;
+                }
+
+                return true;
+            }
+        };
+
+        RestoreState::update([
+            'staged_id' => $stagedId,
+            'status' => 'staged',
+            'hash_verified' => true,
+            'has_sql' => true,
+            'has_files' => false,
+        ]);
+    }
+
+    /**
+     * The import used to roll the plugin's own options back to backup time:
+     * the HMAC secret (locking Clockwork out after a rotation), the restore
+     * status, the maintenance flag and the replay markers.
+     */
+    public function testApplyKeepsThePluginsOwnOptionsThroughTheImport(): void
+    {
+        update_option('clockwork_companion_secret', 'secret-rotated-after-backup');
+        update_option('clockwork_companion_secret_pending', 'next-secret');
+        update_option('clockwork_hmac_used_0123', '9999999999');
+        $executed = [];
+        $this->stageRestoreWithOptionsRollback('keep_state_1', [
+            'db.sql' => "DROP TABLE IF EXISTS `wp_options`;\nCREATE TABLE `wp_options` (`id` int);\nINSERT INTO `wp_options` VALUES (1);\n-- Dump completed\n",
+        ], [
+            'clockwork_companion_secret' => 'secret-at-backup-time',
+            'siteurl' => 'https://example.com',
+        ], $executed);
+
+        $response = (new BackupRestoreRoute())->handleApply(new WP_REST_Request('POST', '/clockwork/v1/backup/restore/apply', ['staged_id' => 'keep_state_1']));
+
+        $this->assertNotInstanceOf(WP_Error::class, $response);
+        $this->assertSame('secret-rotated-after-backup', get_option('clockwork_companion_secret'));
+        $this->assertSame('next-secret', get_option('clockwork_companion_secret_pending'));
+        $this->assertSame('9999999999', get_option('clockwork_hmac_used_0123'));
+        $this->assertSame('https://example.com', get_option('siteurl'), 'Everything else comes from the backup');
+        $this->assertSame('applied', RestoreState::get()['status']);
+        $this->assertSame('keep_state_1', RestoreState::get()['staged_id']);
+        $this->assertFalse(MaintenanceGuard::getConfig()['enabled']);
+    }
+
+    public function testFailedImportKeepsMaintenanceOnAndReportsTheFailure(): void
+    {
+        update_option('clockwork_companion_secret', 'current-secret');
+        $executed = [];
+        $this->stageRestoreWithOptionsRollback('keep_state_2', [
+            'db.sql' => "DROP TABLE IF EXISTS `wp_options`;\nCREATE TABLE `wp_options` (`id` int);\nINSERT INTO `wp_options` VALUES (1);\n-- Dump completed\n",
+        ], ['clockwork_companion_secret' => 'old-secret'], $executed, true);
+
+        $response = (new BackupRestoreRoute())->handleApply(new WP_REST_Request('POST', '/clockwork/v1/backup/restore/apply', ['staged_id' => 'keep_state_2']));
+
+        $this->assertInstanceOf(WP_Error::class, $response);
+        $this->assertSame('sql_failed', $response->get_error_code());
+        $this->assertTrue(MaintenanceGuard::getConfig()['enabled'], 'A partly restored database must stay behind the maintenance page');
+        $state = RestoreState::get();
+        $this->assertSame('failed', $state['status']);
+        $this->assertSame('Duplicate entry', $state['error_detail']);
+        $this->assertSame('current-secret', get_option('clockwork_companion_secret'));
+    }
+
+    public function testATruncatedSecondDumpStopsTheRestoreBeforeTheFirstRuns(): void
+    {
+        $executed = [];
+        $this->stageRestoreWithOptionsRollback('truncated_2', [
+            '01-first.sql' => "DROP TABLE IF EXISTS `wp_posts`;\nCREATE TABLE `wp_posts` (`id` int);\n-- Dump completed\n",
+            '02-second.sql' => "DROP TABLE IF EXISTS `wp_users`;\nCREATE TABLE `wp_users` (`id` int);\nINSERT INTO `wp_users` VALUES \n(1),\n",
+        ], [], $executed);
+
+        $response = (new BackupRestoreRoute())->handleApply(new WP_REST_Request('POST', '/clockwork/v1/backup/restore/apply', ['staged_id' => 'truncated_2']));
+
+        $this->assertInstanceOf(WP_Error::class, $response);
+        $this->assertSame('dump_incomplete', $response->get_error_code());
+        $this->assertSame([], $executed);
+        $this->assertFalse(MaintenanceGuard::getConfig()['enabled']);
     }
 }

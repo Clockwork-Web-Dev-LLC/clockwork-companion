@@ -7,6 +7,7 @@ use ClockworkCompanion\Backup\ArchiveDownloader;
 use ClockworkCompanion\Backup\ArchiveExtractor;
 use ClockworkCompanion\Backup\FileApplier;
 use ClockworkCompanion\Backup\Paths;
+use ClockworkCompanion\Backup\PluginState;
 use ClockworkCompanion\Backup\RestoreState;
 use ClockworkCompanion\Backup\SqlImporter;
 use ClockworkCompanion\Maintenance\MaintenanceGuard;
@@ -297,6 +298,32 @@ class BackupRestoreRoute
                 return new WP_Error('staging_missing', $stagingProblem.' Re-stage the archive before applying.', ['status' => 409]);
             }
 
+            $dbFiles = [];
+            if (! empty($state['has_sql'])) {
+                $dbFiles = glob($extractDir.'/database/*.sql*') ?: [];
+                sort($dbFiles, SORT_STRING);
+            }
+
+            // Check every dump before anything changes. Importing drops each
+            // table before refilling it, so a truncated dump (or one for
+            // another table prefix) is rejected here, while the site is still
+            // live and untouched.
+            $importer = new SqlImporter();
+            foreach ($dbFiles as $dbFile) {
+                $check = $importer->verify($dbFile);
+                if (! ($check['ok'] ?? false)) {
+                    RestoreState::update([
+                        'status' => 'failed',
+                        'error' => $check['error'] ?? 'sql_failed',
+                        'error_detail' => $check['detail'] ?? 'Database dump failed verification',
+                        'skipped_tables' => (int) ($check['skipped_tables'] ?? 0),
+                        'skipped_statements' => (int) ($check['skipped_statements'] ?? 0),
+                    ]);
+
+                    return new WP_Error($check['error'] ?? 'sql_failed', ($check['detail'] ?? 'Database dump failed verification').' The site was not changed.', ['status' => 422]);
+                }
+            }
+
             // 1. Enter Maintenance Mode (D7)
             $maint = MaintenanceGuard::getConfig();
             $maint['enabled'] = true;
@@ -308,40 +335,51 @@ class BackupRestoreRoute
                 'status' => 'applying_sql',
             ]);
 
-            if (! empty($state['has_sql'])) {
-                $dbFiles = glob($extractDir.'/database/*.sql*') ?: [];
-                sort($dbFiles, SORT_STRING);
+            if ($dbFiles !== []) {
+                $totalSkippedTables = 0;
+                $totalSkippedStatements = 0;
+                $failure = null;
 
-                if (! empty($dbFiles)) {
-                    $importer = new SqlImporter();
-                    $totalSkippedTables = 0;
-                    $totalSkippedStatements = 0;
+                // The import replaces the options table, including this
+                // plugin's own rows (secret, restore state, maintenance flag,
+                // lock, replay markers). Captured after maintenance was
+                // switched on, so putting them back also keeps it on.
+                $preserved = PluginState::capture();
 
-                    // Import every database/*.sql* file in sorted order, aggregating counters.
-                    foreach ($dbFiles as $dbFile) {
-                        $importResult = $importer->import($dbFile);
-                        $totalSkippedTables += (int) ($importResult['skipped_tables'] ?? 0);
-                        $totalSkippedStatements += (int) ($importResult['skipped_statements'] ?? 0);
+                // Import every database/*.sql* file in sorted order, aggregating counters.
+                foreach ($dbFiles as $dbFile) {
+                    $importResult = $importer->import($dbFile);
+                    $totalSkippedTables += (int) ($importResult['skipped_tables'] ?? 0);
+                    $totalSkippedStatements += (int) ($importResult['skipped_statements'] ?? 0);
 
-                        if (! ($importResult['ok'] ?? false)) {
-                            RestoreState::update([
-                                'status' => 'failed',
-                                'error' => $importResult['error'] ?? 'sql_failed',
-                                'error_detail' => $importResult['detail'] ?? 'Database import failed',
-                                'skipped_tables' => $totalSkippedTables,
-                                'skipped_statements' => $totalSkippedStatements,
-                            ]);
-
-                            // Fail-closed: Maintenance mode stays ENABLED!
-                            return new WP_Error($importResult['error'] ?? 'sql_failed', $importResult['detail'] ?? 'Database import failed', ['status' => 500]);
-                        }
+                    if (! ($importResult['ok'] ?? false)) {
+                        $failure = $importResult;
+                        break;
                     }
+                }
 
+                // Before any further RestoreState update: those would land on
+                // rows the import may have removed or rolled back.
+                PluginState::restore($preserved);
+
+                if ($failure !== null) {
                     RestoreState::update([
+                        'status' => 'failed',
+                        'error' => $failure['error'] ?? 'sql_failed',
+                        'error_detail' => $failure['detail'] ?? 'Database import failed',
                         'skipped_tables' => $totalSkippedTables,
                         'skipped_statements' => $totalSkippedStatements,
                     ]);
+
+                    // Fail-closed: the database is partly restored, so
+                    // maintenance mode stays enabled.
+                    return new WP_Error($failure['error'] ?? 'sql_failed', $failure['detail'] ?? 'Database import failed', ['status' => 500]);
                 }
+
+                RestoreState::update([
+                    'skipped_tables' => $totalSkippedTables,
+                    'skipped_statements' => $totalSkippedStatements,
+                ]);
             }
 
             // 3. Copy files (D6)

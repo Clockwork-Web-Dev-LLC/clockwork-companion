@@ -80,8 +80,55 @@ class SqlImporter
         // drops each table before refilling it, so a dump that stops half-way
         // (full disk while it was written, truncated download) must be
         // rejected here, while the live tables are still untouched.
+        $scan = $this->scan($sqlFilePath, $isGz, $prefix);
+        if (! $scan['ok']) {
+            return $scan;
+        }
+
+        // Second pass: execute.
+        $result = $this->walk($sqlFilePath, $isGz, $prefix, isset($wpdb) && is_object($wpdb) ? $wpdb : null, true);
+        unset($result['complete']);
+
+        return $result;
+    }
+
+    /**
+     * Check a dump without executing anything: it must be readable, end with
+     * DatabaseDumper::FOOTER and contain at least one table with the prefix.
+     * Callers importing several files verify all of them first.
+     *
+     * @param  string|null  $prefix Table prefix (defaults to $wpdb->prefix).
+     * @return array{ok: bool, error?: string, detail?: string, matched_tables: int, skipped_tables: int, skipped_statements: int}
+     */
+    public function verify(string $sqlFilePath, ?string $prefix = null): array
+    {
+        global $wpdb;
+
+        $prefix = $prefix !== null ? $prefix : (isset($wpdb->prefix) ? (string) $wpdb->prefix : 'wp_');
+        $isGz = str_ends_with(strtolower($sqlFilePath), '.gz');
+
+        if (is_callable(self::$testImporter)) {
+            return ['ok' => true, 'matched_tables' => 1, 'skipped_tables' => 0, 'skipped_statements' => 0];
+        }
+        if (! file_exists($sqlFilePath)) {
+            return ['ok' => false, 'error' => 'sql_failed', 'detail' => "SQL dump file does not exist: {$sqlFilePath}", 'matched_tables' => 0, 'skipped_tables' => 0, 'skipped_statements' => 0];
+        }
+        if ($isGz && ! function_exists('gzopen')) {
+            return ['ok' => false, 'error' => 'zlib_missing', 'detail' => 'Dump file is gzip-compressed but the PHP zlib extension (gzopen) is not available.', 'matched_tables' => 0, 'skipped_tables' => 0, 'skipped_statements' => 0];
+        }
+
+        return $this->scan($sqlFilePath, $isGz, $prefix);
+    }
+
+    /**
+     * @return array{ok: bool, error?: string, detail?: string, matched_tables: int, skipped_tables: int, skipped_statements: int}
+     */
+    private function scan(string $sqlFilePath, bool $isGz, string $prefix): array
+    {
         $scan = $this->walk($sqlFilePath, $isGz, $prefix, null);
         if (! $scan['ok']) {
+            unset($scan['complete']);
+
             return $scan;
         }
 
@@ -89,7 +136,7 @@ class SqlImporter
             return [
                 'ok' => false,
                 'error' => 'dump_incomplete',
-                'detail' => 'The database dump is truncated: it does not end with the "'.DatabaseDumper::FOOTER.'" marker. Nothing was imported.',
+                'detail' => 'The database dump '.basename($sqlFilePath).' is truncated: it does not end with the "'.DatabaseDumper::FOOTER.'" marker. Nothing was imported.',
                 'matched_tables' => $scan['matched_tables'],
                 'skipped_tables' => $scan['skipped_tables'],
                 'skipped_statements' => $scan['skipped_statements'],
@@ -107,11 +154,9 @@ class SqlImporter
             ];
         }
 
-        // Second pass: execute.
-        $result = $this->walk($sqlFilePath, $isGz, $prefix, isset($wpdb) && is_object($wpdb) ? $wpdb : null, true);
-        unset($result['complete']);
+        unset($scan['complete']);
 
-        return $result;
+        return $scan;
     }
 
     /**
