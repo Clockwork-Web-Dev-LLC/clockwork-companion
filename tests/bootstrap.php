@@ -159,6 +159,10 @@ if (! function_exists('get_user_meta')) {
 if (! function_exists('update_user_meta')) {
     function update_user_meta(int $userId, string $key, mixed $value): bool
     {
+        // Lets a test simulate a failed write for one meta key.
+        if (! empty($GLOBALS['wp_test_update_user_meta_fails'][$key])) {
+            return false;
+        }
         $GLOBALS['wp_test_user_meta'][$userId][$key] = $value;
 
         return true;
