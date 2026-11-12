@@ -48,10 +48,13 @@ use WP_REST_Request;
  *
  * Behind a CDN (Cloudflare etc.), `REMOTE_ADDR` is the edge IP — every
  * attacker shares one bucket and one noisy probe locks out the world.
- * Define `CLOCKWORK_COMPANION_TRUST_PROXY = true` in wp-config.php to read
- * the real client IP from `CF-Connecting-IP` / `X-Forwarded-For` instead.
- * Opt-in because trusting those headers without a real proxy in front lets
- * an attacker spoof their bucket key.
+ * The bucket key is the client address as Gatekeeper resolves it, so the
+ * same trusted-proxy rules apply: `CF-Connecting-IP` / `X-Forwarded-For`
+ * are read only from a peer listed in Gatekeeper's Trusted Proxies setting
+ * or the `CLOCKWORK_COMPANION_TRUSTED_PROXIES` constant. With neither set,
+ * `CLOCKWORK_COMPANION_TRUST_PROXY = true` trusts Cloudflare's ranges and
+ * private networks. Trusting the headers from any other peer would let an
+ * attacker spoof their bucket key.
  */
 class HmacVerifier
 {
@@ -323,38 +326,16 @@ class HmacVerifier
         return false;
     }
 
+    /**
+     * The caller's address, resolved by Gatekeeper's rules: forwarding
+     * headers count only when the connecting peer is a trusted proxy (see
+     * Gatekeeper\ClientIp). Trusting them from any peer whenever
+     * CLOCKWORK_COMPANION_TRUST_PROXY was set let a caller pick its own
+     * rate-limit bucket and the address written to the audit tables.
+     */
     public static function clientIp(): string
     {
-        $candidate = '';
-
-        if (defined('CLOCKWORK_COMPANION_TRUST_PROXY') && constant('CLOCKWORK_COMPANION_TRUST_PROXY')) {
-            // Cloudflare puts the real client IP here directly; honoured first
-            // because it's a single-value header (no chain to parse).
-            if (! empty($_SERVER['HTTP_CF_CONNECTING_IP'])) {
-                $candidate = trim((string) $_SERVER['HTTP_CF_CONNECTING_IP']);
-            } elseif (! empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
-                // Generic XFF: take the RIGHTMOST entry — the address the
-                // trusted proxy itself appended. Everything to its left is
-                // whatever the client chose to send, even through an honest
-                // proxy, so the leftmost entry would let a caller pick its
-                // own rate-limit bucket (or impersonate Clockwork's). Same
-                // rule as Renegade's Gatekeeper\ClientIp.
-                $parts = array_map('trim', explode(',', (string) $_SERVER['HTTP_X_FORWARDED_FOR']));
-                $candidate = (string) end($parts);
-            }
-        }
-
-        if ($candidate === '' && isset($_SERVER['REMOTE_ADDR'])) {
-            $candidate = (string) $_SERVER['REMOTE_ADDR'];
-        }
-
-        // Validate so the audit table can't be poisoned by a garbage string
-        // if any upstream ever populates these from untrusted input.
-        if ($candidate !== '' && filter_var($candidate, FILTER_VALIDATE_IP)) {
-            return $candidate;
-        }
-
-        return 'unknown';
+        return \ClockworkCompanion\Gatekeeper\ClientIp::get();
     }
 
     private static function transientKey(string $ip): string

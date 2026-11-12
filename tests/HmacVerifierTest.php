@@ -272,7 +272,9 @@ class HmacVerifierTest extends TestCase
         if (! defined('CLOCKWORK_COMPANION_TRUST_PROXY')) {
             define('CLOCKWORK_COMPANION_TRUST_PROXY', true);
         }
-        $_SERVER['REMOTE_ADDR'] = '198.51.100.1';
+        // With no Trusted Proxies list, the constant trusts Cloudflare and
+        // private peers; the load balancer here is on a private address.
+        $_SERVER['REMOTE_ADDR'] = '10.0.0.2';
         $_SERVER['HTTP_X_FORWARDED_FOR'] = '203.0.113.99, 192.0.2.20';
         $audit = $this->recordingWpdb();
 
@@ -283,6 +285,47 @@ class HmacVerifierTest extends TestCase
         }
 
         $this->assertSame('192.0.2.20', $audit->inserted[0]['ip']);
+    }
+
+    /**
+     * CLOCKWORK_COMPANION_TRUST_PROXY used to make the headers authoritative
+     * from any peer, so a caller could pick its own rate-limit bucket (and
+     * the address recorded in the audit table) with one header.
+     */
+    public function testForwardingHeadersFromAnUntrustedPeerDoNotChooseTheBucket(): void
+    {
+        if (! defined('CLOCKWORK_COMPANION_TRUST_PROXY')) {
+            define('CLOCKWORK_COMPANION_TRUST_PROXY', true);
+        }
+        $previousPeer = $_SERVER['REMOTE_ADDR'] ?? null;
+        $_SERVER['REMOTE_ADDR'] = '198.51.100.1';
+        $_SERVER['HTTP_CF_CONNECTING_IP'] = '203.0.113.5';
+        $_SERVER['HTTP_X_FORWARDED_FOR'] = '203.0.113.6';
+
+        try {
+            $this->assertSame('198.51.100.1', HmacVerifier::clientIp());
+
+            // Rotating the headers does not escape the limit.
+            for ($i = 0; $i < 30; $i++) {
+                $_SERVER['HTTP_CF_CONNECTING_IP'] = '203.0.113.' . ($i + 10);
+                HmacVerifier::verify($this->request('GET', '/clockwork/v1/health', []));
+            }
+            $_SERVER['HTTP_CF_CONNECTING_IP'] = '203.0.113.200';
+            $result = HmacVerifier::verify($this->request('GET', '/clockwork/v1/health', []));
+            $this->assertInstanceOf(WP_Error::class, $result);
+            $this->assertSame('rate_limited', $result->get_error_code());
+
+            // A peer named in Gatekeeper's Trusted Proxies may relay the client.
+            update_option(\ClockworkCompanion\Gatekeeper\Settings::OPTION, ['trusted_proxies' => ['198.51.100.0/24']]);
+            $this->assertSame('203.0.113.200', HmacVerifier::clientIp());
+        } finally {
+            unset($_SERVER['HTTP_CF_CONNECTING_IP'], $_SERVER['HTTP_X_FORWARDED_FOR']);
+            if ($previousPeer === null) {
+                unset($_SERVER['REMOTE_ADDR']);
+            } else {
+                $_SERVER['REMOTE_ADDR'] = $previousPeer;
+            }
+        }
     }
 
     private function recordingWpdb(): wpdb
