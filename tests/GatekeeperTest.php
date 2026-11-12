@@ -615,6 +615,56 @@ class GatekeeperTest extends TestCase
         $this->assertSame('203.0.113.10', ClientIp::get());
     }
 
+    /**
+     * With nothing configured, a site behind Cloudflare whose web server does
+     * not rewrite REMOTE_ADDR must still see each visitor's own address;
+     * otherwise everyone using one Cloudflare edge shares one lockout.
+     */
+    public function testCloudflarePeerNamesTheVisitorWhenNoProxiesAreConfigured(): void
+    {
+        $_SERVER['REMOTE_ADDR'] = '173.245.48.5';
+        $_SERVER['HTTP_CF_CONNECTING_IP'] = '198.51.100.7';
+        // X-Forwarded-For stays untrusted under the default.
+        $_SERVER['HTTP_X_FORWARDED_FOR'] = '192.0.2.99';
+
+        $this->assertSame(['ip' => '198.51.100.7', 'source' => ClientIp::SOURCE_HEADER, 'peer' => '173.245.48.5'], ClientIp::resolve());
+
+        unset($_SERVER['HTTP_CF_CONNECTING_IP']);
+        $this->assertSame(['ip' => '173.245.48.5', 'source' => ClientIp::SOURCE_PEER, 'peer' => '173.245.48.5'], ClientIp::resolve());
+    }
+
+    public function testSpoofedCloudflareHeaderFromANonCloudflarePeerIsIgnoredByDefault(): void
+    {
+        $_SERVER['REMOTE_ADDR'] = '203.0.113.10';
+        $_SERVER['HTTP_CF_CONNECTING_IP'] = '198.51.100.7';
+
+        $this->assertSame(['ip' => '203.0.113.10', 'source' => ClientIp::SOURCE_PEER, 'peer' => '203.0.113.10'], ClientIp::resolve());
+    }
+
+    public function testInvalidCloudflareHeaderFallsBackToThePeerByDefault(): void
+    {
+        $_SERVER['REMOTE_ADDR'] = '2606:4700::1';
+        $_SERVER['HTTP_CF_CONNECTING_IP'] = '198.51.100.7, 192.0.2.1';
+
+        $this->assertSame(['ip' => '2606:4700::1', 'source' => ClientIp::SOURCE_PEER, 'peer' => '2606:4700::1'], ClientIp::resolve());
+    }
+
+    public function testNoneTurnsTheCloudflareDefaultOff(): void
+    {
+        Settings::update(['trusted_proxies' => 'none']);
+        $this->assertSame(['none'], Settings::get()['trusted_proxies']);
+        $this->assertSame([], ClientIp::trustedProxies());
+
+        $_SERVER['REMOTE_ADDR'] = '173.245.48.5';
+        $_SERVER['HTTP_CF_CONNECTING_IP'] = '198.51.100.7';
+        $this->assertSame(['ip' => '173.245.48.5', 'source' => ClientIp::SOURCE_PEER, 'peer' => '173.245.48.5'], ClientIp::resolve());
+
+        // The same opt-out through the filter (the constant feeds the same list).
+        Settings::update(['trusted_proxies' => []]);
+        add_filter('clockwork_companion_trusted_proxies', fn () => ['none']);
+        $this->assertSame('173.245.48.5', ClientIp::get());
+    }
+
     public function testForwardedForIsReadFromTheRightPastTrustedHops(): void
     {
         Settings::update(['trusted_proxies' => "private\n198.51.100.0/24"]);

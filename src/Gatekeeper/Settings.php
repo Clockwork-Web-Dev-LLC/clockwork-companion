@@ -22,6 +22,13 @@ class Settings
     public const PROXY_PRIVATE = 'private';
 
     /**
+     * Trusted-proxy keyword: trust no peer at all. Turns off the default that
+     * lets Cloudflare edges supply CF-Connecting-IP when no list is
+     * configured (see ClientIp).
+     */
+    public const PROXY_NONE = 'none';
+
+    /**
      * @return array<string, mixed>
      */
     public static function defaults(): array
@@ -45,7 +52,8 @@ class Settings
             'ignore_cidrs' => [],
             // Peers allowed to tell us the client address through
             // CF-Connecting-IP / X-Forwarded-For: IPs, CIDRs, or the
-            // keywords "cloudflare" and "private". Empty: headers ignored.
+            // keywords "cloudflare" and "private". Empty: only Cloudflare
+            // edges, and only CF-Connecting-IP; "none": headers ignored.
             'trusted_proxies' => [],
             // A lockout that ended longer ago than this no longer counts
             // towards the extended lockout.
@@ -105,7 +113,8 @@ class Settings
 
     /**
      * Normalise a list of trusted proxies: IPv4/IPv6 addresses, CIDRs, and
-     * the keywords PROXY_CLOUDFLARE / PROXY_PRIVATE. Anything else is dropped.
+     * the keywords PROXY_CLOUDFLARE / PROXY_PRIVATE / PROXY_NONE. Anything
+     * else is dropped.
      *
      * @param mixed $entries Array, or a string separated by commas, spaces or newlines.
      * @return list<string>
@@ -125,7 +134,7 @@ class Settings
                 continue;
             }
             $entry = strtolower(trim($entry));
-            if ($entry === self::PROXY_CLOUDFLARE || $entry === self::PROXY_PRIVATE) {
+            if ($entry === self::PROXY_CLOUDFLARE || $entry === self::PROXY_PRIVATE || $entry === self::PROXY_NONE) {
                 $clean[] = $entry;
             } elseif (filter_var($entry, FILTER_VALIDATE_IP) !== false || self::isValidCidr($entry)) {
                 $clean[] = $entry;

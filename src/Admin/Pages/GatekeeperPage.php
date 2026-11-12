@@ -216,7 +216,7 @@ class GatekeeperPage
                     <tr>
                         <th scope="row"><label for="cwk-gk-proxies">Trusted Proxies</label></th>
                         <td><textarea id="cwk-gk-proxies" name="trusted_proxies" rows="3" class="large-text code"><?php echo esc_textarea($trustedProxies); ?></textarea>
-                            <p class="description">Connections from these addresses may name the real visitor in the CF-Connecting-IP or X-Forwarded-For header; from anywhere else those headers are ignored. One IP or CIDR per line, or "cloudflare" for Cloudflare's published ranges and "private" for loopback and private networks. Leave empty if the web server already puts the visitor's address in REMOTE_ADDR.</p>
+                            <p class="description">Connections from these addresses may name the real visitor in the CF-Connecting-IP or X-Forwarded-For header; from anywhere else those headers are ignored. One IP or CIDR per line, or "cloudflare" for Cloudflare's published ranges and "private" for loopback and private networks. When left empty, Cloudflare's addresses may still name the visitor in CF-Connecting-IP (and nothing else is trusted); enter "none" to trust no connection at all.</p>
                             <p class="description"><?php echo esc_html(sprintf('This request: client %1$s, connection from %2$s.', $client['ip'], $client['peer'])); ?></p></td>
                     </tr>
                 </table>

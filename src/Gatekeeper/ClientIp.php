@@ -22,6 +22,18 @@ namespace ClockworkCompanion\Gatekeeper;
  * On hosts where the web server already rewrites REMOTE_ADDR from the CDN
  * header (nginx real_ip, Apache mod_remoteip) no proxy needs to be trusted
  * here.
+ *
+ * Default when no trusted-proxy list is configured at all: a peer inside
+ * Cloudflare's published ranges may name the visitor in CF-Connecting-IP
+ * (and only there; X-Forwarded-For stays ignored). Without this, a site
+ * behind Cloudflare whose web server does not rewrite REMOTE_ADDR sees a
+ * shared Cloudflare edge address for every visitor, and one lockout blocks
+ * everyone reaching the site through that edge, the owner included. Only
+ * Cloudflare's own addresses can be the peer, so a client connecting
+ * directly still cannot choose its address with the header. To turn the
+ * default off, configure the list as "none" (in the setting, the
+ * CLOCKWORK_COMPANION_TRUSTED_PROXIES constant or the filter): no peer is
+ * trusted and REMOTE_ADDR is always the client.
  */
 class ClientIp
 {
@@ -78,17 +90,25 @@ class ClientIp
             return ['ip' => 'unknown', 'source' => self::SOURCE_PEER, 'peer' => $peer];
         }
 
-        $trusted = self::trustedProxies();
+        $configured = self::configuredProxies();
+        if ($configured === []) {
+            // Nothing configured: Cloudflare's edges are trusted for
+            // CF-Connecting-IP only. See the class docblock.
+            $cf = self::matchesAny($peer, self::cloudflareRanges()) ? self::cloudflareHeader() : null;
+
+            return $cf !== null
+                ? ['ip' => $cf, 'source' => self::SOURCE_HEADER, 'peer' => $peer]
+                : ['ip' => $peer, 'source' => self::SOURCE_PEER, 'peer' => $peer];
+        }
+
+        $trusted = self::expand($configured);
         if ($trusted === [] || ! self::matchesAny($peer, $trusted)) {
             return ['ip' => $peer, 'source' => self::SOURCE_PEER, 'peer' => $peer];
         }
 
-        // Cloudflare sends exactly one address here.
-        if (! empty($_SERVER['HTTP_CF_CONNECTING_IP'])) {
-            $cf = trim((string) $_SERVER['HTTP_CF_CONNECTING_IP']);
-            if (filter_var($cf, FILTER_VALIDATE_IP) !== false) {
-                return ['ip' => $cf, 'source' => self::SOURCE_HEADER, 'peer' => $peer];
-            }
+        $cf = self::cloudflareHeader();
+        if ($cf !== null) {
+            return ['ip' => $cf, 'source' => self::SOURCE_HEADER, 'peer' => $peer];
         }
 
         // X-Forwarded-For: each proxy appends the address it received the
@@ -121,10 +141,23 @@ class ClientIp
 
     /**
      * Expanded trusted-proxy list: CIDRs, single IPs, and the "private" keyword.
+     * Empty when nothing is configured or the list is "none".
      *
      * @return list<string>
      */
     public static function trustedProxies(): array
+    {
+        return self::expand(self::configuredProxies());
+    }
+
+    /**
+     * The trusted-proxy entries as configured (keywords not yet expanded).
+     * An empty list means "not configured", which enables the Cloudflare
+     * default in resolve(); "none" is an explicit, configured empty list.
+     *
+     * @return list<string>
+     */
+    private static function configuredProxies(): array
     {
         $entries = (array) (Settings::get()['trusted_proxies'] ?? []);
 
@@ -140,13 +173,22 @@ class ClientIp
             $entries = (array) apply_filters('clockwork_companion_trusted_proxies', $entries);
         }
 
+        return Settings::sanitizeProxyList($entries);
+    }
+
+    /**
+     * @param list<string> $entries
+     * @return list<string>
+     */
+    private static function expand(array $entries): array
+    {
         $expanded = [];
-        foreach (Settings::sanitizeProxyList($entries) as $entry) {
+        foreach ($entries as $entry) {
+            if ($entry === Settings::PROXY_NONE) {
+                continue;
+            }
             if ($entry === Settings::PROXY_CLOUDFLARE) {
-                $ranges = function_exists('apply_filters')
-                    ? (array) apply_filters('clockwork_companion_cloudflare_ranges', self::CLOUDFLARE_RANGES)
-                    : self::CLOUDFLARE_RANGES;
-                $expanded = array_merge($expanded, Settings::sanitizeProxyList($ranges));
+                $expanded = array_merge($expanded, self::cloudflareRanges());
             } elseif ($entry === Settings::PROXY_PRIVATE) {
                 // Kept as a keyword: matchesAny() asks Store::isPrivate(),
                 // which covers ranges wider than ipInCidr() accepts (fc00::/7).
@@ -157,6 +199,29 @@ class ClientIp
         }
 
         return array_values(array_unique($expanded));
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function cloudflareRanges(): array
+    {
+        $ranges = function_exists('apply_filters')
+            ? (array) apply_filters('clockwork_companion_cloudflare_ranges', self::CLOUDFLARE_RANGES)
+            : self::CLOUDFLARE_RANGES;
+
+        return Settings::sanitizeProxyList($ranges);
+    }
+
+    /** CF-Connecting-IP when it holds a valid address (Cloudflare sends exactly one). */
+    private static function cloudflareHeader(): ?string
+    {
+        if (empty($_SERVER['HTTP_CF_CONNECTING_IP'])) {
+            return null;
+        }
+        $cf = trim((string) $_SERVER['HTTP_CF_CONNECTING_IP']);
+
+        return filter_var($cf, FILTER_VALIDATE_IP) !== false ? $cf : null;
     }
 
     public static function isCloudflare(string $ip): bool
