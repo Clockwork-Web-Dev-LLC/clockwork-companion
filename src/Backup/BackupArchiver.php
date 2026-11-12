@@ -15,20 +15,87 @@ use ZipArchive;
  */
 class BackupArchiver
 {
-    /** Default directories to exclude inside wp-content */
+    /**
+     * Default exclusions, as paths relative to wp-content (a `*` matches
+     * within one path segment). They are anchored on purpose: matched as bare
+     * names at any depth, they also dropped code such as a plugin's bundled
+     * `vendor/psr/cache` or `src/Cache/` (the old match ignored case), so a
+     * disaster restore onto a blank site produced broken plugins.
+     *
+     * A rule starting with `**` + `/` matches a directory of that name at
+     * any depth: only used for `.git`, version-control metadata WordPress
+     * never loads.
+     */
     public const DEFAULT_EXCLUDES = [
         'cache',
         'et-cache',
         'w3tc-cache',
         'wflogs',
         'clockwork-backups',
+        'uploads/clockwork-backups',
         'updraft',
         'ai1wm-backups',
         'wpvividbackups',
         'backwpup',
-        '.git',
+        'uploads/backwpup-*',
         'node_modules',
+        '**/.git',
     ];
+
+    /**
+     * Whether $relative (a path relative to wp-content, "/"-separated) is
+     * excluded by one of $rules. Rules without a "/" that come from the caller
+     * (`paths_to_exclude`) keep their historical meaning — a directory name
+     * at any depth, any case — so existing exclusion lists behave as before.
+     *
+     * @param  array<int, string>  $rules Anchored rules (DEFAULT_EXCLUDES style).
+     * @param  array<int, string>  $customRules Caller-supplied rules.
+     */
+    public static function isExcluded(string $relative, array $rules, array $customRules = []): bool
+    {
+        $segments = explode('/', trim(str_replace('\\', '/', $relative), '/'));
+
+        foreach ($customRules as $rule) {
+            $rule = trim(str_replace('\\', '/', (string) $rule), '/');
+            if ($rule === '') {
+                continue;
+            }
+            if (! str_contains($rule, '/')) {
+                $rule = '**/'.$rule;
+            }
+            $rules[] = $rule;
+        }
+
+        foreach ($rules as $rule) {
+            if (str_starts_with($rule, '**/')) {
+                $name = strtolower(substr($rule, 3));
+                foreach ($segments as $segment) {
+                    if (strtolower($segment) === $name) {
+                        return true;
+                    }
+                }
+
+                continue;
+            }
+
+            $ruleSegments = explode('/', $rule);
+            if (count($segments) < count($ruleSegments)) {
+                continue;
+            }
+            $matched = true;
+            foreach ($ruleSegments as $i => $ruleSegment) {
+                if (! fnmatch($ruleSegment, $segments[$i])) {
+                    $matched = false;
+                    break;
+                }
+            }
+            if ($matched) {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     /**
      * File extensions that are already compressed. Storing them with CM_STORE
@@ -213,13 +280,12 @@ class BackupArchiver
         $contentDir = defined('WP_CONTENT_DIR') ? WP_CONTENT_DIR : (defined('ABSPATH') ? ABSPATH.'wp-content' : null);
         if ($includeFiles && $contentDir && is_dir($contentDir)) {
             $contentDir = rtrim($contentDir, '/');
-            $excludes = array_merge(self::DEFAULT_EXCLUDES, $customExcludes);
             $skippedDirs = 0;
 
             $iter = new RecursiveIteratorIterator(
                 new RecursiveCallbackFilterIterator(
                     new RecursiveDirectoryIterator($contentDir, FilesystemIterator::SKIP_DOTS),
-                    function (SplFileInfo $current) use ($excludes, &$skippedDirs) {
+                    function (SplFileInfo $current) use ($contentDir, $customExcludes, &$skippedDirs) {
                         $name = $current->getFilename();
                         if (str_starts_with($name, '._') || $name === '.DS_Store') {
                             return false;
@@ -227,12 +293,13 @@ class BackupArchiver
                         if ($current->isLink()) {
                             return false;
                         }
-                        if ($current->isDir()) {
-                            if (in_array(strtolower($name), $excludes, true)) {
+                        $relative = substr($current->getPathname(), strlen($contentDir) + 1);
+                        if (self::isExcluded($relative, self::DEFAULT_EXCLUDES, $customExcludes)) {
+                            if ($current->isDir()) {
                                 $skippedDirs++;
-
-                                return false;
                             }
+
+                            return false;
                         }
 
                         return true;

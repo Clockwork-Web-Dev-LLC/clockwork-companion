@@ -132,4 +132,58 @@ class BackupArchiverTest extends TestCase
         $this->assertSame(2, $parsed['files']['plugins']['count']);
         $zip->close();
     }
+
+    /**
+     * Exclusions used to match bare directory names at any depth and in any
+     * case, dropping e.g. a plugin's vendor/psr/cache or src/Cache/ code.
+     */
+    public function testExclusionsAreAnchoredToWpContent(): void
+    {
+        $this->assertTrue(BackupArchiver::isExcluded('cache/page/x.html', BackupArchiver::DEFAULT_EXCLUDES));
+        $this->assertTrue(BackupArchiver::isExcluded('uploads/clockwork-backups/restore-x', BackupArchiver::DEFAULT_EXCLUDES));
+        $this->assertTrue(BackupArchiver::isExcluded('uploads/backwpup-abc123-backups/a.zip', BackupArchiver::DEFAULT_EXCLUDES));
+        $this->assertTrue(BackupArchiver::isExcluded('plugins/acme/.git/HEAD', BackupArchiver::DEFAULT_EXCLUDES));
+        $this->assertTrue(BackupArchiver::isExcluded('node_modules/x/index.js', BackupArchiver::DEFAULT_EXCLUDES));
+
+        $this->assertFalse(BackupArchiver::isExcluded('plugins/acme/vendor/psr/cache/src/Item.php', BackupArchiver::DEFAULT_EXCLUDES));
+        $this->assertFalse(BackupArchiver::isExcluded('plugins/acme/src/Cache/Store.php', BackupArchiver::DEFAULT_EXCLUDES));
+        $this->assertFalse(BackupArchiver::isExcluded('plugins/acme/updraft/x.php', BackupArchiver::DEFAULT_EXCLUDES));
+        $this->assertFalse(BackupArchiver::isExcluded('plugins/acme/node_modules/lib/x.js', BackupArchiver::DEFAULT_EXCLUDES));
+        $this->assertFalse(BackupArchiver::isExcluded('Cache/x', BackupArchiver::DEFAULT_EXCLUDES));
+
+        // Caller-supplied bare names keep their old any-depth meaning.
+        $this->assertTrue(BackupArchiver::isExcluded('plugins/acme/Big-Media/x.mp4', [], ['big-media']));
+        $this->assertTrue(BackupArchiver::isExcluded('uploads/videos/a.mp4', [], ['uploads/videos']));
+        $this->assertFalse(BackupArchiver::isExcluded('plugins/videos/a.php', [], ['uploads/videos']));
+    }
+
+    public function testPluginCodeInDirectoriesNamedCacheIsArchived(): void
+    {
+        $contentDir = WP_CONTENT_DIR;
+        $files = [
+            'plugins/cwk-anchor-test/vendor/psr/cache/src/Item.php',
+            'plugins/cwk-anchor-test/src/Cache/Store.php',
+            'cache/cwk-anchor-test/page.html',
+        ];
+        foreach ($files as $file) {
+            @mkdir(dirname($contentDir.'/'.$file), 0755, true);
+            file_put_contents($contentDir.'/'.$file, 'x');
+        }
+
+        try {
+            $zipOutput = $this->tempDir.'/anchored.zip';
+            $result = (new BackupArchiver())->createArchive($zipOutput, $this->tempDir.'/missing.sql.gz', true);
+            $this->assertTrue($result['ok'], $result['error'] ?? '');
+
+            $zip = new \ZipArchive();
+            $this->assertTrue($zip->open($zipOutput) === true);
+            $this->assertNotFalse($zip->locateName('wp-content/plugins/cwk-anchor-test/vendor/psr/cache/src/Item.php'));
+            $this->assertNotFalse($zip->locateName('wp-content/plugins/cwk-anchor-test/src/Cache/Store.php'));
+            $this->assertFalse($zip->locateName('wp-content/cache/cwk-anchor-test/page.html'));
+            $zip->close();
+        } finally {
+            $this->deleteRecursive($contentDir.'/plugins/cwk-anchor-test');
+            $this->deleteRecursive($contentDir.'/cache/cwk-anchor-test');
+        }
+    }
 }
