@@ -1275,3 +1275,37 @@ if (! function_exists('rest_get_url_prefix')) {
         return (string) apply_filters('rest_url_prefix', 'wp-json');
     }
 }
+
+// -----------------------------------------------------------------------------
+// Contact-form lab mode: hooks must be removable so tests can check cleanup.
+// -----------------------------------------------------------------------------
+
+if (! function_exists('remove_filter')) {
+    function remove_filter(string $tag, callable $callback, int $priority = 10): bool
+    {
+        $removed = false;
+        foreach ($GLOBALS['wp_test_filters'][$tag] ?? [] as $i => $registered) {
+            if ($registered === $callback) {
+                unset($GLOBALS['wp_test_filters'][$tag][$i]);
+                $removed = true;
+            }
+        }
+
+        return $removed;
+    }
+}
+
+if (! function_exists('remove_action')) {
+    function remove_action(string $tag, callable $callback, int $priority = 10): bool
+    {
+        $removed = false;
+        foreach ($GLOBALS['wp_test_actions'][$tag] ?? [] as $i => $registered) {
+            if ($registered === $callback) {
+                unset($GLOBALS['wp_test_actions'][$tag][$i]);
+                $removed = true;
+            }
+        }
+
+        return $removed;
+    }
+}

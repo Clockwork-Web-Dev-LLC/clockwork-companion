@@ -2,6 +2,7 @@
 
 namespace ClockworkCompanion\ContactForm\Strategies;
 
+use ClockworkCompanion\ContactForm\HookSilencer;
 use ClockworkCompanion\ContactForm\StrategyResult;
 use ClockworkCompanion\WhiteLabel\WhiteLabel;
 
@@ -59,17 +60,38 @@ abstract class AbstractStrategy
         return $host !== '' ? 'clockwork-test@' . $host : 'clockwork-test@example.com';
     }
 
+    private ?HookSilencer $silencer = null;
+
     /**
-     * Hook for the strategy to suppress entry storage in lab mode.
-     * Default no-op; CF7 doesn't store by default.
+     * Hooks a form plugin fires once a submission is accepted, on which
+     * entry storage add-ons and integrations (CRMs, mailing lists,
+     * webhooks) act. Silenced for the duration of a lab-mode submission.
+     *
+     * @return list<string>
      */
-    public function suppressStorage(string $mode): void
+    protected function integrationHooks(string $formId): array
     {
-        // override in subclass when needed
+        return [];
+    }
+
+    /**
+     * Lab mode: keep the synthetic lead out of storage and integrations.
+     * Subclasses add plugin-specific suppression and call this too.
+     */
+    public function suppressStorage(string $mode, string $formId = ''): void
+    {
+        if ($mode !== 'lab') {
+            return;
+        }
+        $this->silencer = new HookSilencer();
+        $this->silencer->silence($this->integrationHooks($formId));
     }
 
     public function releaseStorage(): void
     {
-        // override in subclass when needed
+        if ($this->silencer !== null) {
+            $this->silencer->restore();
+            $this->silencer = null;
+        }
     }
 }
