@@ -637,7 +637,8 @@ if (! function_exists('delete_site_option')) {
 if (! function_exists('is_multisite')) {
     function is_multisite(): bool
     {
-        return false;
+        // Single-site unless a test opts in.
+        return ! empty($GLOBALS['wp_test_is_multisite']);
     }
 }
 
@@ -1373,6 +1374,43 @@ if (! function_exists('wp_nonce_url')) {
     function wp_nonce_url(string $url, string|int $action = -1, string $name = '_wpnonce'): string
     {
         return $url . (str_contains($url, '?') ? '&' : '?') . $name . '=' . wp_create_nonce((string) $action);
+    }
+}
+if (! function_exists('get_sites')) {
+    function get_sites(array $args = []): array
+    {
+        return $GLOBALS['wp_test_site_ids'] ?? [1];
+    }
+}
+
+if (! function_exists('switch_to_blog')) {
+    /** Points $wpdb's per-blog table names at the blog, as core does. */
+    function switch_to_blog(int $blogId): bool
+    {
+        $GLOBALS['wp_test_blog_stack'][] = $blogId;
+        $prefix = $blogId > 1 ? 'wp_' . $blogId . '_' : 'wp_';
+        $GLOBALS['wpdb']->prefix = $prefix;
+        $GLOBALS['wpdb']->options = $prefix . 'options';
+
+        return true;
+    }
+}
+
+if (! function_exists('restore_current_blog')) {
+    function restore_current_blog(): bool
+    {
+        array_pop($GLOBALS['wp_test_blog_stack']);
+        $GLOBALS['wpdb']->prefix = 'wp_';
+        $GLOBALS['wpdb']->options = 'wp_options';
+
+        return true;
+    }
+}
+
+if (! function_exists('get_current_network_id')) {
+    function get_current_network_id(): int
+    {
+        return 1;
     }
 }
 // ---- end plugins-a stubs ----

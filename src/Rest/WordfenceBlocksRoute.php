@@ -61,7 +61,11 @@ class WordfenceBlocksRoute
     {
         global $wpdb;
 
-        $prefix = $wpdb->prefix;
+        // Wordfence keeps one network-wide table on multisite, under the
+        // base prefix.
+        $prefix = isset($wpdb->base_prefix) && is_string($wpdb->base_prefix) && $wpdb->base_prefix !== ''
+            ? $wpdb->base_prefix
+            : $wpdb->prefix;
         $table = $prefix . 'wfBlocks7';
 
         $existsSql = $wpdb->prepare('SHOW TABLES LIKE %s', $table);
@@ -104,14 +108,20 @@ class WordfenceBlocksRoute
                 'ip' => $ip,
                 'expires_at' => $expiresAt,
                 'source_table' => $table,
-                'reason' => isset($row['reason']) ? (string) $row['reason'] : null,
+                // Free text written by Wordfence — or by anyone who can write
+                // to that table — and shown in Control: treat as untrusted.
+                'reason' => isset($row['reason']) ? ReportedBlocks::cleanText((string) $row['reason']) : null,
                 'type' => isset($row['type']) ? (string) $row['type'] : null,
             ];
         }
 
+        // Control turns these into IP bans: drop non-public addresses, cap.
+        $filtered = ReportedBlocks::filter($out);
+
         return new WP_REST_Response([
             'ok' => true,
-            'blocks' => $out,
+            'blocks' => $filtered['rows'],
+            'truncated' => $filtered['truncated'],
         ]);
     }
 }
