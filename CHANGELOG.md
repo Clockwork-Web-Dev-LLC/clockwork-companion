@@ -4,6 +4,9 @@ Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earli
 
 ## [Unreleased]
 
+
+## 1.44.0 — 2026-11-12
+
 ### Security
 - **Gatekeeper behind Cloudflare (`Gatekeeper\ClientIp`)**: with no trusted proxies configured, a request arriving from one of Cloudflare's published addresses is attributed to the visitor in `CF-Connecting-IP` (validated), so one lockout no longer blocks everyone sharing a Cloudflare edge on sites whose web server does not restore the real IP. Other peers' forwarding headers stay untrusted. Set Trusted Proxies to `none` to turn this off.
 - **Gatekeeper login lockouts restored (`Gatekeeper\*`, `GatekeeperSettingsRoute`)**: Gatekeeper shipped in 1.39.1 from a branch that was never merged, so every release after it (through 1.43.2) dropped it. Sites that had been moved off Limit Login Attempts Reloaded onto Gatekeeper lost all login-attempt limiting, and Clockwork skipped them silently because they stopped advertising the `gatekeeper` capability. This release brings back the current, hardened engine under the same names 1.39.1 used (`clockwork_gatekeeper_settings` option, `{prefix}clockwork_lockouts` table, hourly `clockwork_gatekeeper_prune` cron event), advertises `gatekeeper` on `/health` again and restores `POST /gatekeeper-settings`. **Upgrade note:** sites that had Gatekeeper enabled keep their stored policy and resume enforcing as soon as they upgrade; nothing needs to be pushed from Control. Changes against the 1.39.1 engine:
