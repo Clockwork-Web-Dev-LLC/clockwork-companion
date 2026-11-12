@@ -162,9 +162,19 @@ class HmacVerifier
             ."\n".$request->get_body();
 
         $expected = hash_hmac('sha256', $payload, $secret);
+        $promote = '';
 
         if (! hash_equals($expected, $signature)) {
-            return self::reject($ip, $limited, $request, 'invalid_signature', 'Signature mismatch');
+            // Mid-rotation, Clockwork may already be signing with the secret
+            // it was just issued (see Secret). Accept it; it becomes current
+            // once the request has passed every check below.
+            $pending = Secret::pending();
+            $pendingExpected = $pending !== '' ? hash_hmac('sha256', $payload, $pending) : '';
+            if ($pendingExpected === '' || ! hash_equals($pendingExpected, $signature)) {
+                return self::reject($ip, $limited, $request, 'invalid_signature', 'Signature mismatch');
+            }
+            $expected = $pendingExpected;
+            $promote = $pending;
         }
 
         // Mutating methods only: consume this exact signed payload so a
@@ -174,6 +184,10 @@ class HmacVerifier
         // collide on an identical signature.
         if (self::isMutating($request) && self::alreadyConsumed($expected, $tsInt)) {
             return self::reject($ip, $limited, $request, 'replayed_request', 'Request already consumed');
+        }
+
+        if ($promote !== '') {
+            Secret::promote($promote);
         }
 
         if (function_exists('update_option')) {

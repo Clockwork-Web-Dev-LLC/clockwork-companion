@@ -127,7 +127,17 @@ class Plugin
     public function boot(): void
     {
         (new WhiteLabel())->boot();
-        Secret::ensure();
+        try {
+            Secret::ensure();
+        } catch (\Throwable $e) {
+            // Never let the secret bootstrap take the whole site down: every
+            // front-end and admin request runs boot(). HmacVerifier answers
+            // no_secret until a secret can be stored.
+            if (defined('WP_DEBUG_LOG') && WP_DEBUG_LOG) {
+                // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+                error_log('[clockwork] secret bootstrap failed: '.$e->getMessage());
+            }
+        }
         ActionLogSchema::ensureInstalled();
         AuthAuditSchema::ensureInstalled();
         ResourceSchema::ensureInstalled();

@@ -192,6 +192,10 @@ if (! function_exists('get_option')) {
 if (! function_exists('update_option')) {
     function update_option(string $option, mixed $value, bool $autoload = true): bool
     {
+        // Lets a test simulate a failed DB write for one option name.
+        if (! empty($GLOBALS['wp_test_update_option_fails'][$option])) {
+            return false;
+        }
         $GLOBALS['wp_test_options'][$option] = $value;
         return true;
     }
