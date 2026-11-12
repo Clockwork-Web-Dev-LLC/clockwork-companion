@@ -598,6 +598,10 @@ if (! class_exists('WP_Error')) {
         public function get_error_code(): string { return $this->code; }
         public function get_error_message(): string { return $this->message; }
         public function get_error_data(): mixed { return $this->data; }
+        // An error constructed with a code holds one error, as in core.
+        public function has_errors(): bool { return $this->code !== ''; }
+        /** @return array<int, string> */
+        public function get_error_messages(): array { return $this->code !== '' ? [$this->message] : []; }
     }
 }
 
@@ -1128,6 +1132,12 @@ if (! function_exists('wp_unslash')) {
 if (! function_exists('wp_remote_post')) {
     function wp_remote_post(string $url, array $args = []): array|\WP_Error
     {
+        // A test can install a callable to answer (and inspect) requests.
+        $GLOBALS['wp_test_remote_post_calls'][] = ['url' => $url, 'args' => $args];
+        if (isset($GLOBALS['wp_test_remote_post']) && is_callable($GLOBALS['wp_test_remote_post'])) {
+            return ($GLOBALS['wp_test_remote_post'])($url, $args);
+        }
+
         return ['response' => ['code' => 200]];
     }
 }
@@ -1135,6 +1145,12 @@ if (! function_exists('wp_remote_post')) {
 if (! function_exists('wp_remote_get')) {
     function wp_remote_get(string $url, array $args = []): array|\WP_Error
     {
+        // A test can install a callable to answer (and inspect) requests.
+        $GLOBALS['wp_test_remote_get_calls'][] = ['url' => $url, 'args' => $args];
+        if (isset($GLOBALS['wp_test_remote_get']) && is_callable($GLOBALS['wp_test_remote_get'])) {
+            return ($GLOBALS['wp_test_remote_get'])($url, $args);
+        }
+
         return ['response' => ['code' => 200]];
     }
 }
@@ -1345,3 +1361,55 @@ if (! function_exists('wp_normalize_path')) {
     }
 }
 // ---- end plugins-a stubs ----
+
+// ---- plugins-a stubs: updater helpers ----
+foreach (['class-plugin-upgrader.php', 'class-plugin-upgrader-skin.php', 'class-theme-upgrader.php'] as $plugins_a_stub_file) {
+    if (! file_exists(ABSPATH . 'wp-admin/includes/' . $plugins_a_stub_file)) {
+        @touch(ABSPATH . 'wp-admin/includes/' . $plugins_a_stub_file);
+    }
+}
+
+if (! function_exists('remove_filter')) {
+    function remove_filter(string $tag, mixed $callback, int $priority = 10): bool
+    {
+        foreach ($GLOBALS['wp_test_filters'][$tag] ?? [] as $i => $registered) {
+            if ($registered === $callback) {
+                unset($GLOBALS['wp_test_filters'][$tag][$i]);
+
+                return true;
+            }
+        }
+
+        return false;
+    }
+}
+
+if (! function_exists('wp_update_plugins')) {
+    function wp_update_plugins(array $extra = []): void
+    {
+        $GLOBALS['wp_test_update_plugins_calls'][] = $extra;
+    }
+}
+
+if (! function_exists('wp_update_themes')) {
+    function wp_update_themes(array $extra = []): void
+    {
+        $GLOBALS['wp_test_update_themes_calls'][] = $extra;
+    }
+}
+
+if (! function_exists('set_site_transient')) {
+    // Same storage the get_site_transient() stub reads.
+    function set_site_transient(string $transient, mixed $value, int $expiration = 0): bool
+    {
+        return set_transient($transient, $value, $expiration);
+    }
+}
+
+if (! function_exists('get_plugin_data')) {
+    function get_plugin_data(string $file, bool $markup = true, bool $translate = true): array
+    {
+        return $GLOBALS['wp_test_plugin_data'][$file] ?? ['Version' => ''];
+    }
+}
+// ---- end plugins-a updater stubs ----
