@@ -65,6 +65,31 @@ class Paths
     }
 
     /**
+     * Every staging directory that exists for this site, without creating
+     * any: the configured or out-of-web-root one and the uploads fallback.
+     * Used when the plugin is uninstalled.
+     *
+     * @return list<string>
+     */
+    public static function existingStagingDirs(): array
+    {
+        $candidates = [];
+        if (defined('CLOCKWORK_BACKUP_DIR') && is_string(constant('CLOCKWORK_BACKUP_DIR')) && constant('CLOCKWORK_BACKUP_DIR') !== '') {
+            $candidates[] = rtrim((string) constant('CLOCKWORK_BACKUP_DIR'), '/\\');
+        }
+        $wpRoot = defined('ABSPATH') ? realpath(ABSPATH) : false;
+        if ($wpRoot !== false) {
+            $candidates[] = dirname($wpRoot).'/clockwork-backups-'.substr(hash('sha256', $wpRoot), 0, 12);
+        }
+        $uploadDirInfo = function_exists('wp_upload_dir') ? wp_upload_dir(null, false) : [];
+        if (! empty($uploadDirInfo['basedir'])) {
+            $candidates[] = rtrim((string) $uploadDirInfo['basedir'], '/').'/clockwork-backups';
+        }
+
+        return array_values(array_filter(array_unique($candidates), 'is_dir'));
+    }
+
+    /**
      * A per-site directory next to the WordPress root, when that is outside
      * the document root. Null when it is not, when the document root is
      * unknown, or when it cannot be created.
