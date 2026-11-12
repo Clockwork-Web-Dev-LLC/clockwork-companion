@@ -290,7 +290,7 @@ class HmacVerifier
         return false;
     }
 
-    private static function clientIp(): string
+    public static function clientIp(): string
     {
         $candidate = '';
 

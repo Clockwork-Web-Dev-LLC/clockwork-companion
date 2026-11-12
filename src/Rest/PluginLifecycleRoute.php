@@ -3,6 +3,7 @@
 namespace ClockworkCompanion\Rest;
 
 use ClockworkCompanion\Auth\HmacVerifier;
+use ClockworkCompanion\Auth\RemoteActionAudit;
 use WP_Error;
 use WP_REST_Request;
 use WP_REST_Response;
@@ -48,6 +49,11 @@ class PluginLifecycleRoute
     }
 
     public function handleToggle(WP_REST_Request $request): WP_REST_Response|WP_Error
+    {
+        return $this->audited('plugin_toggled', $request, $this->toggle($request));
+    }
+
+    private function toggle(WP_REST_Request $request): WP_REST_Response|WP_Error
     {
         $body = json_decode($request->get_body(), true);
         if (! is_array($body)) {
@@ -102,6 +108,11 @@ class PluginLifecycleRoute
     }
 
     public function handleDelete(WP_REST_Request $request): WP_REST_Response|WP_Error
+    {
+        return $this->audited('plugin_deleted', $request, $this->delete($request));
+    }
+
+    private function delete(WP_REST_Request $request): WP_REST_Response|WP_Error
     {
         $body = json_decode($request->get_body(), true);
         if (! is_array($body)) {
@@ -165,6 +176,11 @@ class PluginLifecycleRoute
     }
 
     public function handleInstall(WP_REST_Request $request): WP_REST_Response|WP_Error
+    {
+        return $this->audited('plugin_installed', $request, $this->install($request));
+    }
+
+    private function install(WP_REST_Request $request): WP_REST_Response|WP_Error
     {
         $body = json_decode($request->get_body(), true);
         if (! is_array($body)) {
@@ -358,6 +374,52 @@ class PluginLifecycleRoute
             'sha256'      => $sha256,
             'activated'   => $activated,
         ]);
+    }
+
+    /**
+     * Leave a site-side record of every plugin change made over the signed
+     * API, successful or not. Requests rejected as malformed before anything
+     * was attempted are not recorded.
+     */
+    private function audited(string $actionType, WP_REST_Request $request, WP_REST_Response|WP_Error $response): WP_REST_Response|WP_Error
+    {
+        if ($response instanceof WP_Error) {
+            if ($response->get_error_code() === 'invalid_input') {
+                return $response;
+            }
+            $data = ['ok' => false, 'error' => $response->get_error_message()];
+        } else {
+            $data = (array) $response->get_data();
+        }
+
+        $body = json_decode($request->get_body(), true);
+        $body = is_array($body) ? $body : [];
+        $ok = ! empty($data['ok']);
+        $target = (string) ($data['plugin_file'] ?? $data['slug'] ?? $body['slug'] ?? $body['package_url'] ?? '');
+        $verb = [
+            'plugin_toggled' => ($body['action'] ?? '') === 'deactivate' ? 'Deactivated' : 'Activated',
+            'plugin_deleted' => 'Deleted',
+            'plugin_installed' => 'Installed',
+        ][$actionType] ?? 'Changed';
+
+        RemoteActionAudit::record(
+            $actionType,
+            $target !== '' ? $target : null,
+            $ok ? sprintf('%s plugin %s.', $verb, $target) : sprintf('%s plugin %s failed.', $verb, $target),
+            [
+                'action' => isset($body['action']) ? (string) $body['action'] : null,
+                'network_wide' => ! empty($body['network_wide']),
+                'activate' => ! empty($body['activate']),
+                'source' => $actionType === 'plugin_installed'
+                    ? (isset($body['package_url']) ? 'control_package' : 'wordpress.org')
+                    : null,
+                'sha256' => isset($data['sha256']) ? (string) $data['sha256'] : null,
+            ],
+            $ok,
+            $ok ? null : (string) ($data['error'] ?? 'failed')
+        );
+
+        return $response;
     }
 
     /**

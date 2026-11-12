@@ -3,6 +3,7 @@
 namespace ClockworkCompanion\Rest;
 
 use ClockworkCompanion\Auth\HmacVerifier;
+use ClockworkCompanion\Auth\RemoteActionAudit;
 use WP_Error;
 use WP_REST_Request;
 use WP_REST_Response;
@@ -118,6 +119,13 @@ class SsoRoute
         // Mirror in a transient so WP's GC reaps abandoned ones — without
         // this they'd accumulate forever in wp_options on busy fleets.
         set_transient(self::OPTION_PREFIX.$nonce.'_gc', 1, $ttl + 60);
+
+        RemoteActionAudit::record(
+            'sso_link_minted',
+            (string) $user->user_login,
+            sprintf('One-time login link issued for %s (valid %d s).', $user->user_login, $ttl),
+            ['user_id' => (int) $user->ID, 'ttl_seconds' => $ttl, 'redirect_to' => $redirectTo, 'expires_at' => gmdate('c', $expiresAt)]
+        );
 
         if (defined('WP_DEBUG_LOG') && WP_DEBUG_LOG) {
             error_log(sprintf(

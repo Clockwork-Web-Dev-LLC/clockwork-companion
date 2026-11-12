@@ -2,6 +2,8 @@
 
 namespace ClockworkCompanion\Sso;
 
+use ClockworkCompanion\Auth\RemoteActionAudit;
+
 /**
  * Redeems Clockwork SSO magic-links on the front-end.
  *
@@ -62,6 +64,7 @@ class Interceptor
 
         $expiresAt = (int) ($option['expires_at'] ?? 0);
         if ($expiresAt < time()) {
+            self::recordRedemption(false, (int) ($option['user_id'] ?? 0), 'expired');
             $this->failTo('expired');
 
             return;
@@ -70,6 +73,7 @@ class Interceptor
         $userId = (int) ($option['user_id'] ?? 0);
         $user = $userId > 0 ? get_user_by('id', $userId) : null;
         if (! $user) {
+            self::recordRedemption(false, (int) ($option['user_id'] ?? 0), 'user_gone');
             $this->failTo('user_gone');
 
             return;
@@ -78,6 +82,7 @@ class Interceptor
         // Re-verify the user is still an admin — the agency may have demoted them
         // between mint and redemption (rare but defensive).
         if (! user_can($user, 'manage_options')) {
+            self::recordRedemption(false, (int) ($option['user_id'] ?? 0), 'not_admin');
             $this->failTo('not_admin');
 
             return;
@@ -90,6 +95,7 @@ class Interceptor
         wp_set_current_user($user->ID, $user->user_login);
         wp_set_auth_cookie($user->ID, false);
         do_action('wp_login', $user->user_login, $user);
+        self::recordRedemption(true, (int) $user->ID, '', (string) $user->user_login);
 
         if (defined('WP_DEBUG_LOG') && WP_DEBUG_LOG) {
             $ip = isset($_SERVER['REMOTE_ADDR']) ? (string) $_SERVER['REMOTE_ADDR'] : 'unknown';
@@ -127,6 +133,30 @@ class Interceptor
         };
 
         return $message.'<p class="message">'.esc_html($human).'</p>';
+    }
+
+    /**
+     * Site-side record of a login link being used. Only links that really
+     * existed are recorded — a random value in the query string is not worth
+     * a row (and must not be able to flood the log).
+     */
+    private static function recordRedemption(bool $ok, int $userId, string $reason, string $login = ''): void
+    {
+        if ($login === '' && $userId > 0) {
+            $user = get_user_by('id', $userId);
+            $login = $user ? (string) $user->user_login : '';
+        }
+
+        RemoteActionAudit::record(
+            'sso_link_redeemed',
+            $login !== '' ? $login : (string) $userId,
+            $ok
+                ? sprintf('Signed in as %s with a one-time login link.', $login)
+                : sprintf('One-time login link refused (%s).', $reason),
+            ['user_id' => $userId, 'reason' => $reason !== '' ? $reason : null],
+            $ok,
+            $ok ? null : $reason
+        );
     }
 
     private function failTo(string $reason): void

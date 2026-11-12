@@ -3,6 +3,7 @@
 namespace ClockworkCompanion\Rest;
 
 use ClockworkCompanion\Auth\HmacVerifier;
+use ClockworkCompanion\Auth\RemoteActionAudit;
 use ClockworkCompanion\Auth\Secret;
 use Throwable;
 use WP_Error;
@@ -52,8 +53,17 @@ class SecretRotateRoute
         try {
             $newSecret = Secret::rotate();
         } catch (Throwable $e) {
+            RemoteActionAudit::record('connection_key_rotation', null, 'Connection key rotation failed.', [], false, $e->getMessage());
+
             return new WP_Error('rotate_failed', $e->getMessage(), ['status' => 500]);
         }
+
+        // Never the secret itself — only that a rotation was issued.
+        RemoteActionAudit::record(
+            'connection_key_rotation',
+            null,
+            'New connection key issued; the previous key stays valid until Clockwork Control uses the new one.'
+        );
 
         return new WP_REST_Response([
             'ok' => true,

@@ -129,9 +129,10 @@ if (! function_exists('get_userdata')) {
 }
 
 if (! function_exists('user_can')) {
-    function user_can(int $userId, string $capability): bool
+    function user_can(int|WP_User $userId, string $capability): bool
     {
-        $user = $GLOBALS['wp_test_users'][$userId] ?? null;
+        // Core accepts a user ID or a WP_User.
+        $user = $userId instanceof WP_User ? $userId : ($GLOBALS['wp_test_users'][$userId] ?? null);
         if (! $user) {
             return false;
         }
@@ -1231,3 +1232,116 @@ if (! function_exists('wp_nonce_field')) {
         return $field;
     }
 }
+
+
+// ---------------------------------------------------------------------------
+// plugins-a stubs: login, SSO and security-header helpers. Every stub is
+// guarded, so whichever bootstrap block defines a function first wins.
+// ---------------------------------------------------------------------------
+
+if (! function_exists('sanitize_user')) {
+    function sanitize_user(string $username, bool $strict = false): string
+    {
+        return $strict ? (string) preg_replace('/[^a-z0-9 _.\-@]/i', '', $username) : trim($username);
+    }
+}
+
+if (! function_exists('get_user_by')) {
+    function get_user_by(string $field, int|string $value): WP_User|false
+    {
+        foreach ($GLOBALS['wp_test_users'] ?? [] as $user) {
+            if (($field === 'id' && (int) $user->ID === (int) $value)
+                || ($field === 'login' && $user->user_login === (string) $value)
+                || ($field === 'email' && $user->user_email === (string) $value)) {
+                return $user;
+            }
+        }
+
+        return false;
+    }
+}
+
+if (! function_exists('do_action')) {
+    /** Records every fired action and runs callbacks added via add_action(). */
+    function do_action(string $tag, mixed ...$args): void
+    {
+        $GLOBALS['wp_test_did_actions'][$tag][] = $args;
+        foreach ($GLOBALS['wp_test_actions'][$tag] ?? [] as $callback) {
+            $callback(...$args);
+        }
+    }
+}
+
+if (! function_exists('did_action')) {
+    function did_action(string $tag): int
+    {
+        return count($GLOBALS['wp_test_did_actions'][$tag] ?? []);
+    }
+}
+
+if (! function_exists('wp_set_auth_cookie')) {
+    function wp_set_auth_cookie(int $userId, bool $remember = false, bool|string $secure = '', string $token = ''): void
+    {
+        $GLOBALS['wp_test_auth_cookie_set'][] = $userId;
+    }
+}
+
+if (! function_exists('wp_clear_auth_cookie')) {
+    function wp_clear_auth_cookie(): void
+    {
+    }
+}
+
+if (! function_exists('wp_login_url')) {
+    function wp_login_url(string $redirect = ''): string
+    {
+        return 'https://example.com/wp-login.php';
+    }
+}
+
+if (! function_exists('add_query_arg')) {
+    function add_query_arg(mixed ...$args): string
+    {
+        if (is_array($args[0])) {
+            $params = $args[0];
+            $url = (string) ($args[1] ?? '');
+        } else {
+            $params = [(string) $args[0] => $args[1]];
+            $url = (string) ($args[2] ?? '');
+        }
+
+        return $url . (str_contains($url, '?') ? '&' : '?') . http_build_query($params);
+    }
+}
+
+if (! function_exists('is_user_logged_in')) {
+    function is_user_logged_in(): bool
+    {
+        // Opt-in per test: many tests leave a current user behind.
+        return ! empty($GLOBALS['wp_test_logged_in']);
+    }
+}
+
+if (! function_exists('nocache_headers')) {
+    function nocache_headers(): void
+    {
+        $GLOBALS['wp_test_nocache_headers'] = ($GLOBALS['wp_test_nocache_headers'] ?? 0) + 1;
+    }
+}
+
+if (! function_exists('wp_strip_all_tags')) {
+    function wp_strip_all_tags(string $text, bool $removeBreaks = false): string
+    {
+        return trim(strip_tags($text));
+    }
+}
+
+if (! function_exists('wp_normalize_path')) {
+    function wp_normalize_path(string $path): string
+    {
+        $path = str_replace('\\', '/', $path);
+
+        return (string) preg_replace('|(?<=.)/+|', '/', $path);
+    }
+}
+// ---- end plugins-a stubs ----

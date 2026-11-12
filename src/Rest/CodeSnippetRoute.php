@@ -2,8 +2,8 @@
 
 namespace ClockworkCompanion\Rest;
 
-use ClockworkCompanion\ActionLog\Repository as ActionLogRepository;
 use ClockworkCompanion\Auth\HmacVerifier;
+use ClockworkCompanion\Auth\RemoteActionAudit;
 use ClockworkCompanion\Support\OperationLock;
 use Throwable;
 use WP_REST_Request;
@@ -64,6 +64,17 @@ class CodeSnippetRoute
             @set_time_limit($timeout);
         }
 
+        // Record the run on the site BEFORE executing it: code that calls
+        // exit, hits a fatal error or exhausts memory never reaches the
+        // result row below. The code itself is not stored, only its hash.
+        $codeHash = hash('sha256', $code);
+        RemoteActionAudit::record(
+            'code_snippet_run',
+            substr($codeHash, 0, 12),
+            sprintf('Remote PHP snippet executed (%d bytes, sha256 %s).', strlen($code), substr($codeHash, 0, 12)),
+            ['sha256' => $codeHash, 'bytes' => strlen($code), 'timeout' => $timeout]
+        );
+
         ob_start();
         $returnValue = null;
         $error = null;
@@ -90,20 +101,21 @@ class CodeSnippetRoute
         $durationMs = round((microtime(true) - $startTime) * 1000, 2);
         $memoryBytes = max(0, memory_get_usage() - $startMemory);
 
-        // Audit log recording if repository exists
-        if (class_exists(ActionLogRepository::class) && method_exists(ActionLogRepository::class, 'append')) {
-            try {
-                ActionLogRepository::append(
-                    'code_snippet',
-                    $error ? 'failed' : 'success',
-                    [
-                        'duration_ms' => $durationMs,
-                        'has_output' => $output !== '',
-                        'has_error' => $error !== null,
-                    ]
-                );
-            } catch (Throwable) {}
-        }
+        RemoteActionAudit::record(
+            'code_snippet_result',
+            substr($codeHash, 0, 12),
+            $error === null
+                ? sprintf('Remote PHP snippet finished in %s ms.', $durationMs)
+                : sprintf('Remote PHP snippet threw %s.', $error['class']),
+            [
+                'sha256' => $codeHash,
+                'duration_ms' => $durationMs,
+                'has_output' => $output !== '',
+                'exception_class' => $error['class'] ?? null,
+            ],
+            $error === null,
+            $error !== null ? $error['class'].' at line '.$error['line'] : null
+        );
 
         if ($error !== null) {
             return new WP_REST_Response([
