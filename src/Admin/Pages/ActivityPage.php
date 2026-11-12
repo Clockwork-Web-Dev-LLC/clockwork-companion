@@ -349,6 +349,13 @@ class ActivityPage
             'comments_cleanup'        => ['label' => 'Comments cleanup',       'icon' => 'message'],
             'wfls_plugin_removed'     => ['label' => 'Wordfence removed',      'icon' => 'trash'],
             'site.provider_migrated'  => ['label' => 'Site migrations',        'icon' => 'migrate'],
+            // Written by Admin\Actions\TwoFactorActions when a user changes
+            // their own second factor (or is refused).
+            '2fa_enabled' => ['label' => '2FA turned on', 'icon' => 'lock'],
+            '2fa_reenrolled' => ['label' => '2FA re-enrolled', 'icon' => 'lock'],
+            '2fa_self_disabled' => ['label' => '2FA turned off', 'icon' => 'unlock'],
+            '2fa_backup_codes_regenerated' => ['label' => 'Backup codes regenerated', 'icon' => 'key'],
+            '2fa_change_refused' => ['label' => '2FA changes refused', 'icon' => 'ban'],
             // Recorded by the site itself (Auth\RemoteActionAudit) for
             // privileged calls made over the signed REST API.
             'code_snippet_run' => ['label' => 'Remote code runs', 'icon' => 'wrench'],
@@ -402,6 +409,11 @@ class ActivityPage
             'comments_cleanup'        => 'Comments cleanup',
             'wfls_plugin_removed'     => 'Wordfence removed',
             'site.provider_migrated'  => 'Site migration',
+            '2fa_enabled' => '2FA turned on',
+            '2fa_reenrolled' => '2FA re-enrolled',
+            '2fa_self_disabled' => '2FA turned off',
+            '2fa_backup_codes_regenerated' => 'Backup codes regenerated',
+            '2fa_change_refused' => '2FA change refused',
             'code_snippet_run' => 'Remote code run',
             'code_snippet_result' => 'Remote code result',
             'sso_link_minted' => 'Login link issued',

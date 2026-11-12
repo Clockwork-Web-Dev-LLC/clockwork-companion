@@ -184,8 +184,8 @@ class TwoFactorPage
             <?php endif; ?>
         </p>
         <div style="display:flex;gap:8px;">
-            <?php self::actionForm('regenerate', 'Regenerate backup codes', 'button'); ?>
-            <?php self::actionForm('disable', 'Disable two-factor', 'button', 'Disable two-factor authentication for your account? Your next sign-in will only need your password.'); ?>
+            <?php self::actionForm('regenerate', 'Regenerate backup codes', 'button', '', '', true); ?>
+            <?php self::actionForm('disable', 'Disable two-factor', 'button', 'Disable two-factor authentication for your account? Your next sign-in will only need your password.', '', true); ?>
         </div>
         <?php
     }
@@ -481,7 +481,11 @@ class TwoFactorPage
         <?php
     }
 
-    private static function actionForm(string $op, string $label, string $buttonClass, string $confirm = '', string $spinnerLabel = ''): void
+    /**
+     * @param  bool  $askCurrentCode  render a "current code" field: changing an active
+     *                                second factor requires one (see TwoFactorActions)
+     */
+    private static function actionForm(string $op, string $label, string $buttonClass, string $confirm = '', string $spinnerLabel = '', bool $askCurrentCode = false): void
     {
         if ($confirm !== '') {
             $onSubmit = sprintf(' onsubmit="return confirm(%s);"', esc_attr(wp_json_encode($confirm)));
@@ -496,6 +500,10 @@ class TwoFactorPage
             <input type="hidden" name="action" value="<?php echo esc_attr(\ClockworkCompanion\Admin\Actions\TwoFactorActions::ACTION_HOOK); ?>">
             <input type="hidden" name="op" value="<?php echo esc_attr($op); ?>">
             <?php wp_nonce_field(\ClockworkCompanion\Admin\Actions\TwoFactorActions::NONCE_ACTION); ?>
+            <?php if ($askCurrentCode) : ?>
+                <input type="text" name="current_code" inputmode="numeric" autocomplete="one-time-code" required
+                       placeholder="Current code" size="10" style="width:auto;">
+            <?php endif; ?>
             <button type="submit" class="<?php echo esc_attr($buttonClass); ?>"><?php echo esc_html($label); ?></button>
         </form>
         <?php

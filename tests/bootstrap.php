@@ -1329,7 +1329,13 @@ if (! function_exists('add_query_arg')) {
             $url = (string) ($args[2] ?? '');
         }
 
-        return $url . (str_contains($url, '?') ? '&' : '?') . http_build_query($params);
+        // Like core's build_query(): keys and values are NOT encoded.
+        $pairs = [];
+        foreach ($params as $k => $v) {
+            $pairs[] = $k . '=' . $v;
+        }
+
+        return $url . (str_contains($url, '?') ? '&' : '?') . implode('&', $pairs);
     }
 }
 

@@ -223,10 +223,7 @@ class EnrollmentNudge
             );
         }
 
-        wp_safe_redirect(add_query_arg(
-            ['page' => TwoFactorPage::SLUG, 'flash' => $flash],
-            admin_url('admin.php')
-        ));
+        wp_safe_redirect(\ClockworkCompanion\Admin\Actions\TwoFactorActions::redirectUrl(['flash' => $flash]));
         exit;
     }
 
