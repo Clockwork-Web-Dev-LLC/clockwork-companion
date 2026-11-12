@@ -62,6 +62,7 @@ class SqlImporterTest extends TestCase
             . "CREATE TABLE `foreign_meta` (`id` int);\n"
             . "INSERT INTO `foreign_meta` VALUES (2);\n"
             . "SET FOREIGN_KEY_CHECKS=1;\n"
+            . "-- Dump completed on 2026-10-01 00:00:00\n"
         );
 
         $executed = [];
@@ -100,6 +101,7 @@ class SqlImporterTest extends TestCase
             $sqlPath,
             "CREATE TABLE `wp_posts` (`id` int, `content` longtext);\n"
             . $insert . "\n"
+            . "-- Dump completed\n"
         );
 
         $executed = [];
@@ -122,7 +124,7 @@ class SqlImporterTest extends TestCase
 
         $sqlPath = $this->tempDir . '/dump.sql.gz';
         $gz = gzopen($sqlPath, 'wb');
-        gzwrite($gz, "CREATE TABLE `wp_options` (`id` int);\nLOCK TABLES `wp_options` WRITE;\n");
+        gzwrite($gz, "CREATE TABLE `wp_options` (`id` int);\nLOCK TABLES `wp_options` WRITE;\n-- Dump completed\n");
         gzclose($gz);
 
         $executed = [];
@@ -134,5 +136,94 @@ class SqlImporterTest extends TestCase
         $this->assertTrue($result['ok']);
         $this->assertSame(1, $result['matched_tables']);
         $this->assertSame(1, $result['skipped_statements']);
+    }
+
+    /**
+     * The import drops each table before refilling it. A dump cut short
+     * (full disk while dumping, truncated download) used to be replayed up to
+     * the cut and reported as a success.
+     */
+    public function testTruncatedDumpIsRejectedBeforeAnythingRuns(): void
+    {
+        $sqlPath = $this->tempDir . '/truncated.sql';
+        file_put_contents(
+            $sqlPath,
+            "SET FOREIGN_KEY_CHECKS=0;\n"
+            . "DROP TABLE IF EXISTS `wp_options`;\n"
+            . "CREATE TABLE `wp_options` (`id` int);\n"
+            . "INSERT INTO `wp_options` VALUES \n(1),\n(2),\n"
+        );
+
+        $executed = [];
+        $this->installMockWpdb($executed);
+
+        $result = (new SqlImporter())->import($sqlPath);
+
+        $this->assertFalse($result['ok']);
+        $this->assertSame('dump_incomplete', $result['error']);
+        $this->assertSame([], $executed, 'No statement may run for an incomplete dump');
+    }
+
+    public function testFooterFollowedByMoreStatementsDoesNotCountAsComplete(): void
+    {
+        $sqlPath = $this->tempDir . '/footer-midway.sql';
+        file_put_contents(
+            $sqlPath,
+            "CREATE TABLE `wp_options` (`id` int);\n"
+            . "-- Dump completed\n"
+            . "DROP TABLE IF EXISTS `wp_posts`;\n"
+        );
+
+        $executed = [];
+        $this->installMockWpdb($executed);
+
+        $result = (new SqlImporter())->import($sqlPath);
+
+        $this->assertSame('dump_incomplete', $result['error'] ?? null);
+        $this->assertSame([], $executed);
+    }
+
+    public function testPrefixMismatchRunsNothingNotEvenSetStatements(): void
+    {
+        $sqlPath = $this->tempDir . '/other-prefix.sql';
+        file_put_contents(
+            $sqlPath,
+            "SET FOREIGN_KEY_CHECKS=0;\n"
+            . "DROP TABLE IF EXISTS `other_options`;\n"
+            . "CREATE TABLE `other_options` (`id` int);\n"
+            . "-- Dump completed\n"
+        );
+
+        $executed = [];
+        $this->installMockWpdb($executed);
+
+        $result = (new SqlImporter())->import($sqlPath);
+
+        $this->assertSame('prefix_mismatch', $result['error'] ?? null);
+        $this->assertSame([], $executed);
+    }
+
+    /**
+     * Dumps taken before rows were paged by key can hold the same row twice;
+     * the repeat must not abort the import with half the tables replaced.
+     */
+    public function testOlderDumpsImportWithInsertIgnoreAndCurrentOnesVerbatim(): void
+    {
+        $body = "CREATE TABLE `wp_posts` (`id` int);\nINSERT INTO `wp_posts` VALUES \n(1),\n(1);\n-- Dump completed\n";
+        $header = "-- Clockwork Companion Database Backup\n";
+
+        $legacy = $this->tempDir . '/legacy.sql';
+        file_put_contents($legacy, $header . "-- Clockwork-Dump-Format: 2\n" . $body);
+        $executed = [];
+        $this->installMockWpdb($executed);
+        $this->assertTrue((new SqlImporter())->import($legacy)['ok']);
+        $this->assertStringStartsWith('INSERT IGNORE INTO `wp_posts`', $executed[1]);
+
+        $current = $this->tempDir . '/current.sql';
+        file_put_contents($current, $header . "-- Clockwork-Dump-Format: 3\n" . $body);
+        $executedCurrent = [];
+        $this->installMockWpdb($executedCurrent);
+        $this->assertTrue((new SqlImporter())->import($current)['ok']);
+        $this->assertStringStartsWith('INSERT INTO `wp_posts`', $executedCurrent[1]);
     }
 }
