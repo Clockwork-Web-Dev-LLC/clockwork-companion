@@ -50,6 +50,7 @@ class Menu
         add_action('admin_post_clockwork_save_notifications', [NotificationsPage::class, 'handleSave']);
 
         UnlockPage::registerAjax();
+        \ClockworkCompanion\Admin\Pages\ConnectionPage::registerAjax();
     }
 
     /**

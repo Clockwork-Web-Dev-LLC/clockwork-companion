@@ -1245,3 +1245,14 @@ if (! function_exists('maybe_unserialize')) {
         return $data;
     }
 }
+
+// -----------------------------------------------------------------------------
+// Connection page credential reveal (ConnectionPageTest).
+// -----------------------------------------------------------------------------
+
+if (! function_exists('wp_send_json_success')) {
+    function wp_send_json_success(mixed $data = null, ?int $status_code = null, int $options = 0): void
+    {
+        echo json_encode(['success' => true, 'data' => $data]);
+    }
+}
