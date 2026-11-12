@@ -2,6 +2,8 @@
 
 namespace ClockworkCompanion\Tests;
 
+use ClockworkCompanion\Admin\Layout;
+use ClockworkCompanion\Admin\Pages\GatekeeperPage;
 use ClockworkCompanion\Auth\HmacVerifier;
 use ClockworkCompanion\Auth\Secret;
 use ClockworkCompanion\Gatekeeper\ClientIp;
@@ -17,6 +19,7 @@ use ClockworkCompanion\Tests\Fakes\GatekeeperWpdb;
 use ClockworkCompanion\TwoFactor\LoginInterceptor;
 use ClockworkCompanion\TwoFactor\Totp;
 use ClockworkCompanion\TwoFactor\UserSettings;
+use ClockworkCompanion\WhiteLabel\WhiteLabel;
 use PHPUnit\Framework\TestCase;
 use WP_Error;
 use WP_REST_Request;
@@ -964,6 +967,100 @@ class GatekeeperTest extends TestCase
         $this->assertSame(['203.0.113.7'], array_keys($this->db->rows()));
         $this->assertSame(6, $GLOBALS['wp_test_site_options'][Settings::OPTION]['threshold']);
         $this->assertNotNull(Store::isLocked('203.0.113.7'));
+    }
+
+    // ---------------------------------------------------------------------
+    // Admin page
+    // ---------------------------------------------------------------------
+
+    public function testAdminPageWarnsWhenTheClientAddressIsPrivate(): void
+    {
+        $GLOBALS['wp_test_current_user'] = new WP_User('admin@example.com', 1);
+        $_SERVER['REMOTE_ADDR'] = '10.0.0.5';
+
+        ob_start();
+        GatekeeperPage::renderBody();
+        $private = (string) ob_get_clean();
+
+        $_SERVER['REMOTE_ADDR'] = '203.0.113.10';
+        ob_start();
+        GatekeeperPage::renderBody();
+        $public = (string) ob_get_clean();
+
+        $this->assertStringContainsString('Gatekeeper is not protecting this site', $private);
+        $this->assertStringNotContainsString('Gatekeeper is not protecting this site', $public);
+        $this->assertStringContainsString('name="trusted_proxies"', $public);
+    }
+
+    public function testAdminPageShowsStatusThresholdsAndLockouts(): void
+    {
+        ob_start();
+        GatekeeperPage::renderBody();
+        $off = (string) ob_get_clean();
+        $this->assertStringContainsString('Disabled', $off);
+        $this->assertStringContainsString('No address is locked out.', $off);
+
+        Settings::update(['enabled' => true, 'threshold' => 7]);
+        Store::lock('198.51.100.44');
+        ob_start();
+        GatekeeperPage::renderBody();
+        $on = (string) ob_get_clean();
+
+        $this->assertStringContainsString('● Enabled', $on);
+        $this->assertStringContainsString('7 failed attempts within 20 minutes', $on);
+        $this->assertStringContainsString('<code>198.51.100.44</code>', $on);
+        $this->assertStringContainsString('value="clockwork_gatekeeper_unlock_ip"', $on);
+    }
+
+    public function testAdminPageAndActionsAreAgencyOnly(): void
+    {
+        update_option(WhiteLabel::OPTION_KEY, ['agency_email_domains' => '@agency.example']);
+        $GLOBALS['wp_test_current_user'] = new WP_User('owner@client.example', 2);
+        Store::lock('198.51.100.44');
+
+        $this->assertFalse(GatekeeperPage::canAccess());
+        $this->assertNotContains('gatekeeper', array_column(Layout::tabs(), 'slug'));
+
+        foreach (['render', 'handleSave', 'handleUnlockIp', 'handleUnlockAll'] as $method) {
+            try {
+                GatekeeperPage::$method();
+                $this->fail("{$method} ran for a client administrator");
+            } catch (\RuntimeException $e) {
+                $this->assertStringContainsString('wp_die [403]', $e->getMessage());
+            }
+        }
+        $this->assertNotNull(Store::isLocked('198.51.100.44'));
+
+        $GLOBALS['wp_test_current_user'] = new WP_User('ops@agency.example', 3);
+        $this->assertTrue(GatekeeperPage::canAccess());
+        $this->assertContains('gatekeeper', array_column(Layout::tabs(), 'slug'));
+    }
+
+    public function testAdminActionsUnlockAndSaveTrustedProxies(): void
+    {
+        Store::lock('198.51.100.44');
+        Store::lock('198.51.100.45');
+
+        $_POST = ['ip' => '198.51.100.44'];
+        GatekeeperPage::handleUnlockIp();
+        $this->assertNull(Store::isLocked('198.51.100.44'));
+        $this->assertNotNull(Store::isLocked('198.51.100.45'));
+        $this->assertStringContainsString('page=clockwork-gatekeeper', $GLOBALS['wp_test_last_redirect']);
+
+        $_POST = [];
+        GatekeeperPage::handleUnlockAll();
+        $this->assertNull(Store::isLocked('198.51.100.45'));
+
+        $_POST = ['enabled' => '1', 'threshold' => '5', 'window_minutes' => '10', 'lockout_minutes' => '30', 'consecutive_lockouts_for_extended' => '3', 'extended_lockout_hours' => '12', 'ignore_ips' => "198.51.100.1\nbogus", 'ignore_cidrs' => '', 'trusted_proxies' => "cloudflare\n10.0.0.0/8"];
+        GatekeeperPage::handleSave();
+        $settings = Settings::get();
+        $this->assertTrue($settings['enabled']);
+        $this->assertSame(5, $settings['threshold']);
+        $this->assertSame(600, $settings['window_seconds']);
+        $this->assertSame(1800, $settings['lockout_seconds']);
+        $this->assertSame(43200, $settings['extended_lockout_seconds']);
+        $this->assertSame(['198.51.100.1'], $settings['ignore_ips']);
+        $this->assertSame(['cloudflare', '10.0.0.0/8'], $settings['trusted_proxies']);
     }
 
     // ---------------------------------------------------------------------

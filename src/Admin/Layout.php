@@ -45,6 +45,10 @@ class Layout
         $all[] = ['slug' => 'notifications', 'label' => 'Notifications', 'page' => \ClockworkCompanion\Admin\Pages\NotificationsPage::SLUG];
         $all[] = ['slug' => 'update-coverage', 'label' => 'Update coverage', 'page' => \ClockworkCompanion\Admin\Pages\UpdateCoveragePage::SLUG];
 
+        if (\ClockworkCompanion\Admin\Pages\GatekeeperPage::canAccess()) {
+            $all[] = ['slug' => 'gatekeeper', 'label' => 'Gatekeeper', 'page' => \ClockworkCompanion\Admin\Pages\GatekeeperPage::SLUG];
+        }
+
         if (\ClockworkCompanion\Admin\Pages\UnlockPage::isHub()) {
             $all[] = ['slug' => 'unlock', 'label' => 'Unlock', 'page' => \ClockworkCompanion\Admin\Pages\UnlockPage::SLUG];
         }
