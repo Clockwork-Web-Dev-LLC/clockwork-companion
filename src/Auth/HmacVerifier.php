@@ -59,7 +59,60 @@ class HmacVerifier
 
     private const RATE_WINDOW = 60;
 
+    /**
+     * Outcome of verifying each request object already seen in this PHP
+     * process, with a fingerprint of everything the signature covers.
+     *
+     * @var \WeakMap<WP_REST_Request, array{fingerprint: string, result: bool|\WP_Error}>|null
+     */
+    private static ?\WeakMap $verified = null;
+
+    /**
+     * WordPress calls a route's permission_callback more than once for the
+     * same request: once to authorise the dispatch, then again from
+     * rest_send_allow_header() (on rest_post_dispatch) for every method of
+     * every handler registered on the route, to build the Allow header. For
+     * a mutating request the first call has already consumed the signature,
+     * so re-running the checks would report our own request as a replay and
+     * count it as a failure against the caller's IP. The answer for one
+     * request object cannot change while it is being served, so it is
+     * computed once and handed back on the later calls.
+     *
+     * Keyed on the request object, not just on the signature: a second
+     * request carrying the same signature is exactly the replay the marker
+     * exists to refuse. The fingerprint guards against the object being
+     * altered between calls.
+     */
     public static function verify(WP_REST_Request $request): bool|\WP_Error
+    {
+        self::$verified ??= new \WeakMap();
+
+        $fingerprint = self::fingerprint($request);
+        $memo = self::$verified[$request] ?? null;
+        if (is_array($memo) && hash_equals($memo['fingerprint'], $fingerprint)) {
+            return $memo['result'];
+        }
+
+        $result = self::verifyOnce($request);
+        self::$verified[$request] = ['fingerprint' => $fingerprint, 'result' => $result];
+
+        return $result;
+    }
+
+    private static function fingerprint(WP_REST_Request $request): string
+    {
+        return hash('sha256', implode("\n", [
+            strtoupper($request->get_method()),
+            $request->get_route(),
+            self::canonicalQuery($request),
+            (string) $request->get_header('x_clockwork_timestamp'),
+            (string) $request->get_header('x_clockwork_signature'),
+            (string) $request->get_header('x_clockwork_signature_v2'),
+            hash('sha256', $request->get_body()),
+        ]));
+    }
+
+    private static function verifyOnce(WP_REST_Request $request): bool|\WP_Error
     {
         $ip = self::clientIp();
 

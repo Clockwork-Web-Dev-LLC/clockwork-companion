@@ -166,4 +166,74 @@ class HmacVerifierTest extends TestCase
         $this->assertInstanceOf(WP_Error::class, $result);
         $this->assertSame('stale_timestamp', $result->get_error_code());
     }
+
+    /**
+     * Core's rest_send_allow_header() re-runs the permission callback on the
+     * request it has just dispatched, once per method per handler.
+     */
+    public function testRepeatedPermissionCheckOnSameRequestIsNotTreatedAsReplay(): void
+    {
+        $ts = time();
+        $body = '{"slug":"akismet"}';
+        $request = $this->request('POST', '/clockwork/v1/plugins/update', [
+            'x-clockwork-timestamp' => (string) $ts,
+            'x-clockwork-signature' => $this->sign('POST', '/wp-json/clockwork/v1/plugins/update', $ts, $body),
+        ], $body);
+
+        $this->assertTrue(HmacVerifier::verify($request));
+        $this->assertTrue(HmacVerifier::verify($request));
+        $this->assertTrue(HmacVerifier::verify($request));
+
+        $inserts = array_filter(
+            $GLOBALS['wpdb']->queries,
+            fn (string $q) => str_starts_with($q, 'INSERT IGNORE INTO wp_options')
+        );
+        $this->assertCount(1, $inserts, 'the replay store is only touched once per request');
+        $this->assertSame([], $this->failureCounters(), 'no failure is recorded against the caller');
+    }
+
+    public function testRepeatedPermissionCheckReturnsTheSameFailureWithoutCountingItTwice(): void
+    {
+        $ts = time();
+        $request = $this->request('POST', '/clockwork/v1/cache-flush', [
+            'x-clockwork-timestamp' => (string) $ts,
+            'x-clockwork-signature' => str_repeat('0', 64),
+        ], '{}');
+
+        $first = HmacVerifier::verify($request);
+        $second = HmacVerifier::verify($request);
+
+        $this->assertInstanceOf(WP_Error::class, $first);
+        $this->assertSame($first, $second);
+        $this->assertSame([1], array_values($this->failureCounters()));
+    }
+
+    public function testRequestAlteredAfterVerificationIsVerifiedAgain(): void
+    {
+        $ts = time();
+        $body = '{"slug":"akismet"}';
+        $request = $this->request('POST', '/clockwork/v1/plugins/update', [
+            'x-clockwork-timestamp' => (string) $ts,
+            'x-clockwork-signature' => $this->sign('POST', '/wp-json/clockwork/v1/plugins/update', $ts, $body),
+        ], $body);
+
+        $this->assertTrue(HmacVerifier::verify($request));
+
+        $request->set_body('{"slug":"something-else"}');
+        $result = HmacVerifier::verify($request);
+        $this->assertInstanceOf(WP_Error::class, $result);
+        $this->assertSame('invalid_signature', $result->get_error_code());
+    }
+
+    /**
+     * @return array<string, int> per-IP failure counters currently stored
+     */
+    private function failureCounters(): array
+    {
+        return array_filter(
+            $GLOBALS['wp_test_transients'] ?? [],
+            fn (string $key) => str_starts_with($key, 'clockwork_hmac_fail_'),
+            ARRAY_FILTER_USE_KEY
+        );
+    }
 }
