@@ -3,6 +3,7 @@
 namespace ClockworkCompanion\Tests;
 
 use ClockworkCompanion\Backup\ArchiveDownloader;
+use ClockworkCompanion\Backup\Paths;
 use ClockworkCompanion\Backup\S3DirectUploader;
 use ClockworkCompanion\Rest\BackupCreateRoute;
 use PHPUnit\Framework\TestCase;
@@ -128,8 +129,14 @@ class BackupCreateRouteTest extends TestCase
         ];
         $request = new WP_REST_Request('POST', '/clockwork/v1/backup/create', $payload);
 
+        // Left by an earlier run that died before its own cleanup.
+        $stale = Paths::stagingDir() . '/db-' . Paths::token() . '.sql.gz';
+        file_put_contents($stale, 'dump of a run killed by a timeout');
+        touch($stale, time() - 2 * 3600);
+
         $response = $route->handle($request);
 
+        $this->assertFileDoesNotExist($stale, 'Expected leftovers of earlier runs to be swept');
         $this->assertNotInstanceOf(WP_Error::class, $response);
         $this->assertSame(200, $response->get_status());
         $data = $response->get_data();

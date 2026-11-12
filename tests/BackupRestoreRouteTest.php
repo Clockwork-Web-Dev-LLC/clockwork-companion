@@ -210,8 +210,14 @@ class BackupRestoreRouteTest extends TestCase
         $this->assertSame('failed', $state['status']);
         $this->assertStringContainsString('HTTP 403', (string) $state['error_detail']);
 
-        $expectedPartial = Paths::stagingDir() . '/restore-dl-' . md5($archiveKey) . '.zip.part';
+        // The partial's name is random and recorded in the state; it used to
+        // be md5(archive_key), which anyone knowing the domain and date could compute.
+        $this->assertMatchesRegularExpression('/^restore-dl-[a-f0-9]{32}\.zip\.part$/', (string) $state['partial_file']);
+        $this->assertStringNotContainsString(md5($archiveKey), (string) $state['partial_file']);
+        $this->assertMatchesRegularExpression('/^[a-f0-9]{32}$/', (string) $state['staged_id']);
+        $expectedPartial = Paths::stagingDir() . '/' . $state['partial_file'];
         $this->assertSame($expectedPartial, $attempts[0]['partial']);
+        $this->assertArrayNotHasKey('partial_file', (new BackupRestoreRoute())->handleStatus(new WP_REST_Request('GET', '/clockwork/v1/backup/restore/status'))->get_data());
         $this->assertSame(0, $attempts[0]['offset']);
         $this->assertFileExists($expectedPartial, 'Expected the partial download to be kept for resume');
         $this->assertSame($splitAt, (int) filesize($expectedPartial));
@@ -733,6 +739,7 @@ class BackupRestoreRouteTest extends TestCase
         $this->assertSame('failed', $state['status']);
         $this->assertSame('Duplicate entry', $state['error_detail']);
         $this->assertSame('current-secret', get_option('clockwork_companion_secret'));
+        $this->assertDirectoryDoesNotExist(Paths::stagingDir() . '/restore-keep_state_2', 'A used staging copy (dump + wp-config.php) must not be left behind');
     }
 
     public function testATruncatedSecondDumpStopsTheRestoreBeforeTheFirstRuns(): void
@@ -749,5 +756,23 @@ class BackupRestoreRouteTest extends TestCase
         $this->assertSame('dump_incomplete', $response->get_error_code());
         $this->assertSame([], $executed);
         $this->assertFalse(MaintenanceGuard::getConfig()['enabled']);
+    }
+
+    public function testANewStageRemovesThePreviousStagedRestore(): void
+    {
+        $base = Paths::stagingDir();
+        @mkdir($base . '/restore-oldstage1/database', 0755, true);
+        file_put_contents($base . '/restore-archive-oldstage1.zip', 'zip');
+        RestoreState::update(['staged_id' => 'oldstage1', 'status' => 'staged', 'hash_verified' => true]);
+
+        ArchiveDownloader::$testDownloader = fn () => ['ok' => false, 'http_code' => 500, 'bytes_downloaded' => 0, 'sha256' => '', 'error' => 'boom'];
+        (new BackupRestoreRoute())->handleStage(new WP_REST_Request('POST', '/clockwork/v1/backup/restore/stage', [
+            'download_url' => 'https://s3.amazonaws.com/bucket/backup.zip',
+            'archive_key' => 'archives/example.com/2026-11-01.zip',
+            'expected_sha256' => str_repeat('a', 64),
+        ]));
+
+        $this->assertDirectoryDoesNotExist($base . '/restore-oldstage1');
+        $this->assertFileDoesNotExist($base . '/restore-archive-oldstage1.zip');
     }
 }
