@@ -110,13 +110,6 @@ class BackupArchiver
     ];
 
     /**
-     * Maximum files queued before flushing/re-opening ZipArchive.
-     * PHP's libzip holds open file descriptors for every addFile() call until
-     * close(); batching at 300 keeps us safely below the OS ulimit -n (1024).
-     */
-    public const ZIP_BATCH_SIZE = 300;
-
-    /**
      * Package database dump and site files into a zip archive with manifest.json.
      *
      * @param  string  $zipOutputPath Destination path for zip
@@ -174,10 +167,11 @@ class BackupArchiver
         }
 
         $manifest = $this->buildManifest($stats, $dbStats, $excludes, count($entries));
+        $manifest['summary']['total_files'] = count($entries) + 1;
         $tempManifestPath = null;
 
         if (class_exists('ZipArchive')) {
-            $written = $this->writeWithZipArchive($zipOutputPath, $entries);
+            $written = $this->writeWithZipArchive($zipOutputPath, $entries, $manifest);
         } else {
             // For PclZip fallback, write manifest to temp file and include in entries before packing
             $tempManifestPath = $dir.'/manifest-'.bin2hex(random_bytes(4)).'.json';
@@ -214,21 +208,12 @@ class BackupArchiver
         $saved = max(0, $uncompressed - $archiveSize);
         $ratio = $uncompressed > 0 ? round(($saved / $uncompressed) * 100, 1).'%' : '0%';
 
+        // The archive's own size is only known once it is written, so the
+        // manifest.json inside it has archive_size_bytes 0 and no ratio; the
+        // manifest returned to the caller has both. Reopening the archive to
+        // add them made libzip rewrite the whole file once more.
         $manifest['summary']['archive_size_bytes'] = $archiveSize;
         $manifest['summary']['compression_ratio'] = $ratio;
-        $manifest['summary']['total_files'] = count($entries) + 1;
-
-        // When using ZipArchive, inject the final manifest with updated size and ratio
-        if (class_exists('ZipArchive')) {
-            $zip = new ZipArchive();
-            if ($zip->open($zipOutputPath) === true) {
-                $zip->addFromString('manifest.json', (string) json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-                $zip->close();
-            }
-            clearstatcache(true, $zipOutputPath);
-            $archiveSize = (int) @filesize($zipOutputPath);
-            $manifest['summary']['archive_size_bytes'] = $archiveSize;
-        }
 
         $sha256 = $archiveSize > 0 ? (string) @hash_file('sha256', $zipOutputPath) : '';
 
@@ -445,54 +430,57 @@ class BackupArchiver
     }
 
     /**
+     * Write the whole archive in one open/close. libzip rewrites the entire
+     * file on every close(), so the old close-and-reopen every 300 files cost
+     * quadratic I/O and up to twice the archive size in free disk. libzip
+     * opens each added file only while writing it out during close(), so a
+     * single pass does not hold a descriptor per file.
+     *
      * @param  array<int, array{source: string, dest: string}>  $entries
+     * @param  array<string, mixed>  $manifest
      * @return array{ok: bool, size_bytes: int, sha256: string, files_count: int, error?: string}|null
      */
-    private function writeWithZipArchive(string $zipOutputPath, array $entries): ?array
+    private function writeWithZipArchive(string $zipOutputPath, array $entries, array $manifest): ?array
     {
         if (is_file($zipOutputPath)) {
             @unlink($zipOutputPath);
         }
 
-        $chunks = array_chunk($entries, self::ZIP_BATCH_SIZE);
+        $zip = new ZipArchive();
+        if ($zip->open($zipOutputPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+            return [
+                'ok' => false,
+                'size_bytes' => 0,
+                'sha256' => '',
+                'files_count' => 0,
+                'error' => "Cannot open zip archive at {$zipOutputPath}",
+            ];
+        }
 
-        foreach ($chunks as $chunkIndex => $batch) {
-            $zip = new ZipArchive();
-            $flags = $chunkIndex === 0
-                ? (ZipArchive::CREATE | ZipArchive::OVERWRITE)
-                : ZipArchive::CREATE;
-
-            if ($zip->open($zipOutputPath, $flags) !== true) {
-                return [
-                    'ok' => false,
-                    'size_bytes' => 0,
-                    'sha256' => '',
-                    'files_count' => 0,
-                    'error' => "Cannot open zip archive at {$zipOutputPath} (batch {$chunkIndex})",
-                ];
+        foreach ($entries as $entry) {
+            // Unreadable files (permissions, vanished since the scan) are
+            // skipped rather than failing the whole backup at close().
+            if (! is_file($entry['source']) || ! is_readable($entry['source'])) {
+                continue;
             }
-
-            foreach ($batch as $entry) {
-                if (! is_file($entry['source']) || ! is_readable($entry['source'])) {
-                    continue;
-                }
-                if ($zip->addFile($entry['source'], $entry['dest'])) {
-                    $ext = strtolower((string) pathinfo($entry['source'], PATHINFO_EXTENSION));
-                    if (in_array($ext, self::STORE_ONLY_EXTENSIONS, true) && method_exists($zip, 'setCompressionName')) {
-                        @$zip->setCompressionName($entry['dest'], ZipArchive::CM_STORE);
-                    }
+            if ($zip->addFile($entry['source'], $entry['dest'])) {
+                $ext = strtolower((string) pathinfo($entry['source'], PATHINFO_EXTENSION));
+                if (in_array($ext, self::STORE_ONLY_EXTENSIONS, true) && method_exists($zip, 'setCompressionName')) {
+                    @$zip->setCompressionName($entry['dest'], ZipArchive::CM_STORE);
                 }
             }
+        }
 
-            if (! @$zip->close()) {
-                return [
-                    'ok' => false,
-                    'size_bytes' => 0,
-                    'sha256' => '',
-                    'files_count' => 0,
-                    'error' => "Failed closing/flushing zip archive at {$zipOutputPath} (batch {$chunkIndex})",
-                ];
-            }
+        $zip->addFromString('manifest.json', (string) json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+        if (! @$zip->close()) {
+            return [
+                'ok' => false,
+                'size_bytes' => 0,
+                'sha256' => '',
+                'files_count' => 0,
+                'error' => "Failed closing/flushing zip archive at {$zipOutputPath}",
+            ];
         }
 
         return null;
@@ -532,26 +520,29 @@ class BackupArchiver
             @unlink($zipOutputPath);
         }
 
-        $pcl = new \PclZip($zipOutputPath);
-
+        // One create() call writes the archive once; add() per file rewrote
+        // it on every call. Unreadable files are skipped, as with ZipArchive.
+        $archive = new \PclZip($zipOutputPath);
+        $list = [];
         foreach ($entries as $entry) {
             if (! is_file($entry['source']) || ! is_readable($entry['source'])) {
                 continue;
             }
-            $destDir = dirname($entry['dest']);
-            $addPath = $destDir === '.' ? '' : $destDir;
-            $removePath = dirname($entry['source']);
+            $list[] = [
+                PCLZIP_ATT_FILE_NAME => $entry['source'],
+                PCLZIP_ATT_FILE_NEW_FULL_NAME => $entry['dest'],
+            ];
+        }
 
-            $result = $pcl->add($entry['source'], PCLZIP_OPT_ADD_PATH, $addPath, PCLZIP_OPT_REMOVE_PATH, $removePath);
-            if ($result === 0) {
-                return [
-                    'ok' => false,
-                    'size_bytes' => 0,
-                    'sha256' => '',
-                    'files_count' => 0,
-                    'error' => 'PclZip error: '.$pcl->errorInfo(true),
-                ];
-            }
+        $result = $archive->create($list);
+        if ($result == 0) {
+            return [
+                'ok' => false,
+                'size_bytes' => 0,
+                'sha256' => '',
+                'files_count' => 0,
+                'error' => 'PclZip failed: '.$archive->errorInfo(true),
+            ];
         }
 
         return null;
