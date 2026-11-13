@@ -122,4 +122,31 @@ class FileApplierTest extends TestCase
         $this->assertFileExists($this->liveDir . '/uploads/real.txt');
         $this->assertFileDoesNotExist($this->liveDir . '/uploads/leak.txt');
     }
+
+    /**
+     * "upgrade" and "debug.log" used to be skipped at any depth, so a
+     * plugin's own upgrade/ code or bundled files of that name went missing
+     * from a restore onto a blank site.
+     */
+    public function testRestoreExclusionsAreAnchoredToWpContent(): void
+    {
+        $this->stage('upgrade/core-temp/file.php', 'temp');
+        $this->stage('debug.log', 'log');
+        $this->stage('cache/page.html', 'cached');
+        $this->stage('plugins/acme/upgrade/migrate.php', "<?php // plugin code\n");
+        $this->stage('plugins/acme/vendor/psr/cache/src/CacheItemInterface.php', "<?php // library\n");
+        $this->stage('plugins/acme/src/Cache/Store.php', "<?php // plugin code\n");
+        $this->stage('plugins/acme/logs/debug.log', 'plugin log');
+
+        $result = (new FileApplier())->apply($this->stagingDir, $this->liveDir);
+
+        $this->assertTrue($result['ok']);
+        $this->assertFileDoesNotExist($this->liveDir . '/upgrade/core-temp/file.php');
+        $this->assertFileDoesNotExist($this->liveDir . '/debug.log');
+        $this->assertFileDoesNotExist($this->liveDir . '/cache/page.html');
+        $this->assertFileExists($this->liveDir . '/plugins/acme/upgrade/migrate.php');
+        $this->assertFileExists($this->liveDir . '/plugins/acme/vendor/psr/cache/src/CacheItemInterface.php');
+        $this->assertFileExists($this->liveDir . '/plugins/acme/src/Cache/Store.php');
+        $this->assertFileExists($this->liveDir . '/plugins/acme/logs/debug.log');
+    }
 }

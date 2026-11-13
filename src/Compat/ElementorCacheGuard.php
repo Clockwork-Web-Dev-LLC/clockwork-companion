@@ -50,7 +50,11 @@ class ElementorCacheGuard
             try {
                 self::regenerateAndRepurge($document);
             } catch (\Throwable $e) {
-                error_log('[clockwork-companion] ElementorCacheGuard: ' . $e->getMessage());
+                // Only when the site asked for a debug log: this runs on every
+                // Elementor save and must not fill production error logs.
+                if (defined('WP_DEBUG_LOG') && WP_DEBUG_LOG) {
+                    error_log('[clockwork-companion] ElementorCacheGuard: ' . $e->getMessage());
+                }
             } finally {
                 self::$running = false;
             }

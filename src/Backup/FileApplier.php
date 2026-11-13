@@ -5,7 +5,8 @@ namespace ClockworkCompanion\Backup;
 /**
  * Copies staging wp-content files over the live WP_CONTENT_DIR.
  * Additive/overwrite: does not delete newer files created after the backup.
- * Excludes cache, staging, upgrade/, debug.log.
+ * Excludes (relative to wp-content) cache/, the backup staging directory,
+ * upgrade/, debug.log and the other BackupArchiver::DEFAULT_EXCLUDES.
  * Never copies a wp-config.php from the archive.
  * Copies Companion files last.
  */
@@ -57,11 +58,14 @@ class FileApplier
             $companionDir = $resolved !== false ? $resolved : rtrim($companionDir, '/\\');
         }
 
-        // Note: 'index.php' is deliberately NOT excluded — theme/plugin index.php files
-        // must be restored. The staging marker lives under 'clockwork-backups', which the
-        // wholesale directory exclusion below already protects.
-        $excludeNames = array_merge(BackupArchiver::DEFAULT_EXCLUDES, [
+        // Paths relative to wp-content, anchored like the backup's own
+        // exclusions: a plugin's own "upgrade" directory or "debug.log" deeper
+        // down is restored. 'index.php' is deliberately NOT excluded —
+        // theme/plugin index.php files must be restored.
+        $excludeRules = array_merge(BackupArchiver::DEFAULT_EXCLUDES, [
+            'clockwork-backups*',
             'upgrade',
+            'upgrade-temp-backup',
             'debug.log',
         ]);
 
@@ -84,17 +88,7 @@ class FileApplier
             if (ArchiveExtractor::isUnsafeEntryName($normalizedSubPath)) {
                 continue;
             }
-            $parts = explode('/', $normalizedSubPath);
-
-            $skip = false;
-            foreach ($parts as $p) {
-                if (in_array(strtolower($p), $excludeNames, true) || str_starts_with($p, 'clockwork-backups')) {
-                    $skip = true;
-                    break;
-                }
-            }
-
-            if ($skip) {
+            if (BackupArchiver::isExcluded($normalizedSubPath, $excludeRules)) {
                 continue;
             }
 

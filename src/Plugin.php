@@ -8,7 +8,6 @@ use ClockworkCompanion\Admin\DashboardWidget;
 use ClockworkCompanion\Admin\FormsAjaxHandlers;
 use ClockworkCompanion\Admin\Menu;
 use ClockworkCompanion\Admin\UpdatesRefreshAjaxHandler;
-use ClockworkCompanion\Auth\Secret;
 use ClockworkCompanion\AuthAudit\Schema as AuthAuditSchema;
 use ClockworkCompanion\Rest\ActionLogAppendRoute;
 use ClockworkCompanion\Rest\AdminsRoute;
@@ -97,6 +96,11 @@ class Plugin
         // Unlock LLAR lockouts via DELETE /lockouts (1.20.0+).
         // Clockwork can clear all lockouts or a specific IP without WP admin access.
         'lockouts-unlock',
+        // Native login lockouts (Gatekeeper), replacing Limit Login Attempts
+        // Reloaded. Clockwork pushes the policy to /gatekeeper-settings and
+        // only does so, and only treats the site as protected, when this is
+        // advertised. /lockouts lists and clears Gatekeeper's lockouts too.
+        'gatekeeper',
         // Post-update state verification (1.21.3+). After every successful
         // update Clockwork calls /post-update-verify with the pre-update
         // active-plugin list + active theme. Companion re-activates any plugin
@@ -127,10 +131,20 @@ class Plugin
     public function boot(): void
     {
         (new WhiteLabel())->boot();
-        Secret::ensure();
-        ActionLogSchema::ensureInstalled();
-        AuthAuditSchema::ensureInstalled();
-        ResourceSchema::ensureInstalled();
+        // Secret + table schemas, checked through one autoloaded record.
+        \ClockworkCompanion\Updates\InstallState::ensure([
+            ActionLogSchema::class,
+            AuthAuditSchema::class,
+            ResourceSchema::class,
+            \ClockworkCompanion\Gatekeeper\Schema::class,
+        ]);
+
+        // Login lockouts. The prune is scheduled even while Gatekeeper is off
+        // so rows from an earlier enable still age out; Gate::register() is a
+        // no-op until Clockwork has pushed `enabled: true`.
+        \ClockworkCompanion\Gatekeeper\Store::maybeSchedulePrune();
+        register_deactivation_hook(CLOCKWORK_COMPANION_FILE, [\ClockworkCompanion\Gatekeeper\Store::class, 'unschedulePrune']);
+        \ClockworkCompanion\Gatekeeper\Gate::register();
 
         // Third-party plugin compatibility shims — run before route registration
         // so any filters they install are live by the time WordPress's REST
@@ -148,11 +162,15 @@ class Plugin
         // the request lifecycle it captures.
         (new ResourceSampler())->register();
 
+        // No-store headers on every response from our REST namespace.
+        \ClockworkCompanion\Rest\NoStoreHeaders::register();
+
         add_action('rest_api_init', function (): void {
             (new HealthRoute())->register();
             (new DetectRoute())->register();
             (new TestContactFormRoute())->register();
             (new LockoutsRoute())->register();
+            (new \ClockworkCompanion\Rest\GatekeeperSettingsRoute())->register();
             (new WordfenceBlocksRoute())->register();
             (new PluginsRoute())->register();
             (new ThemesRoute())->register();

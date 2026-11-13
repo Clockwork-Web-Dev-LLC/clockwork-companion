@@ -88,9 +88,18 @@ class WflsMigrator
      * show the 2FA challenge. The underlying binary key is identical in both
      * systems, so the user's authenticator app entry keeps working regardless.
      *
+     * The WFLS row is only deleted once the new 2FA state is confirmed
+     * written; a failed write would otherwise leave the user with no second
+     * factor at all.
+     *
+     * $codesWillBeShown=false is for callers that cannot show the user the
+     * new backup codes (the HMAC migrate route): no codes are kept, and the
+     * user is flagged to generate a set, rather than reporting codes that
+     * nobody has seen.
+     *
      * @return array<int, string>|false
      */
-    public static function migrate(int $userId)
+    public static function migrate(int $userId, bool $codesWillBeShown = true)
     {
         global $wpdb;
 
@@ -103,7 +112,18 @@ class WflsMigrator
             return false;
         }
 
-        $codes = UserSettings::activateWithSecret($userId, Totp::base32Encode($binary));
+        $base32 = Totp::base32Encode($binary);
+        $codes = UserSettings::activateWithSecret($userId, $base32);
+
+        if (! UserSettings::isEnabled($userId) || UserSettings::secret($userId) !== $base32) {
+            // Keep the WFLS row: it is still the user's only working factor.
+            return false;
+        }
+
+        if (! $codesWillBeShown) {
+            UserSettings::requireBackupCodeRegeneration($userId);
+            $codes = [];
+        }
 
         // Remove the WFLS row so its authenticate hook no longer challenges
         // this user — the secret is now in Companion meta.

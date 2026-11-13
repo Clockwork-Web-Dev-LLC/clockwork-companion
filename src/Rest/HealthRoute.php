@@ -18,6 +18,22 @@ class HealthRoute
         ]);
     }
 
+    /**
+     * Plugin::CAPABILITIES minus anything switched off on this site, so
+     * Control does not offer an action the site will refuse.
+     *
+     * @return array<int, string>
+     */
+    public static function capabilities(): array
+    {
+        $capabilities = Plugin::CAPABILITIES;
+        if (CodeSnippetRoute::isDisabled()) {
+            $capabilities = array_values(array_diff($capabilities, ['code-snippets']));
+        }
+
+        return $capabilities;
+    }
+
     public function handle(WP_REST_Request $request): WP_REST_Response
     {
         global $wp_version;
@@ -27,7 +43,7 @@ class HealthRoute
         return new WP_REST_Response([
             'ok' => true,
             'version' => CLOCKWORK_COMPANION_VERSION,
-            'capabilities' => Plugin::CAPABILITIES,
+            'capabilities' => self::capabilities(),
             'wp_version' => $wp_version,
             'php_version' => PHP_VERSION,
             'is_multisite' => $isMultisite,

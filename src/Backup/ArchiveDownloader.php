@@ -6,11 +6,12 @@ namespace ClockworkCompanion\Backup;
  * Downloads an off-site archive from a presigned HTTPS URL to a local destination file.
  * Memory efficient: streams directly to disk via curl (CURLOPT_FILE).
  *
- * Resume support: the in-progress download is written to a partial file keyed by the
- * archive key (restore-dl-<md5(archive_key)>.zip.part next to the destination), so a
- * failed download leaves a resumable partial behind. A later download call for the
- * same archive key finds the partial and resumes with a Range header from its size.
- * Only on a completed download is the partial renamed to the final destination path.
+ * Resume support: the in-progress download is written to a partial file, and a failed
+ * download leaves it behind. The caller chooses that file's name (BackupRestoreRoute
+ * uses a random one recorded in RestoreState, never one derived from the archive key,
+ * which anyone who knows the site's domain and the date could compute) and passes the
+ * same path again to resume with a Range header from its size. Only on a completed
+ * download is the partial renamed to the final destination path.
  */
 class ArchiveDownloader
 {
@@ -21,17 +22,10 @@ class ArchiveDownloader
     public static ?array $testAllowHosts = null;
 
     /**
-     * Compute the resumable partial-file path for a download.
-     * Keyed by the archive key so a re-staged download of the same archive can
-     * resume, regardless of the per-request staged id embedded in $destPath.
-     * The "restore-" prefix keeps it inside Paths::sweepStale()'s cleanup patterns.
+     * Default partial-file path when the caller does not choose one.
      */
-    public static function partialPath(string $destPath, ?string $archiveKey = null): string
+    public static function partialPath(string $destPath): string
     {
-        if ($archiveKey !== null && $archiveKey !== '') {
-            return rtrim(dirname($destPath), '/\\').'/restore-dl-'.md5($archiveKey).'.zip.part';
-        }
-
         return $destPath.'.part';
     }
 
@@ -41,10 +35,11 @@ class ArchiveDownloader
      * @param  string  $url Presigned HTTPS download URL
      * @param  string  $destPath Local path to save the downloaded archive
      * @param  callable|null  $progressCallback Callback receiving (int $downloadedBytes, int $totalBytes)
-     * @param  string|null  $archiveKey Optional archive key identifier for resume tracking
+     * @param  string|null  $archiveKey Archive key (passed through to the test seam only)
+     * @param  string|null  $partialPath Where the in-progress download is kept; pass the same path to resume
      * @return array{ok: bool, http_code: int, bytes_downloaded: int, sha256: string, error?: string}
      */
-    public function download(string $url, string $destPath, ?callable $progressCallback = null, ?string $archiveKey = null): array
+    public function download(string $url, string $destPath, ?callable $progressCallback = null, ?string $archiveKey = null, ?string $partialPath = null): array
     {
         $target = self::resolveSafeHttpsTarget($url);
         if ($target === null) {
@@ -57,7 +52,7 @@ class ArchiveDownloader
             ];
         }
 
-        $partialPath = self::partialPath($destPath, $archiveKey);
+        $partialPath = $partialPath !== null && $partialPath !== '' ? $partialPath : self::partialPath($destPath);
         $resumeOffset = file_exists($partialPath) ? (int) filesize($partialPath) : 0;
 
         if (is_callable(self::$testDownloader)) {
@@ -150,7 +145,7 @@ class ArchiveDownloader
         if ($httpCode === 416 && $resumeOffset > 0) {
             @unlink($partialPath);
 
-            return $this->download($url, $destPath, $progressCallback, $archiveKey);
+            return $this->download($url, $destPath, $progressCallback, $archiveKey, $partialPath);
         }
 
         // Server ignored our Range and replied 200 with the full body, which we appended
@@ -159,7 +154,7 @@ class ArchiveDownloader
         if ($httpCode === 200 && $resumeOffset > 0) {
             @unlink($partialPath);
 
-            return $this->download($url, $destPath, $progressCallback, $archiveKey);
+            return $this->download($url, $destPath, $progressCallback, $archiveKey, $partialPath);
         }
 
         if (in_array($httpCode, [301, 302, 303, 307, 308], true)) {

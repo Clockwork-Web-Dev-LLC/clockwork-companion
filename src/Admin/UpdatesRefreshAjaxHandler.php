@@ -73,7 +73,11 @@ class UpdatesRefreshAjaxHandler
         if (! function_exists('wp_update_plugins')) {
             require_once ABSPATH.'wp-includes/update.php';
         }
-        delete_transient(\ClockworkCompanion\Updates\SelfUpdater::CACHE_KEY);
+        // The GitHub release cache is deliberately left alone: this runs on
+        // every refresh, and clearing it each time spends the unauthenticated
+        // GitHub API allowance shared by every site behind the same egress
+        // IP. It expires on its own (SelfUpdater::CACHE_TTL), and an update
+        // of this plugin through Updates\Runner clears it first.
         $extra = ['source' => 'clockwork-companion-loopback'];
         wp_update_plugins($extra);
         wp_update_themes($extra);

@@ -44,36 +44,58 @@ class BrandingRoute
             );
         }
 
-        $sanitized = [
-            'enabled' => ! empty($payload['enabled']),
-            'company_name' => isset($payload['company_name']) ? sanitize_text_field((string) $payload['company_name']) : '',
-            'company_url' => isset($payload['company_url']) ? esc_url_raw((string) $payload['company_url']) : '',
-            'support_email' => isset($payload['support_email']) ? sanitize_email((string) $payload['support_email']) : '',
-            'support_url' => isset($payload['support_url']) ? esc_url_raw((string) $payload['support_url']) : '',
-            'plugin_name' => isset($payload['plugin_name']) ? sanitize_text_field((string) $payload['plugin_name']) : '',
-            'plugin_description' => isset($payload['plugin_description']) ? sanitize_textarea_field((string) $payload['plugin_description']) : '',
-            'menu_title' => isset($payload['menu_title']) ? sanitize_text_field((string) $payload['menu_title']) : '',
-            'menu_icon' => isset($payload['menu_icon']) ? sanitize_text_field((string) $payload['menu_icon']) : '',
-            'logo_url' => isset($payload['logo_url']) ? esc_url_raw((string) $payload['logo_url']) : '',
-            'hide_plugin_row' => ! empty($payload['hide_plugin_row']),
-            'hide_help_links' => ! empty($payload['hide_help_links']),
-            'footer_text' => isset($payload['footer_text']) ? sanitize_text_field((string) $payload['footer_text']) : '',
-            'unlock_hub_domain' => isset($payload['unlock_hub_domain']) ? sanitize_text_field((string) $payload['unlock_hub_domain']) : '',
-            'synced_at' => isset($payload['synced_at']) ? sanitize_text_field((string) $payload['synced_at']) : gmdate('c'),
-        ];
+        // Merge onto what is stored rather than rebuilding the option from
+        // this payload. Keys the payload does not carry — settings Control
+        // doesn't push, such as agency_email_domains (which decides who sees
+        // the plugin's menu and tools) or menu_icon_url and the extra colours
+        // — must survive a branding push instead of silently resetting.
+        $sanitized = self::storedSettings();
+
+        $text = ['company_name', 'plugin_name', 'menu_title', 'menu_icon', 'footer_text', 'unlock_hub_domain'];
+        foreach ($text as $key) {
+            if (array_key_exists($key, $payload)) {
+                $sanitized[$key] = sanitize_text_field((string) $payload[$key]);
+            }
+        }
+        foreach (['company_url', 'support_url', 'logo_url'] as $key) {
+            if (array_key_exists($key, $payload)) {
+                $sanitized[$key] = esc_url_raw((string) $payload[$key]);
+            }
+        }
+        foreach (['enabled', 'hide_plugin_row', 'hide_help_links'] as $key) {
+            if (array_key_exists($key, $payload)) {
+                $sanitized[$key] = ! empty($payload[$key]);
+            }
+        }
+        if (array_key_exists('support_email', $payload)) {
+            $sanitized['support_email'] = sanitize_email((string) $payload['support_email']);
+        }
+        if (array_key_exists('plugin_description', $payload)) {
+            $sanitized['plugin_description'] = sanitize_textarea_field((string) $payload['plugin_description']);
+        }
+        if (array_key_exists('agency_email_domains', $payload)) {
+            $sanitized['agency_email_domains'] = self::sanitizeDomainList($payload['agency_email_domains']);
+        }
+        $sanitized['synced_at'] = isset($payload['synced_at']) ? sanitize_text_field((string) $payload['synced_at']) : gmdate('c');
 
         // Also map to legacy author/plugin keys so older Companion helper calls stay backward-compatible
-        $sanitized['author_name'] = $sanitized['company_name'];
-        $sanitized['author_url'] = $sanitized['company_url'];
-        $sanitized['plugin_url'] = $sanitized['company_url'];
-        $sanitized['brand_text'] = ! empty($payload['brand_text']) ? sanitize_text_field((string) $payload['brand_text']) : 'Companion';
+        if (array_key_exists('company_name', $payload)) {
+            $sanitized['author_name'] = $sanitized['company_name'];
+        }
+        if (array_key_exists('company_url', $payload)) {
+            $sanitized['author_url'] = $sanitized['company_url'];
+            $sanitized['plugin_url'] = $sanitized['company_url'];
+        }
+        if (array_key_exists('brand_text', $payload) || ! isset($sanitized['brand_text'])) {
+            $sanitized['brand_text'] = ! empty($payload['brand_text']) ? sanitize_text_field((string) $payload['brand_text']) : 'Companion';
+        }
 
         if (! empty($payload['primary_color'])) {
             $sanitized['primary_color'] = WhiteLabel::sanitizeHexColor((string) $payload['primary_color']);
         }
         if (! empty($payload['primary_dark_color'])) {
             $sanitized['primary_dark_color'] = WhiteLabel::sanitizeHexColor((string) $payload['primary_dark_color'], '#2D2062');
-        } elseif (! empty($sanitized['primary_color'])) {
+        } elseif (! empty($payload['primary_color'])) {
             $sanitized['primary_dark_color'] = $sanitized['primary_color'];
         }
         if (! empty($payload['accent_color'])) {
@@ -95,5 +117,56 @@ class BrandingRoute
             'ok' => true,
             'branding' => WhiteLabel::getSettings(),
         ], 200);
+    }
+
+    /**
+     * The stored branding option as saved (no defaults merged in), falling
+     * back to the legacy option name the same way WhiteLabel::getSettings()
+     * does, so the first push after an upgrade keeps legacy values too.
+     *
+     * @return array<string, mixed>
+     */
+    private static function storedSettings(): array
+    {
+        $saved = get_option(WhiteLabel::OPTION_KEY, null);
+        if (! is_array($saved)) {
+            $saved = get_option(WhiteLabel::LEGACY_OPTION_KEY, []);
+        }
+
+        return is_array($saved) ? $saved : [];
+    }
+
+    /**
+     * Normalise an agency domain list (string or array; comma, semicolon,
+     * whitespace or newline separated; "@domain", "domain" or a full email
+     * address) to "domain.tld, other.tld". Anything that is not a plausible
+     * hostname is dropped. An empty result is valid and means "no gating".
+     *
+     * @param  mixed  $value
+     */
+    private static function sanitizeDomainList($value): string
+    {
+        if (is_array($value)) {
+            $value = implode(',', array_map(static fn ($v) => is_scalar($v) ? (string) $v : '', $value));
+        }
+        if (! is_scalar($value)) {
+            return '';
+        }
+
+        $domains = [];
+        foreach (preg_split('/[\s,;]+/', strtolower(trim((string) $value))) ?: [] as $part) {
+            if (str_contains($part, '@')) {
+                $part = (string) substr((string) strrchr($part, '@'), 1);
+            }
+            $part = trim($part, '.');
+            if ($part !== '' && strlen($part) <= 253
+                && preg_match('/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9-]{2,63}$/', $part)
+                && ! in_array($part, $domains, true)
+            ) {
+                $domains[] = $part;
+            }
+        }
+
+        return implode(', ', $domains);
     }
 }

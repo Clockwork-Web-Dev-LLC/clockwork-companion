@@ -6,6 +6,7 @@ use ClockworkCompanion\Admin\Pages\ActivityPage;
 use ClockworkCompanion\Admin\Pages\ConnectionPage;
 use ClockworkCompanion\Admin\Pages\BackupsPage;
 use ClockworkCompanion\Admin\Pages\FormsPage;
+use ClockworkCompanion\Admin\Pages\GatekeeperPage;
 use ClockworkCompanion\Admin\Pages\PerformancePage;
 use ClockworkCompanion\Admin\Pages\SecurityPage;
 use ClockworkCompanion\Admin\Pages\TrafficPage;
@@ -48,8 +49,12 @@ class Menu
         add_action('admin_head', [$this, 'outputIconCss']);
         add_action('admin_notices', [\ClockworkCompanion\Admin\Pages\UpdateCoveragePage::class, 'maybeRenderPluginsNotice']);
         add_action('admin_post_clockwork_save_notifications', [NotificationsPage::class, 'handleSave']);
+        add_action('admin_post_clockwork_gatekeeper_save_settings', [GatekeeperPage::class, 'handleSave']);
+        add_action('admin_post_clockwork_gatekeeper_unlock_ip', [GatekeeperPage::class, 'handleUnlockIp']);
+        add_action('admin_post_clockwork_gatekeeper_unlock_all', [GatekeeperPage::class, 'handleUnlockAll']);
 
         UnlockPage::registerAjax();
+        \ClockworkCompanion\Admin\Pages\ConnectionPage::registerAjax();
     }
 
     /**
@@ -85,7 +90,7 @@ class Menu
     /**
      * Whether the given user (current user if omitted) counts as "agency"
      * for the features that are still gated on it: the Unlock Hub tool, the
-     * cross-user 2FA admin controls, the 2FA enrollment nudge, and the
+     * Gatekeeper page, the cross-user 2FA admin controls, the 2FA enrollment nudge, and the
      * White Label plugin-row hiding. Does NOT affect Clockwork menu
      * visibility any more — the menu itself is public to every
      * manage_options administrator (see the class docblock); this only
@@ -294,6 +299,19 @@ class Menu
             self::CAPABILITY,
             \ClockworkCompanion\Admin\Pages\UpdateCoveragePage::SLUG,
             [\ClockworkCompanion\Admin\Pages\UpdateCoveragePage::class, 'render']
+        );
+
+        // Gatekeeper lists visitors' addresses and can lift lockouts, so it
+        // is agency-only. Registered either way so its URL resolves for an
+        // agency user; a client admin gets no sidebar entry and the page
+        // itself refuses them.
+        add_submenu_page(
+            GatekeeperPage::canAccess() ? self::SLUG : null,
+            'Gatekeeper',
+            'Gatekeeper',
+            self::CAPABILITY,
+            GatekeeperPage::SLUG,
+            [GatekeeperPage::class, 'render']
         );
 
         add_submenu_page(

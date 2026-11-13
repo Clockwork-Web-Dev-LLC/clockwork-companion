@@ -3,13 +3,20 @@
 namespace ClockworkCompanion\Rest;
 
 use ClockworkCompanion\Auth\HmacVerifier;
+use ClockworkCompanion\Gatekeeper\Store as GatekeeperStore;
 use WP_REST_Request;
 use WP_REST_Response;
 
 /**
- * GET    /wp-json/clockwork/v1/lockouts        — list active LLAR lockouts.
+ * GET    /wp-json/clockwork/v1/lockouts        — list active lockouts.
  * DELETE /wp-json/clockwork/v1/lockouts        — clear all lockouts.
  * DELETE /wp-json/clockwork/v1/lockouts?ip=x  — clear one IP.
+ *
+ * Two lockout layers are covered: Companion's own Gatekeeper (one table,
+ * network-wide on multisite; an IPv6 lockout is listed as its /64 network
+ * address) and Limit Login Attempts Reloaded on sites still running it.
+ * Gatekeeper rows come first; an IP both layers lock is listed once.
+ * DELETE clears both.
  *
  * LLAR stores active lockouts in two places depending on plugin version:
  *   1. A dedicated table `<prefix>limit_login_lockouts` (newer versions).
@@ -21,6 +28,13 @@ use WP_REST_Response;
  *
  * We try the table first (more authoritative), then merge in option-row
  * entries de-duped by IP (table source wins). Unlocks clear both sources.
+ *
+ * On multisite, GET reads the same places DELETE clears: every blog's table
+ * and option, plus LLAR's network-wide option in wp_sitemeta. (GET used to
+ * read only the current blog, so lockouts on other sub-sites were invisible
+ * to Clockwork although DELETE would clear them.) The list is passed
+ * through ReportedBlocks before it leaves the site, because Clockwork turns
+ * it into IP bans.
  */
 class LockoutsRoute
 {
@@ -42,26 +56,50 @@ class LockoutsRoute
 
     public function handle(WP_REST_Request $request): WP_REST_Response
     {
-        global $wpdb;
-
-        $prefix = $wpdb->prefix;
-        $tableName = $prefix . 'limit_login_lockouts';
-        $optionsTable = $prefix . 'options';
-
         $byIp = [];
 
-        foreach ($this->fromTable($tableName) as $row) {
-            $byIp[$row['ip']] = $row;
-        }
-
-        // Option-row entries fill in only IPs the table didn't already supply.
-        foreach ($this->fromOptionRow($optionsTable) as $row) {
+        foreach (GatekeeperStore::activeLockouts() as $row) {
             $byIp[$row['ip']] ??= $row;
         }
 
+        foreach ($this->siteIds() as $siteId) {
+            $this->maybeSwitchBlog($siteId);
+
+            global $wpdb;
+            foreach ($this->fromTable($wpdb->prefix . 'limit_login_lockouts') as $row) {
+                $byIp[$row['ip']] ??= $row;
+            }
+            // Option-row entries fill in only IPs the table didn't already supply.
+            foreach ($this->fromOptionRow($wpdb->options) as $row) {
+                $byIp[$row['ip']] ??= $row;
+            }
+
+            $this->maybeRestoreBlog($siteId);
+        }
+
+        if (is_multisite()) {
+            global $wpdb;
+            $now = time();
+            foreach ($this->networkOptionLockouts() as $ip => $unlockTs) {
+                $ip = trim((string) $ip);
+                $unlockTs = (int) $unlockTs;
+                if (! filter_var($ip, FILTER_VALIDATE_IP) || ($unlockTs > 0 && $unlockTs <= $now)) {
+                    continue;
+                }
+                $byIp[$ip] ??= [
+                    'ip' => $ip,
+                    'unlock_at' => $unlockTs > 0 ? gmdate('c', $unlockTs) : null,
+                    'source_table' => $wpdb->sitemeta . ':limit_login_lockouts',
+                ];
+            }
+        }
+
+        $filtered = ReportedBlocks::filter(array_values($byIp));
+
         return new WP_REST_Response([
             'ok' => true,
-            'lockouts' => array_values($byIp),
+            'lockouts' => $filtered['rows'],
+            'truncated' => $filtered['truncated'],
         ]);
     }
 
@@ -83,7 +121,8 @@ class LockoutsRoute
 
     private function unlockIp(string $ip): WP_REST_Response
     {
-        $wasLocked = false;
+        $wasLocked = GatekeeperStore::isLocked($ip) !== null;
+        GatekeeperStore::clearNativeIp($ip);
         $unlockedUsernames = [];
 
         foreach ($this->siteIds() as $siteId) {
@@ -154,7 +193,7 @@ class LockoutsRoute
 
     private function unlockAll(): WP_REST_Response
     {
-        $clearedIps = [];
+        $clearedIps = array_fill_keys(GatekeeperStore::clearNativeAll(), true);
 
         foreach ($this->siteIds() as $siteId) {
             $this->maybeSwitchBlog($siteId);
@@ -210,18 +249,8 @@ class LockoutsRoute
         // switch_to_blog loop), then delete via the API so WP also primes its
         // cache correctly for any subsequent reads in this request.
         if (is_multisite()) {
-            global $wpdb;
-            $raw = $wpdb->get_var($wpdb->prepare(
-                "SELECT meta_value FROM {$wpdb->sitemeta} WHERE site_id = %d AND meta_key = 'limit_login_lockouts' LIMIT 1",
-                get_current_network_id()
-            ));
-            if ($raw) {
-                $netLockouts = @unserialize($raw, ['allowed_classes' => false]);
-                if (is_array($netLockouts)) {
-                    foreach (array_keys($netLockouts) as $netIp) {
-                        $clearedIps[$netIp] = true;
-                    }
-                }
+            foreach (array_keys($this->networkOptionLockouts()) as $netIp) {
+                $clearedIps[$netIp] = true;
             }
             delete_site_option('limit_login_lockouts');
             delete_site_option('limit_login_retries');
@@ -232,6 +261,28 @@ class LockoutsRoute
             'ok' => true,
             'cleared' => count($clearedIps),
         ]);
+    }
+
+    /**
+     * LLAR "Network/Site Wide" lockouts (ip => unlock timestamp), read
+     * straight from wp_sitemeta to bypass an object cache that can serve a
+     * stale value after the switch_to_blog() loop.
+     *
+     * @return array<int|string, mixed>
+     */
+    private function networkOptionLockouts(): array
+    {
+        global $wpdb;
+        $raw = $wpdb->get_var($wpdb->prepare(
+            "SELECT meta_value FROM {$wpdb->sitemeta} WHERE site_id = %d AND meta_key = 'limit_login_lockouts' LIMIT 1",
+            get_current_network_id()
+        ));
+        if (! is_string($raw) || $raw === '') {
+            return [];
+        }
+        $netLockouts = @unserialize($raw, ['allowed_classes' => false]);
+
+        return is_array($netLockouts) ? $netLockouts : [];
     }
 
     /**

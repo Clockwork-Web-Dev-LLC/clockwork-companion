@@ -99,6 +99,8 @@ class TwoFactorStatusRoute
             ];
             if ($state === 'clockwork') {
                 $row['backup_codes_remaining'] = UserSettings::backupCodesRemaining($user->ID);
+                // True after a remote WFLS migration until the user generates codes.
+                $row['backup_codes_need_regenerating'] = UserSettings::backupCodesNeeded($user->ID);
             }
             $rows[] = $row;
         }

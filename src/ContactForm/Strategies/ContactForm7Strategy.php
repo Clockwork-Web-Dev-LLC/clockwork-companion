@@ -15,12 +15,18 @@ use ClockworkCompanion\ContactForm\StrategyResult;
  * "aborted" can happen if any pre-flight filter halts the submission
  * (anti-spam plugins commonly do this) — we treat it as rejection.
  *
- * CF7 does NOT store entries in core; if site has Flamingo or similar,
- * those plugins listen on wpcf7_submit and copy the data themselves.
- * We don't try to suppress that — out of scope for v1.
+ * CF7 does not store entries itself. Flamingo (through CF7's own flamingo
+ * module) and other integrations act on wpcf7_submit, wpcf7_before_send_mail
+ * and wpcf7_mail_sent / wpcf7_mail_failed; in lab mode every callback on
+ * those hooks is detached for the duration of the test submission.
  */
 class ContactForm7Strategy extends AbstractStrategy
 {
+    protected function integrationHooks(string $formId): array
+    {
+        return ['wpcf7_submit', 'wpcf7_before_send_mail', 'wpcf7_mail_sent', 'wpcf7_mail_failed'];
+    }
+
     public function submit(string $formId, string $marker, string $mode): StrategyResult
     {
         if (! class_exists(\WPCF7_ContactForm::class)) {

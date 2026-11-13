@@ -96,16 +96,19 @@ class ThemeUpdateRoute
         wp_update_themes(['source' => 'clockwork-runner']);
 
         $transient = get_site_transient('update_themes');
-        $hasUpdate = is_object($transient) && isset($transient->response[$slug]);
+        $hasUpdate = is_object($transient) && isset($transient->response[$slug])
+            && \ClockworkCompanion\Updates\Runner::offersNewerVersion($transient->response[$slug], $beforeVersion);
 
         if (! $hasUpdate || empty(((array) $transient->response[$slug])['package'])) {
             if (class_exists(\ClockworkCompanion\Updates\TransientRefresher::class)) {
                 \ClockworkCompanion\Updates\TransientRefresher::forceRefresh();
                 $transient = get_site_transient('update_themes');
-                $hasUpdate = is_object($transient) && isset($transient->response[$slug]);
+                $hasUpdate = is_object($transient) && isset($transient->response[$slug])
+                    && \ClockworkCompanion\Updates\Runner::offersNewerVersion($transient->response[$slug], $beforeVersion);
             }
 
-            if ($priorEntry !== null && ! $hasUpdate) {
+            // Never put back a stale entry for the version already installed.
+            if ($priorEntry !== null && ! $hasUpdate && \ClockworkCompanion\Updates\Runner::offersNewerVersion($priorEntry, $beforeVersion)) {
                 if (! is_object($transient)) {
                     $transient = new \stdClass();
                 }
