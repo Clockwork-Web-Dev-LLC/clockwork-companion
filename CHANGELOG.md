@@ -5,6 +5,14 @@ Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earli
 ## [Unreleased]
 
 
+## 1.44.1 — 2026-11-12
+
+### Fixed
+- **Eliminate false-positive uploads malware findings (`SecurityScans\MalwareScanner`)**:
+  - `php_handler_in_uploads`: Parse `.htaccess` and `.user.ini` directives instead of matching bare keywords so plugin hardening blocks that *disable* script execution (`SetHandler none`, `SetHandler default-handler`, `AddHandler cgi-script` paired with `Options -ExecCGI`, static `ForceType text/plain` / `application/octet-stream`, `auto_prepend_file = none`, `engine = Off`, and `#`/`;` comments) are no longer reported, while executable handlers (`application/x-httpd-php*`, `proxy:fcgi:...`, `cgi-script` without `-ExecCGI`, `server-parsed`, `Action`, non-empty `auto_prepend_file` / `auto_append_file`, and `engine = On`) remain flagged.
+  - `php_in_uploads`: Raise `STUB_MAX_BYTES` from 512 B to 4 KB for comment-only directory-protection stubs, accept small plain-text guard stubs containing zero PHP open tags (`<?`, `<%`, `<script`), allow static HTTP status `header(...)` / `http_response_code(...)` stubs (including `$_SERVER['SERVER_PROTOCOL']` 404 stubs), and exempt `<?php die(); ?>`-prefixed plain-text log files when no subsequent PHP open tag appears after the opening guard.
+
+
 ## 1.44.0 — 2026-11-12
 
 ### Security
