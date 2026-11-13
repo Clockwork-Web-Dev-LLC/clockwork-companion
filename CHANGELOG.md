@@ -7,6 +7,9 @@ Versions track `CLOCKWORK_COMPANION_VERSION` in `clockwork-companion.php`. Earli
 
 ## 1.44.1 — 2026-11-12
 
+### Changed
+- **Companion updates itself automatically (`Updates\SelfUpdater`)**: Companion opts into WordPress's background plugin auto-updates (`auto_update_plugin`), so once a release is published on GitHub every site installs it within about a day (WordPress runs the check twice daily; the release lookup is cached for 6 hours), not only the care-plan sites Clockwork Control's nightly update run reaches. Turn it off per site with `define('CLOCKWORK_COMPANION_DISABLE_AUTO_UPDATE', true)` or the `clockwork_companion_auto_update_enabled` filter; `CLOCKWORK_COMPANION_DISABLE_SELF_UPDATE` turns off both. Sites that disable WordPress automatic updates altogether (`AUTOMATIC_UPDATER_DISABLED`) are not affected.
+
 ### Fixed
 - **Eliminate false-positive uploads malware findings (`SecurityScans\MalwareScanner`)**:
   - `php_handler_in_uploads`: Parse `.htaccess` and `.user.ini` directives instead of matching bare keywords so plugin hardening blocks that *disable* script execution (`SetHandler none`, `SetHandler default-handler`, `AddHandler cgi-script` paired with `Options -ExecCGI`, static `ForceType text/plain` / `application/octet-stream`, `auto_prepend_file = none`, `engine = Off`, and `#`/`;` comments) are no longer reported, while executable handlers (`application/x-httpd-php*`, `proxy:fcgi:...`, `cgi-script` without `-ExecCGI`, `server-parsed`, `Action`, non-empty `auto_prepend_file` / `auto_append_file`, and `engine = On`) remain flagged.

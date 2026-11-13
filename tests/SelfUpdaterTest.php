@@ -144,4 +144,31 @@ class SelfUpdaterTest extends TestCase
         $this->assertSame('9.9.9', $info->version);
         $this->assertSame(self::GOOD_URL, $info->download_link);
     }
+
+    public function testRegistersTheAutoUpdateFilter(): void
+    {
+        SelfUpdater::register();
+
+        $this->assertArrayHasKey('auto_update_plugin', $GLOBALS['wp_test_filters']);
+    }
+
+    public function testAutoUpdateIsForcedOnForThisPluginOnly(): void
+    {
+        $this->assertTrue(SelfUpdater::filterAutoUpdate(null, (object) ['plugin' => SelfUpdater::PLUGIN_FILE]));
+        $this->assertTrue(SelfUpdater::filterAutoUpdate(false, ['plugin' => SelfUpdater::PLUGIN_FILE]));
+
+        // Other plugins keep whatever WordPress or the site owner decided.
+        $this->assertFalse(SelfUpdater::filterAutoUpdate(false, (object) ['plugin' => 'akismet/akismet.php']));
+        $this->assertNull(SelfUpdater::filterAutoUpdate(null, (object) ['plugin' => 'akismet/akismet.php']));
+        $this->assertTrue(SelfUpdater::filterAutoUpdate(true, (object) ['plugin' => 'akismet/akismet.php']));
+        $this->assertFalse(SelfUpdater::filterAutoUpdate(false, 'not-an-item'));
+    }
+
+    public function testAutoUpdateCanBeTurnedOffWithTheFilter(): void
+    {
+        add_filter('clockwork_companion_auto_update_enabled', fn () => false);
+
+        $this->assertFalse(SelfUpdater::autoUpdateEnabled());
+        $this->assertFalse(SelfUpdater::filterAutoUpdate(false, (object) ['plugin' => SelfUpdater::PLUGIN_FILE]));
+    }
 }
